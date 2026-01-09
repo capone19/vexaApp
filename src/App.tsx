@@ -9,6 +9,9 @@ import AgentSettings from "./pages/AgentSettings";
 import Calendar from "./pages/Calendar";
 import Metrics from "./pages/Metrics";
 import Results from "./pages/Results";
+import Marketing from "./pages/Marketing";
+import Reports from "./pages/Reports";
+import Billing from "./pages/Billing";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,6 +29,9 @@ const App = () => (
           <Route path="/calendario" element={<Calendar />} />
           <Route path="/metricas" element={<Metrics />} />
           <Route path="/resultados" element={<Results />} />
+          <Route path="/marketing" element={<Marketing />} />
+          <Route path="/reportes" element={<Reports />} />
+          <Route path="/facturacion" element={<Billing />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
