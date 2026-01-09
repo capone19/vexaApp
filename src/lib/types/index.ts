@@ -1,0 +1,293 @@
+// ============================================
+// Growth Partners - Type Definitions
+// ============================================
+
+// Client (Tenant)
+export interface Client {
+  id: string;
+  name: string;
+  plan: 'basic' | 'pro' | 'enterprise';
+  timezone: string;
+  createdAt: Date;
+}
+
+// User
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  role: 'admin' | 'operator' | 'viewer';
+  clientId: string;
+}
+
+// Agent Settings
+export interface AgentSettings {
+  personality: PersonalitySettings;
+  business: BusinessSettings;
+  policies: PoliciesSettings;
+  services: ServicesSettings;
+  rescheduling: ReschedulingSettings;
+  payments: PaymentSettings;
+  intervention: InterventionSettings;
+  faq: FAQSettings;
+  limits: LimitsSettings;
+}
+
+export interface PersonalitySettings {
+  formality: 'muy_informal' | 'informal' | 'neutral' | 'formal' | 'muy_formal';
+  empathy: 'baja' | 'media' | 'alta';
+  humor: 'ausente' | 'sutil' | 'moderado' | 'marcado';
+  emojis: 'nunca' | 'ocasional' | 'frecuente';
+  lastModified: Date;
+}
+
+export interface BusinessSettings {
+  description: string;
+  hasPhysicalStore: boolean;
+  locations: Location[];
+  phoneNumbers: string[];
+  lastModified: Date;
+}
+
+export interface Location {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  schedule: DaySchedule[];
+}
+
+export interface DaySchedule {
+  day: 'lunes' | 'martes' | 'miercoles' | 'jueves' | 'viernes' | 'sabado' | 'domingo';
+  enabled: boolean;
+  startTime: string;
+  endTime: string;
+}
+
+export interface PoliciesSettings {
+  generalPolicies: string;
+  guarantees: string;
+  lastModified: Date;
+}
+
+export interface ServicesSettings {
+  modality: 'online' | 'presencial' | 'mixta';
+  schedule: DaySchedule[];
+  requirements: string[];
+  services: Service[];
+  pricingType: 'fijo' | 'variable' | 'referencial';
+  pricingNote?: string;
+  lastModified: Date;
+}
+
+export interface Service {
+  id: string;
+  name: string;
+  description: string;
+  duration: number; // minutes
+  price: number;
+  currency: string;
+}
+
+export interface ReschedulingSettings {
+  allowRescheduling: boolean;
+  reschedulingDeadline: number; // hours before
+  reschedulingConditions: string;
+  allowCancellation: boolean;
+  cancellationDeadline: number; // hours before
+  cancellationPenalty: number; // percentage
+  refundApplies: boolean;
+  refundConditions: string;
+  lastModified: Date;
+}
+
+export interface PaymentSettings {
+  methods: PaymentMethod[];
+  restrictions: PaymentRestriction[];
+  instructions: string;
+  lastModified: Date;
+}
+
+export interface PaymentMethod {
+  type: 'qr' | 'transferencia' | 'efectivo' | 'tarjeta' | 'link' | 'otro';
+  enabled: boolean;
+  details?: string;
+}
+
+export interface PaymentRestriction {
+  serviceId: string;
+  allowedMethods: string[];
+}
+
+export interface InterventionSettings {
+  enabled: boolean;
+  conditions: InterventionCondition[];
+  customRules: string;
+  lastModified: Date;
+}
+
+export interface InterventionCondition {
+  id: string;
+  label: string;
+  enabled: boolean;
+}
+
+export interface FAQSettings {
+  items: FAQItem[];
+  lastModified: Date;
+}
+
+export interface FAQItem {
+  id: string;
+  question: string;
+  answer: string;
+  order: number;
+}
+
+export interface LimitsSettings {
+  prohibitedTopics: string[];
+  prohibitedPromises: string;
+  sensitiveInfo: {
+    enabled: boolean;
+    description: string;
+  };
+  avoidedLanguage: string[];
+  lastModified: Date;
+}
+
+// Chat & Messages
+export type FunnelStage = 'dead' | 'warm' | 'hot' | 'converted';
+export type ChatStatus = 'active' | 'closed';
+export type Channel = 'whatsapp' | 'instagram' | 'messenger' | 'web';
+
+export interface Chat {
+  id: string;
+  sessionId: string;
+  userName: string;
+  userPhone?: string;
+  channel: Channel;
+  status: ChatStatus;
+  funnelStage: FunnelStage;
+  lastMessageAt: Date;
+  hasHumanIntervention: boolean;
+  messages: Message[];
+  tags?: string[];
+  summary?: string;
+  createdAt: Date;
+}
+
+export interface Message {
+  id: string;
+  chatId: string;
+  content: string;
+  sender: 'user' | 'bot' | 'human';
+  timestamp: Date;
+  read: boolean;
+}
+
+// Appointments
+export type AppointmentStatus = 'confirmed' | 'pending' | 'canceled';
+export type AppointmentSource = 'chat' | 'campaign' | 'direct' | 'referral';
+
+export interface Appointment {
+  id: string;
+  datetime: Date;
+  clientName: string;
+  clientPhone?: string;
+  service: string;
+  source: AppointmentSource;
+  status: AppointmentStatus;
+  notes?: string;
+  chatId?: string;
+  createdAt: Date;
+}
+
+// Templates (Marketing)
+export type TemplateStatus = 'approved' | 'pending' | 'rejected';
+export type TemplateCategory = 'followup' | 'reminder' | 'reactivation' | 'postservice' | 'promotion';
+
+export interface Template {
+  id: string;
+  name: string;
+  status: TemplateStatus;
+  category: TemplateCategory;
+  content: string;
+  variables: string[];
+  hasButton: boolean;
+  buttonText?: string;
+  buttonUrl?: string;
+  lastUsedAt?: Date;
+  createdAt: Date;
+}
+
+// Metrics
+export interface DashboardMetrics {
+  totalChats: number;
+  totalMessages: number;
+  avgMessagesPerChat: number;
+  botResponseRate: number;
+  avgFirstResponseTime: number; // seconds
+  avgConversionTime: number; // hours
+  servicesBooked: number;
+  revenue: number;
+  commission: number;
+  funnel: FunnelMetrics;
+}
+
+export interface FunnelMetrics {
+  tofu: number;
+  mofu: number;
+  hotLeads: number;
+  bofu: number;
+  deadRate: number;
+  warmRate: number;
+  hotRate: number;
+  conversionRate: number;
+}
+
+export interface ChannelMetrics {
+  channel: Channel;
+  chats: number;
+  conversions: number;
+  conversionRate: number;
+}
+
+// Billing
+export type SubscriptionStatus = 'active' | 'pending' | 'expired' | 'canceled';
+
+export interface BillingInfo {
+  plan: 'basic' | 'pro' | 'enterprise';
+  status: SubscriptionStatus;
+  nextBillingDate: Date;
+  amount: number;
+  currency: string;
+  history: BillingRecord[];
+}
+
+export interface BillingRecord {
+  id: string;
+  date: Date;
+  amount: number;
+  status: 'paid' | 'pending' | 'failed';
+  invoiceUrl?: string;
+}
+
+// Date Range Filter
+export type DateRangePreset = 'today' | '7d' | '30d' | 'custom';
+
+export interface DateRange {
+  preset: DateRangePreset;
+  startDate?: Date;
+  endDate?: Date;
+}
+
+// Navigation
+export interface NavItem {
+  title: string;
+  href: string;
+  icon: string;
+  badge?: string;
+  isUpgrade?: boolean;
+  children?: NavItem[];
+}
