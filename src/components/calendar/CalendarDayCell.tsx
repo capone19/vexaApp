@@ -34,15 +34,14 @@ export const CalendarDayCell = ({
   const blocked = isDateBlocked(day);
   const selectedForBlock = isDateSelected(day);
 
+  // Track if we actually dragged to another day
   const handleClick = () => {
     if (isBlockingMode) {
-      if (!blocked) {
-        toggleBlockDay(day);
-      }
-    } else {
-      // Allow clicking on blocked days to show unblock option
-      onSelect(day);
+      // Click is handled by mouseDown/mouseUp for blocking mode
+      return;
     }
+    // Allow clicking on blocked days to show unblock option
+    onSelect(day);
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -59,8 +58,13 @@ export const CalendarDayCell = ({
   };
 
   const handleMouseUp = () => {
-    if (isBlockingMode && isDragging) {
-      endDrag();
+    if (isBlockingMode && !blocked) {
+      // If not dragging (simple click), toggle the day
+      if (!isDragging) {
+        toggleBlockDay(day);
+      } else {
+        endDrag();
+      }
     }
   };
 
