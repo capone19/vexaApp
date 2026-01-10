@@ -7,8 +7,22 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Trash2, MapPin, Phone, Clock, Globe, Users, Sparkles } from "lucide-react";
-import type { BusinessSettings, Location, DaySchedule, ServiceCoverageType, IdealClientType } from "@/lib/types";
+import { Plus, Trash2, MapPin, Phone, Clock, Globe, Users, Sparkles, Instagram, Facebook, Linkedin, Youtube, Link2 } from "lucide-react";
+import type { BusinessSettings, Location, DaySchedule, ServiceCoverageType, IdealClientType, SocialLinks } from "@/lib/types";
+
+// TikTok icon component (not in Lucide)
+const TikTokIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z"/>
+  </svg>
+);
+
+// Twitter/X icon
+const XTwitterIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+  </svg>
+);
 
 interface BusinessSectionProps {
   settings: BusinessSettings;
@@ -72,6 +86,18 @@ export function BusinessSection({ settings, onChange }: BusinessSectionProps) {
 
   const handleValuePropositionChange = (valueProposition: string) => {
     onChange({ ...settings, valueProposition, lastModified: new Date() });
+  };
+
+  const handleSocialLinkChange = (platform: keyof SocialLinks, value: string) => {
+    onChange({
+      ...settings,
+      socialLinks: { ...settings.socialLinks, [platform]: value },
+      lastModified: new Date(),
+    });
+  };
+
+  const handleWebsiteChange = (website: string) => {
+    onChange({ ...settings, website, lastModified: new Date() });
   };
 
   const handleAddPhone = () => {
@@ -273,6 +299,119 @@ export function BusinessSection({ settings, onChange }: BusinessSectionProps) {
           </div>
           <p className="text-xs text-muted-foreground mt-3">
             Selecciona todos los que apliquen. Esto ayuda al agente a personalizar la comunicación.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Redes sociales y página web */}
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Link2 className="h-5 w-5 text-primary" />
+            Redes sociales y página web
+          </CardTitle>
+          <CardDescription>
+            El agente puede compartir estos enlaces cuando los clientes pregunten por tus redes
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Página web */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Globe className="h-4 w-4 text-muted-foreground" />
+              Página web
+            </Label>
+            <Input
+              value={settings.website || ""}
+              onChange={(e) => handleWebsiteChange(e.target.value)}
+              placeholder="https://www.tunegocio.com"
+              className="bg-muted/30 border-border"
+            />
+          </div>
+
+          {/* Grid de redes sociales */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Instagram className="h-4 w-4 text-pink-500" />
+                Instagram
+              </Label>
+              <Input
+                value={settings.socialLinks?.instagram || ""}
+                onChange={(e) => handleSocialLinkChange("instagram", e.target.value)}
+                placeholder="https://instagram.com/tunegocio"
+                className="bg-muted/30 border-border"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Facebook className="h-4 w-4 text-blue-600" />
+                Facebook
+              </Label>
+              <Input
+                value={settings.socialLinks?.facebook || ""}
+                onChange={(e) => handleSocialLinkChange("facebook", e.target.value)}
+                placeholder="https://facebook.com/tunegocio"
+                className="bg-muted/30 border-border"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <TikTokIcon className="h-4 w-4" />
+                TikTok
+              </Label>
+              <Input
+                value={settings.socialLinks?.tiktok || ""}
+                onChange={(e) => handleSocialLinkChange("tiktok", e.target.value)}
+                placeholder="https://tiktok.com/@tunegocio"
+                className="bg-muted/30 border-border"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Linkedin className="h-4 w-4 text-blue-700" />
+                LinkedIn
+              </Label>
+              <Input
+                value={settings.socialLinks?.linkedin || ""}
+                onChange={(e) => handleSocialLinkChange("linkedin", e.target.value)}
+                placeholder="https://linkedin.com/company/tunegocio"
+                className="bg-muted/30 border-border"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Youtube className="h-4 w-4 text-red-600" />
+                YouTube
+              </Label>
+              <Input
+                value={settings.socialLinks?.youtube || ""}
+                onChange={(e) => handleSocialLinkChange("youtube", e.target.value)}
+                placeholder="https://youtube.com/@tunegocio"
+                className="bg-muted/30 border-border"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <XTwitterIcon className="h-4 w-4" />
+                X (Twitter)
+              </Label>
+              <Input
+                value={settings.socialLinks?.twitter || ""}
+                onChange={(e) => handleSocialLinkChange("twitter", e.target.value)}
+                placeholder="https://x.com/tunegocio"
+                className="bg-muted/30 border-border"
+              />
+            </div>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Solo completa las redes que uses activamente. El agente solo compartirá los enlaces que configures.
           </p>
         </CardContent>
       </Card>

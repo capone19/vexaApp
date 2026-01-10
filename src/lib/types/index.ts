@@ -51,12 +51,24 @@ export interface BusinessSettings {
   hasPhysicalStore: boolean;
   locations: Location[];
   phoneNumbers: string[];
+  // Social links & website
+  socialLinks: SocialLinks;
+  website: string;
   // New fields
   serviceCoverage: ServiceCoverageType[];
   coverageZones: string;
   idealClientTypes: IdealClientType[];
   valueProposition: string;
   lastModified: Date;
+}
+
+export interface SocialLinks {
+  instagram?: string;
+  facebook?: string;
+  tiktok?: string;
+  linkedin?: string;
+  youtube?: string;
+  twitter?: string;
 }
 
 export type ServiceCoverageType = 'presencial_local' | 'domicilio' | 'online' | 'hibrido';
