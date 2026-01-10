@@ -1,4 +1,4 @@
-import { Upload } from "lucide-react";
+import { Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Breadcrumb,
@@ -17,12 +17,14 @@ interface AgentSettingsHeaderProps {
   currentSection: AgentSettingsSectionInfo;
   onSave: () => void;
   hasUnsavedChanges: boolean;
+  isSaving?: boolean;
 }
 
 export function AgentSettingsHeader({
   currentSection,
   onSave,
   hasUnsavedChanges,
+  isSaving = false,
 }: AgentSettingsHeaderProps) {
   const isMobile = useIsMobile();
 
@@ -82,10 +84,15 @@ export function AgentSettingsHeader({
             size={isMobile ? "sm" : "sm"} 
             className={cn("gap-2", isMobile && "px-3")} 
             onClick={onSave}
+            disabled={isSaving}
           >
-            <Upload className="h-4 w-4" />
-            {!isMobile && "Guardar cambios"}
-            {isMobile && "Guardar"}
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4" />
+            )}
+            {!isMobile && (isSaving ? "Guardando..." : "Guardar cambios")}
+            {isMobile && (isSaving ? "..." : "Guardar")}
           </Button>
         </div>
       </div>
