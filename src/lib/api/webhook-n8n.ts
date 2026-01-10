@@ -3,10 +3,8 @@
 // Arquitectura híbrida: Lovable Cloud (UI) + n8n (procesamiento) + Supabase (operativo)
 // ============================================
 
+import { supabase } from "@/integrations/supabase/client";
 import type { AgentSettingsSectionId } from "@/pages/AgentSettings";
-
-// Webhook endpoint de producción
-const N8N_WEBHOOK_URL = "https://n8n-growthpartners-n8n.q7anmx.easypanel.host/webhook/76e801a3-1b3d-4753-be54-a81223b3c29f";
 
 // Mapeo de section_key a section_label
 const SECTION_LABELS: Record<AgentSettingsSectionId, string> = {
@@ -80,7 +78,7 @@ function prepareRawData(sectionData: Record<string, unknown>): Record<string, un
 }
 
 /**
- * Envía el evento de guardado a n8n
+ * Envía el evento de guardado a n8n a través de Edge Function (evita CORS)
  * REGLA: 1 botón = 1 evento = 1 sección
  * REGLA: RAW = TODO lo rellenable (sin excepciones)
  */
@@ -108,21 +106,30 @@ export async function sendWebhookToN8n(
       schema_hash: generateSchemaHash(rawData),
     };
 
-    console.log("[Webhook n8n] Enviando payload:", payload);
+    console.log("[Webhook n8n] Enviando payload via Edge Function:", payload);
 
-    const response = await fetch(N8N_WEBHOOK_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      mode: "no-cors", // n8n puede no tener CORS configurado
-      body: JSON.stringify(payload),
+    // Usar Edge Function como proxy para evitar CORS
+    const { data, error } = await supabase.functions.invoke('webhook-n8n-proxy', {
+      body: payload,
     });
 
-    // Con no-cors no podemos leer el status real
-    // Asumimos éxito si no hay excepción
-    console.log("[Webhook n8n] Enviado exitosamente");
+    if (error) {
+      console.error("[Webhook n8n] Error en Edge Function:", error);
+      return { 
+        success: false, 
+        error: error.message || "Error en el proxy" 
+      };
+    }
+
+    console.log("[Webhook n8n] Respuesta del proxy:", data);
     
+    if (!data?.success) {
+      return { 
+        success: false, 
+        error: data?.error || "n8n no respondió correctamente" 
+      };
+    }
+
     return { success: true };
   } catch (error) {
     console.error("[Webhook n8n] Error:", error);
