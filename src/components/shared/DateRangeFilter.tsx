@@ -1,98 +1,63 @@
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
-import { CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Calendar, ChevronDown } from "lucide-react";
 import type { DateRangePreset } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
+
+const presets: { value: DateRangePreset; label: string; shortLabel: string }[] = [
+  { value: "7d", label: "Últimos 7 días", shortLabel: "7 días" },
+  { value: "30d", label: "Últimos 30 días", shortLabel: "30 días" },
+  { value: "90d", label: "Últimos 90 días", shortLabel: "90 días" },
+  { value: "ytd", label: "Año en curso", shortLabel: "Año" },
+  { value: "all", label: "Desde el inicio", shortLabel: "Todo" },
+];
 
 interface DateRangeFilterProps {
   value: DateRangePreset;
-  onChange: (preset: DateRangePreset, startDate?: Date, endDate?: Date) => void;
-  className?: string;
+  onChange: (value: DateRangePreset) => void;
 }
 
-const presets: { value: DateRangePreset; label: string }[] = [
-  { value: "today", label: "Hoy" },
-  { value: "7d", label: "7 días" },
-  { value: "30d", label: "30 días" },
-  { value: "custom", label: "Personalizado" },
-];
-
-export function DateRangeFilter({
-  value,
-  onChange,
-  className,
-}: DateRangeFilterProps) {
-  const [customRange, setCustomRange] = useState<{
-    from?: Date;
-    to?: Date;
-  }>({});
+export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
+  const isMobile = useIsMobile();
+  const current = presets.find((p) => p.value === value) || presets[1];
 
   return (
-    <div className={cn("flex items-center gap-2", className)}>
-      {presets.map((preset) =>
-        preset.value === "custom" ? (
-          <Popover key={preset.value}>
-            <PopoverTrigger asChild>
-              <Button
-                variant={value === "custom" ? "default" : "outline"}
-                size="sm"
-                className={cn(
-                  "h-8 gap-2",
-                  value === "custom" && "bg-primary text-primary-foreground"
-                )}
-              >
-                <CalendarIcon className="h-4 w-4" />
-                {customRange.from && customRange.to ? (
-                  <>
-                    {format(customRange.from, "dd MMM", { locale: es })} -{" "}
-                    {format(customRange.to, "dd MMM", { locale: es })}
-                  </>
-                ) : (
-                  preset.label
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <Calendar
-                mode="range"
-                selected={{
-                  from: customRange.from,
-                  to: customRange.to,
-                }}
-                onSelect={(range) => {
-                  setCustomRange({ from: range?.from, to: range?.to });
-                  if (range?.from && range?.to) {
-                    onChange("custom", range.from, range.to);
-                  }
-                }}
-                numberOfMonths={2}
-                locale={es}
-              />
-            </PopoverContent>
-          </Popover>
-        ) : (
-          <Button
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button 
+          variant="outline" 
+          size={isMobile ? "sm" : "default"}
+          className={cn(
+            "gap-2 border-border bg-background",
+            isMobile && "text-xs"
+          )}
+        >
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <span className="hidden sm:inline">{current.label}</span>
+          <span className="sm:hidden">{current.shortLabel}</span>
+          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        {presets.map((preset) => (
+          <DropdownMenuItem
             key={preset.value}
-            variant={value === preset.value ? "default" : "outline"}
-            size="sm"
-            className={cn(
-              "h-8",
-              value === preset.value && "bg-primary text-primary-foreground"
-            )}
             onClick={() => onChange(preset.value)}
+            className={cn(
+              "cursor-pointer",
+              preset.value === value && "bg-secondary font-medium"
+            )}
           >
             {preset.label}
-          </Button>
-        )
-      )}
-    </div>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

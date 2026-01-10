@@ -44,22 +44,22 @@ export function KPICard({
   return (
     <div
       className={cn(
-        "rounded-lg border p-5 transition-all card-hover",
+        "rounded-lg border p-3 md:p-5 transition-all card-hover",
         variantStyles[variant],
         className
       )}
     >
       <div className="flex items-start justify-between">
-        <div className="space-y-1">
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <div className="flex items-baseline gap-2">
-            <p className="text-2xl font-semibold tracking-tight text-foreground">
+        <div className="space-y-0.5 md:space-y-1 min-w-0 flex-1">
+          <p className="text-xs md:text-sm font-medium text-muted-foreground truncate">{title}</p>
+          <div className="flex items-baseline gap-1.5 md:gap-2 flex-wrap">
+            <p className="text-lg md:text-2xl font-semibold tracking-tight text-foreground">
               {value}
             </p>
             {trend && (
               <span
                 className={cn(
-                  "text-xs font-medium",
+                  "text-[10px] md:text-xs font-medium",
                   trend.isPositive ? "text-success" : "text-destructive"
                 )}
               >
@@ -69,17 +69,17 @@ export function KPICard({
             )}
           </div>
           {subtitle && (
-            <p className="text-xs text-muted-foreground">{subtitle}</p>
+            <p className="text-[10px] md:text-xs text-muted-foreground">{subtitle}</p>
           )}
         </div>
         {Icon && (
           <div
             className={cn(
-              "rounded-lg p-2.5",
+              "rounded-lg p-1.5 md:p-2.5 shrink-0",
               iconVariantStyles[variant]
             )}
           >
-            <Icon className="h-5 w-5" />
+            <Icon className="h-4 w-4 md:h-5 md:w-5" />
           </div>
         )}
       </div>

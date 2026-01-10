@@ -6,9 +6,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { 
   CreditCard, 
   Download, 
@@ -23,10 +25,13 @@ import {
   Users,
   MessageSquare,
   BarChart3,
+  ChevronRight,
 } from 'lucide-react';
 import { mockBilling, mockClient } from '@/lib/mock/data';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 type PlanId = 'basic' | 'pro' | 'enterprise';
 
@@ -97,8 +102,9 @@ const Billing = () => {
   const [isChangePlanOpen, setIsChangePlanOpen] = useState(false);
   const [isPaymentMethodOpen, setIsPaymentMethodOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(mockClient.plan);
+  const isMobile = useIsMobile();
 
-  const currentPlan = plans.find(p => p.id === mockClient.plan) || plans[1]; // Default to Pro
+  const currentPlan = plans.find(p => p.id === mockClient.plan) || plans[1];
 
   const formatCurrency = (amount: number | null, currency: string = 'USD') => {
     if (amount === null) return 'A medida';
@@ -127,38 +133,144 @@ const Billing = () => {
     }
   };
 
+  // Plan selection content - reused in both dialog and sheet
+  const PlanSelector = () => (
+    <div className={cn(
+      "gap-4 py-4",
+      isMobile ? "space-y-4" : "grid grid-cols-1 md:grid-cols-3"
+    )}>
+      {isMobile ? (
+        <ScrollArea className="w-full">
+          <div className="flex gap-4 pb-4">
+            {plans.map((plan) => (
+              <div
+                key={plan.id}
+                onClick={() => setSelectedPlan(plan.id)}
+                className={cn(
+                  "relative p-4 rounded-xl border-2 cursor-pointer transition-all min-w-[280px] shrink-0",
+                  selectedPlan === plan.id
+                    ? "border-primary bg-primary/5"
+                    : "border-border active:border-primary/50",
+                  plan.popular && "ring-2 ring-primary/20"
+                )}
+              >
+                {plan.popular && (
+                  <Badge className="absolute -top-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground">
+                    Popular
+                  </Badge>
+                )}
+                <div className="text-center mb-4 pt-2">
+                  <h4 className="font-semibold mb-1 text-foreground">{plan.name}</h4>
+                  <p className="text-2xl font-semibold text-foreground">
+                    {formatCurrency(plan.price, plan.currency)}
+                    {plan.price !== null && <span className="text-sm font-normal text-muted-foreground">/mes</span>}
+                  </p>
+                </div>
+                <ul className="space-y-2">
+                  {plan.features.slice(0, 4).map((feature, index) => (
+                    <li key={index} className="flex items-start gap-2 text-sm">
+                      <CheckCircle className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                      <span className="text-foreground">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                {mockClient.plan === plan.id && (
+                  <Badge variant="outline" className="w-full mt-4 justify-center">
+                    Plan Actual
+                  </Badge>
+                )}
+              </div>
+            ))}
+          </div>
+          <ScrollBar orientation="horizontal" />
+        </ScrollArea>
+      ) : (
+        plans.map((plan) => (
+          <div
+            key={plan.id}
+            onClick={() => setSelectedPlan(plan.id)}
+            className={cn(
+              "relative p-4 rounded-lg border-2 cursor-pointer transition-all",
+              selectedPlan === plan.id
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-primary/50",
+              plan.popular && "ring-2 ring-primary/20"
+            )}
+          >
+            {plan.popular && (
+              <Badge className="absolute -top-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground">
+                Popular
+              </Badge>
+            )}
+            <div className="text-center mb-4">
+              <h4 className="font-semibold mb-1 text-foreground">{plan.name}</h4>
+              <p className="text-2xl font-semibold text-foreground">
+                {formatCurrency(plan.price, plan.currency)}
+                {plan.price !== null && <span className="text-sm font-normal text-muted-foreground">/mes</span>}
+              </p>
+              {plan.onboarding !== null && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Onboarding: {formatCurrency(plan.onboarding, plan.currency)}
+                </p>
+              )}
+            </div>
+            <ul className="space-y-2">
+              {plan.features.map((feature, index) => (
+                <li key={index} className="flex items-start gap-2 text-sm">
+                  <CheckCircle className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                  <span className="text-foreground">{feature}</span>
+                </li>
+              ))}
+            </ul>
+            {mockClient.plan === plan.id && (
+              <Badge variant="outline" className="w-full mt-4 justify-center">
+                Plan Actual
+              </Badge>
+            )}
+          </div>
+        ))
+      )}
+    </div>
+  );
+
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6">
         <PageHeader
           title="Facturación"
-          subtitle="Gestiona tu plan y métodos de pago"
+          subtitle={isMobile ? undefined : "Gestiona tu plan y métodos de pago"}
         />
 
         {/* Current Plan Card */}
         <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="p-6">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-              <div className="flex items-start gap-4">
-                <div className="p-3 rounded-lg bg-primary/10">
-                  <Zap className="h-6 w-6 text-primary" />
+          <CardContent className={cn("p-4 md:p-6", isMobile && "space-y-4")}>
+            <div className={cn(
+              "flex gap-4 md:gap-6",
+              isMobile ? "flex-col" : "flex-row lg:items-center justify-between"
+            )}>
+              <div className="flex items-start gap-3 md:gap-4">
+                <div className={cn("rounded-lg bg-primary/10", isMobile ? "p-2" : "p-3")}>
+                  <Zap className={cn("text-primary", isMobile ? "h-5 w-5" : "h-6 w-6")} />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-xl font-semibold text-foreground">Plan {currentPlan?.name}</h3>
-                    <Badge className="bg-success/10 text-success">
-                      Activo
-                    </Badge>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <h3 className={cn("font-semibold text-foreground", isMobile ? "text-base" : "text-xl")}>
+                      Plan {currentPlan?.name}
+                    </h3>
+                    <Badge className="bg-success/10 text-success">Activo</Badge>
                   </div>
-                  <p className="text-muted-foreground text-sm mb-2">
+                  <p className="text-muted-foreground text-xs md:text-sm mb-2">
                     {currentPlan?.description}
                   </p>
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                  <div className={cn(
+                    "flex items-center gap-2 md:gap-4 text-sm",
+                    isMobile && "flex-col items-start"
+                  )}>
+                    <span className="flex items-center gap-1.5 text-muted-foreground text-xs md:text-sm">
                       <Calendar className="h-4 w-4" />
                       Próximo cobro: {format(mockBilling.nextBillingDate, 'dd MMM yyyy', { locale: es })}
                     </span>
-                    <span className="text-2xl font-semibold text-primary">
+                    <span className={cn("font-semibold text-primary", isMobile ? "text-xl" : "text-2xl")}>
                       {formatCurrency(currentPlan?.price, currentPlan?.currency)}
                       <span className="text-sm font-normal text-muted-foreground">/mes</span>
                     </span>
@@ -166,10 +278,17 @@ const Billing = () => {
                 </div>
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
-                <Button variant="outline" onClick={() => setIsChangePlanOpen(true)}>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setIsChangePlanOpen(true)}
+                  className={cn(isMobile && "h-11")}
+                >
                   Cambiar Plan
                 </Button>
-                <Button variant="outline" className="text-destructive hover:text-destructive">
+                <Button 
+                  variant="outline" 
+                  className={cn("text-destructive hover:text-destructive", isMobile && "h-11")}
+                >
                   Cancelar Suscripción
                 </Button>
               </div>
@@ -177,19 +296,19 @@ const Billing = () => {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
           {/* Payment Method */}
           <Card className="lg:col-span-1 border-border">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2 text-foreground">
+            <CardHeader className={cn(isMobile && "pb-3")}>
+              <CardTitle className="text-sm md:text-base flex items-center gap-2 text-foreground">
                 <CreditCard className="h-4 w-4" />
                 Método de Pago
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="p-4 rounded-lg bg-secondary border border-border">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
+              <div className={cn("rounded-lg bg-secondary border border-border", isMobile ? "p-3" : "p-4")}>
+                <div className="flex items-center justify-between mb-2 md:mb-3">
+                  <div className="flex items-center gap-2 md:gap-3">
                     <div className="w-10 h-6 rounded bg-gradient-to-r from-blue-600 to-blue-400 flex items-center justify-center text-white text-xs font-bold">
                       VISA
                     </div>
@@ -201,7 +320,11 @@ const Billing = () => {
                   <Badge variant="outline" className="text-xs">Principal</Badge>
                 </div>
               </div>
-              <Button variant="outline" className="w-full" onClick={() => setIsPaymentMethodOpen(true)}>
+              <Button 
+                variant="outline" 
+                className={cn("w-full", isMobile && "h-11")}
+                onClick={() => setIsPaymentMethodOpen(true)}
+              >
                 Cambiar Método
               </Button>
             </CardContent>
@@ -209,14 +332,14 @@ const Billing = () => {
 
           {/* Billing Info */}
           <Card className="lg:col-span-2 border-border">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2 text-foreground">
+            <CardHeader className={cn(isMobile && "pb-3")}>
+              <CardTitle className="text-sm md:text-base flex items-center gap-2 text-foreground">
                 <Building className="h-4 w-4" />
                 Información de Facturación
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Razón Social</p>
                   <p className="text-sm font-medium text-foreground">Beauty Salon Pro SpA</p>
@@ -231,11 +354,11 @@ const Billing = () => {
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Email de Facturación</p>
-                  <p className="text-sm font-medium text-foreground">facturas@beautysalonpro.cl</p>
+                  <p className="text-sm font-medium text-foreground truncate">facturas@beautysalonpro.cl</p>
                 </div>
               </div>
-              <Button variant="link" className="mt-4 p-0 h-auto text-primary">
-                Editar información
+              <Button variant="link" className="mt-3 md:mt-4 p-0 h-auto text-primary text-sm">
+                Editar información <ChevronRight className="h-3.5 w-3.5 ml-1" />
               </Button>
             </CardContent>
           </Card>
@@ -243,15 +366,15 @@ const Billing = () => {
 
         {/* Billing History */}
         <Card className="border-border">
-          <CardHeader>
+          <CardHeader className={cn(isMobile && "pb-3")}>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2 text-foreground">
+              <CardTitle className="text-sm md:text-base flex items-center gap-2 text-foreground">
                 <Receipt className="h-4 w-4" />
                 Historial de Pagos
               </CardTitle>
               <Button variant="outline" size="sm" className="gap-2">
                 <Download className="h-4 w-4" />
-                Exportar
+                {!isMobile && "Exportar"}
               </Button>
             </div>
           </CardHeader>
@@ -260,30 +383,33 @@ const Billing = () => {
               {mockBilling.history.map((record) => (
                 <div 
                   key={record.id}
-                  className="flex items-center justify-between p-4 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors"
+                  className={cn(
+                    "flex items-center justify-between rounded-lg bg-secondary hover:bg-secondary/80 active:bg-secondary transition-colors",
+                    isMobile ? "p-3" : "p-4"
+                  )}
                 >
-                  <div className="flex items-center gap-4">
-                    <div className="hidden sm:flex w-10 h-10 rounded-lg bg-background items-center justify-center border border-border">
+                  <div className="flex items-center gap-3 md:gap-4 min-w-0">
+                    <div className="hidden sm:flex w-10 h-10 rounded-lg bg-background items-center justify-center border border-border shrink-0">
                       <Receipt className="h-5 w-5 text-muted-foreground" />
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">
                         Factura #{record.id.replace('inv-', '').padStart(4, '0')}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {format(record.date, 'dd MMMM yyyy', { locale: es })}
+                        {format(record.date, isMobile ? 'dd MMM yy' : 'dd MMMM yyyy', { locale: es })}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 md:gap-4 shrink-0">
                     <div className="text-right">
                       <p className="text-sm font-medium text-foreground">{formatCurrency(record.amount, 'USD')}</p>
-                      <div className="flex items-center gap-1 text-xs">
+                      <div className="flex items-center gap-1 text-xs justify-end">
                         {getStatusIcon(record.status)}
-                        <span className={
+                        <span className={cn(
                           record.status === 'paid' ? 'text-success' :
                           record.status === 'pending' ? 'text-warning' : 'text-destructive'
-                        }>
+                        )}>
                           {getStatusLabel(record.status)}
                         </span>
                       </div>
@@ -302,177 +428,223 @@ const Billing = () => {
 
         {/* Usage Summary */}
         <Card className="border-border">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2 text-foreground">
+          <CardHeader className={cn(isMobile && "pb-3")}>
+            <CardTitle className="text-sm md:text-base flex items-center gap-2 text-foreground">
               <BarChart3 className="h-4 w-4" />
               Uso del Período Actual
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-xs md:text-sm">
               Período: {format(new Date(), 'MMMM yyyy', { locale: es })}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="p-4 rounded-lg bg-secondary">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+              <div className={cn("rounded-lg bg-secondary", isMobile ? "p-3" : "p-4")}>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-muted-foreground">Conversaciones</span>
+                  <span className="text-xs md:text-sm text-muted-foreground">Conversaciones</span>
                   <MessageSquare className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className="text-2xl font-semibold text-foreground">684</p>
+                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>684</p>
                 <div className="mt-2">
                   <div className="h-1.5 bg-border rounded-full overflow-hidden">
                     <div className="h-full bg-primary rounded-full" style={{ width: '68%' }} />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">68% de 1,000</p>
+                  <p className="text-[10px] md:text-xs text-muted-foreground mt-1">68% de 1,000</p>
                 </div>
               </div>
-              <div className="p-4 rounded-lg bg-secondary">
+              <div className={cn("rounded-lg bg-secondary", isMobile ? "p-3" : "p-4")}>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-muted-foreground">WhatsApp Conectados</span>
+                  <span className="text-xs md:text-sm text-muted-foreground">WhatsApp</span>
                   <Users className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className="text-2xl font-semibold text-foreground">2</p>
-                <p className="text-xs text-muted-foreground mt-2">de 3 disponibles</p>
+                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>2</p>
+                <p className="text-[10px] md:text-xs text-muted-foreground mt-2">de 3 disponibles</p>
               </div>
-              <div className="p-4 rounded-lg bg-secondary">
+              <div className={cn("rounded-lg bg-secondary", isMobile ? "p-3" : "p-4")}>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-muted-foreground">Campañas Marketing</span>
+                  <span className="text-xs md:text-sm text-muted-foreground">Campañas</span>
                   <Receipt className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className="text-2xl font-semibold text-foreground">4</p>
-                <p className="text-xs text-muted-foreground mt-2">Incluido en Pro</p>
+                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>4</p>
+                <p className="text-[10px] md:text-xs text-muted-foreground mt-2">Incluido en Pro</p>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Change Plan Dialog */}
-      <Dialog open={isChangePlanOpen} onOpenChange={setIsChangePlanOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Cambiar Plan</DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-4">
-            {plans.map((plan) => (
-              <div
-                key={plan.id}
-                onClick={() => setSelectedPlan(plan.id)}
-                className={`relative p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                  selectedPlan === plan.id
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50'
-                } ${plan.popular ? 'ring-2 ring-primary/20' : ''}`}
+      {/* Change Plan - Sheet on mobile, Dialog on desktop */}
+      {isMobile ? (
+        <Sheet open={isChangePlanOpen} onOpenChange={setIsChangePlanOpen}>
+          <SheetContent side="bottom" className="h-[85vh] rounded-t-2xl">
+            <SheetHeader className="text-left mb-2">
+              <SheetTitle>Cambiar Plan</SheetTitle>
+            </SheetHeader>
+            <ScrollArea className="h-[calc(100%-120px)]">
+              <PlanSelector />
+            </ScrollArea>
+            <SheetFooter className="flex-row gap-3 pt-4 border-t border-border mt-2">
+              <Button variant="outline" className="flex-1 h-12" onClick={() => setIsChangePlanOpen(false)}>
+                Cancelar
+              </Button>
+              <Button 
+                className="flex-1 h-12"
+                disabled={selectedPlan === mockClient.plan}
+                onClick={() => setIsChangePlanOpen(false)}
               >
-                {plan.popular && (
-                  <Badge className="absolute -top-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground">
-                    Popular
-                  </Badge>
-                )}
-                <div className="text-center mb-4">
-                  <h4 className="font-semibold mb-1 text-foreground">{plan.name}</h4>
-                  <p className="text-2xl font-semibold text-foreground">
-                    {formatCurrency(plan.price, plan.currency)}
-                    {plan.price !== null && <span className="text-sm font-normal text-muted-foreground">/mes</span>}
-                  </p>
-                  {plan.onboarding !== null && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Onboarding: {formatCurrency(plan.onboarding, plan.currency)}
-                    </p>
-                  )}
+                {selectedPlan === mockClient.plan ? 'Plan Actual' : 'Confirmar'}
+              </Button>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
+      ) : (
+        <Dialog open={isChangePlanOpen} onOpenChange={setIsChangePlanOpen}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Cambiar Plan</DialogTitle>
+            </DialogHeader>
+            <PlanSelector />
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsChangePlanOpen(false)}>
+                Cancelar
+              </Button>
+              <Button 
+                disabled={selectedPlan === mockClient.plan}
+                onClick={() => setIsChangePlanOpen(false)}
+              >
+                {selectedPlan === mockClient.plan ? 'Plan Actual' : 'Confirmar Cambio'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Payment Method - Sheet on mobile, Dialog on desktop */}
+      {isMobile ? (
+        <Sheet open={isPaymentMethodOpen} onOpenChange={setIsPaymentMethodOpen}>
+          <SheetContent side="bottom" className="h-auto rounded-t-2xl">
+            <SheetHeader className="text-left mb-4">
+              <SheetTitle>Actualizar Método de Pago</SheetTitle>
+            </SheetHeader>
+            <div className="space-y-4 pb-4">
+              <RadioGroup defaultValue="card" className="space-y-3">
+                <div className="flex items-center space-x-3 p-4 rounded-xl border border-border bg-secondary">
+                  <RadioGroupItem value="card" id="card-mobile" />
+                  <Label htmlFor="card-mobile" className="flex items-center gap-3 cursor-pointer flex-1">
+                    <CreditCard className="h-5 w-5" />
+                    <span>Tarjeta de Crédito/Débito</span>
+                  </Label>
                 </div>
-                <ul className="space-y-2">
-                  {plan.features.map((feature, index) => (
-                    <li key={index} className="flex items-start gap-2 text-sm">
-                      <CheckCircle className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                      <span className="text-foreground">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-                {mockClient.plan === plan.id && (
-                  <Badge variant="outline" className="w-full mt-4 justify-center">
-                    Plan Actual
-                  </Badge>
-                )}
-              </div>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsChangePlanOpen(false)}>
-              Cancelar
-            </Button>
-            <Button 
-              disabled={selectedPlan === mockClient.plan}
-              onClick={() => setIsChangePlanOpen(false)}
-            >
-              {selectedPlan === mockClient.plan ? 'Plan Actual' : 'Confirmar Cambio'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                <div className="flex items-center space-x-3 p-4 rounded-xl border border-border bg-secondary">
+                  <RadioGroupItem value="transfer" id="transfer-mobile" />
+                  <Label htmlFor="transfer-mobile" className="flex items-center gap-3 cursor-pointer flex-1">
+                    <Building className="h-5 w-5" />
+                    <span>Transferencia Bancaria</span>
+                  </Label>
+                </div>
+              </RadioGroup>
 
-      {/* Payment Method Dialog */}
-      <Dialog open={isPaymentMethodOpen} onOpenChange={setIsPaymentMethodOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Actualizar Método de Pago</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <RadioGroup defaultValue="card" className="space-y-3">
-              <div className="flex items-center space-x-3 p-4 rounded-lg border border-border bg-secondary">
-                <RadioGroupItem value="card" id="card" />
-                <Label htmlFor="card" className="flex items-center gap-3 cursor-pointer flex-1">
-                  <CreditCard className="h-5 w-5" />
-                  <span>Tarjeta de Crédito/Débito</span>
-                </Label>
-              </div>
-              <div className="flex items-center space-x-3 p-4 rounded-lg border border-border bg-secondary">
-                <RadioGroupItem value="transfer" id="transfer" />
-                <Label htmlFor="transfer" className="flex items-center gap-3 cursor-pointer flex-1">
-                  <Building className="h-5 w-5" />
-                  <span>Transferencia Bancaria</span>
-                </Label>
-              </div>
-            </RadioGroup>
+              <Separator />
 
-            <Separator />
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Número de Tarjeta</Label>
-                <Input placeholder="1234 5678 9012 3456" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Expiración</Label>
-                  <Input placeholder="MM/AA" />
+                  <Label>Número de Tarjeta</Label>
+                  <Input placeholder="1234 5678 9012 3456" className="h-12" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Expiración</Label>
+                    <Input placeholder="MM/AA" className="h-12" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>CVV</Label>
+                    <Input placeholder="123" type="password" className="h-12" />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>CVV</Label>
-                  <Input placeholder="123" type="password" />
+                  <Label>Nombre en la Tarjeta</Label>
+                  <Input placeholder="NOMBRE APELLIDO" className="h-12" />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Nombre en la Tarjeta</Label>
-                <Input placeholder="NOMBRE APELLIDO" />
+
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Shield className="h-4 w-4" />
+                <span>Tu información de pago está protegida con encriptación SSL</span>
               </div>
             </div>
+            <SheetFooter className="flex-row gap-3 pt-4 border-t border-border">
+              <Button variant="outline" className="flex-1 h-12" onClick={() => setIsPaymentMethodOpen(false)}>
+                Cancelar
+              </Button>
+              <Button className="flex-1 h-12" onClick={() => setIsPaymentMethodOpen(false)}>
+                Guardar
+              </Button>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
+      ) : (
+        <Dialog open={isPaymentMethodOpen} onOpenChange={setIsPaymentMethodOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Actualizar Método de Pago</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <RadioGroup defaultValue="card" className="space-y-3">
+                <div className="flex items-center space-x-3 p-4 rounded-lg border border-border bg-secondary">
+                  <RadioGroupItem value="card" id="card" />
+                  <Label htmlFor="card" className="flex items-center gap-3 cursor-pointer flex-1">
+                    <CreditCard className="h-5 w-5" />
+                    <span>Tarjeta de Crédito/Débito</span>
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-3 p-4 rounded-lg border border-border bg-secondary">
+                  <RadioGroupItem value="transfer" id="transfer" />
+                  <Label htmlFor="transfer" className="flex items-center gap-3 cursor-pointer flex-1">
+                    <Building className="h-5 w-5" />
+                    <span>Transferencia Bancaria</span>
+                  </Label>
+                </div>
+              </RadioGroup>
 
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Shield className="h-4 w-4" />
-              <span>Tu información de pago está protegida con encriptación SSL</span>
+              <Separator />
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Número de Tarjeta</Label>
+                  <Input placeholder="1234 5678 9012 3456" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Expiración</Label>
+                    <Input placeholder="MM/AA" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>CVV</Label>
+                    <Input placeholder="123" type="password" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Nombre en la Tarjeta</Label>
+                  <Input placeholder="NOMBRE APELLIDO" />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Shield className="h-4 w-4" />
+                <span>Tu información de pago está protegida con encriptación SSL</span>
+              </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPaymentMethodOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={() => setIsPaymentMethodOpen(false)}>
-              Guardar Método
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsPaymentMethodOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={() => setIsPaymentMethodOpen(false)}>
+                Guardar Método
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </MainLayout>
   );
 };

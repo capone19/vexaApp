@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { SkeletonCard } from '@/components/shared/SkeletonCard';
@@ -20,6 +21,7 @@ import { BlockingModeProvider, useBlockingMode } from '@/components/calendar/Blo
 import { CalendarDayCell } from '@/components/calendar/CalendarDayCell';
 import { BlockingPanel } from '@/components/calendar/BlockingPanel';
 import { BlockingModeOverlay } from '@/components/calendar/BlockingModeOverlay';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 type CalendarView = 'month' | 'week' | 'day';
 
@@ -30,9 +32,13 @@ const CalendarContent = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [showDayDetail, setShowDayDetail] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterService, setFilterService] = useState<string>('all');
   const [filterSource, setFilterSource] = useState<string>('all');
+  
+  const isMobile = useIsMobile();
 
   const { 
     isBlockingMode, 
@@ -83,6 +89,7 @@ const CalendarContent = () => {
 
   const selectedDateAppointments = getAppointmentsForDate(selectedDate);
   const services = [...new Set(appointments.map(a => a.service))];
+  const hasActiveFilters = filterStatus !== 'all' || filterService !== 'all' || filterSource !== 'all';
 
   const navigatePrevious = () => {
     if (view === 'month') setCurrentDate(subMonths(currentDate, 1));
@@ -133,30 +140,168 @@ const CalendarContent = () => {
     }
   };
 
+  const handleDateSelect = (date: Date) => {
+    setSelectedDate(date);
+    if (isMobile) {
+      setShowDayDetail(true);
+    }
+  };
+
+  const clearFilters = () => {
+    setFilterStatus('all');
+    setFilterService('all');
+    setFilterSource('all');
+  };
+
   if (loading) {
     return (
       <MainLayout>
-        <div className="space-y-6">
+        <div className="space-y-4 md:space-y-6">
           <PageHeader title="Calendario" subtitle="Gestiona las citas y disponibilidad" />
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2"><SkeletonCard className="h-[600px]" /></div>
-            <div><SkeletonCard className="h-[600px]" /></div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+            <div className="lg:col-span-2"><SkeletonCard className="h-[400px] md:h-[600px]" /></div>
+            <div className="hidden lg:block"><SkeletonCard className="h-[600px]" /></div>
           </div>
         </div>
       </MainLayout>
     );
   }
 
+  // Filter Sheet for Mobile
+  const FilterSheet = () => (
+    <Sheet open={showFilters} onOpenChange={setShowFilters}>
+      <SheetContent side="bottom" className="h-auto rounded-t-2xl">
+        <SheetHeader className="text-left mb-4">
+          <SheetTitle>Filtros</SheetTitle>
+        </SheetHeader>
+        <div className="space-y-4 pb-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Estado</label>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="w-full h-12">
+                <SelectValue placeholder="Estado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="confirmed">Confirmado</SelectItem>
+                <SelectItem value="pending">Pendiente</SelectItem>
+                <SelectItem value="canceled">Cancelado</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Servicio</label>
+            <Select value={filterService} onValueChange={setFilterService}>
+              <SelectTrigger className="w-full h-12">
+                <SelectValue placeholder="Servicio" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los servicios</SelectItem>
+                {services.map(s => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Origen</label>
+            <Select value={filterSource} onValueChange={setFilterSource}>
+              <SelectTrigger className="w-full h-12">
+                <SelectValue placeholder="Origen" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="chat">Chat</SelectItem>
+                <SelectItem value="campaign">Campaña</SelectItem>
+                <SelectItem value="direct">Directo</SelectItem>
+                <SelectItem value="referral">Referido</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <Button variant="outline" className="flex-1 h-12" onClick={clearFilters}>
+              Limpiar
+            </Button>
+            <Button className="flex-1 h-12" onClick={() => setShowFilters(false)}>
+              Aplicar
+            </Button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+
+  // Day Detail Sheet for Mobile
+  const DayDetailSheet = () => (
+    <Sheet open={showDayDetail} onOpenChange={setShowDayDetail}>
+      <SheetContent side="bottom" className="h-[70vh] rounded-t-2xl">
+        <SheetHeader className="text-left mb-4">
+          <SheetTitle className="flex items-center gap-2">
+            <CalendarIcon className="h-4 w-4 text-primary" />
+            {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
+          </SheetTitle>
+        </SheetHeader>
+        <ScrollArea className="h-[calc(100%-60px)]">
+          {isDateBlocked(selectedDate) ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Lock className="h-12 w-12 mx-auto mb-3 opacity-30" />
+              <p className="font-medium">Día bloqueado</p>
+              <p className="text-sm">No hay citas disponibles</p>
+            </div>
+          ) : selectedDateAppointments.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <CalendarIcon className="h-12 w-12 mx-auto mb-3 opacity-30" />
+              <p>No hay citas para este día</p>
+            </div>
+          ) : (
+            <div className="space-y-3 pb-4">
+              {selectedDateAppointments
+                .sort((a, b) => a.datetime.getTime() - b.datetime.getTime())
+                .map(apt => (
+                  <button
+                    key={apt.id}
+                    onClick={() => {
+                      setSelectedAppointment(apt);
+                      setShowDayDetail(false);
+                    }}
+                    className="w-full text-left p-4 rounded-xl border border-border bg-background active:bg-secondary transition-all space-y-2"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-medium text-foreground">{apt.clientName}</div>
+                        <div className="text-sm text-muted-foreground">{apt.service}</div>
+                      </div>
+                      <StatusBadge status={apt.status} />
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {format(apt.datetime, 'HH:mm')}
+                      </span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {sourceLabels[apt.source]}
+                      </Badge>
+                    </div>
+                  </button>
+                ))}
+            </div>
+          )}
+        </ScrollArea>
+      </SheetContent>
+    </Sheet>
+  );
+
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6">
         <PageHeader 
           title="Calendario" 
-          subtitle="Gestiona las citas y disponibilidad"
+          subtitle={isMobile ? undefined : "Gestiona las citas y disponibilidad"}
           actions={
             <Button 
               className={cn(
                 "gap-2 transition-all duration-200",
+                isMobile && "h-9 px-3 text-sm",
                 isBlockingMode 
                   ? "bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border"
                   : ""
@@ -167,12 +312,12 @@ const CalendarContent = () => {
               {isBlockingMode ? (
                 <>
                   <X className="h-4 w-4" />
-                  Cancelar bloqueo
+                  {!isMobile && "Cancelar bloqueo"}
                 </>
               ) : (
                 <>
                   <Plus className="h-4 w-4" />
-                  Bloquear horario
+                  {!isMobile && "Bloquear horario"}
                 </>
               )}
             </Button>
@@ -180,93 +325,163 @@ const CalendarContent = () => {
         />
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Filter className="h-4 w-4" />
-            <span className="text-sm">Filtros:</span>
-          </div>
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-[140px] bg-background border-border">
-              <SelectValue placeholder="Estado" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="confirmed">Confirmado</SelectItem>
-              <SelectItem value="pending">Pendiente</SelectItem>
-              <SelectItem value="canceled">Cancelado</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={filterService} onValueChange={setFilterService}>
-            <SelectTrigger className="w-[180px] bg-background border-border">
-              <SelectValue placeholder="Servicio" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los servicios</SelectItem>
-              {services.map(s => (
-                <SelectItem key={s} value={s}>{s}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={filterSource} onValueChange={setFilterSource}>
-            <SelectTrigger className="w-[140px] bg-background border-border">
-              <SelectValue placeholder="Origen" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="chat">Chat</SelectItem>
-              <SelectItem value="campaign">Campaña</SelectItem>
-              <SelectItem value="direct">Directo</SelectItem>
-              <SelectItem value="referral">Referido</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex flex-wrap gap-2 md:gap-3 items-center">
+          {isMobile ? (
+            <Button
+              variant={hasActiveFilters ? "secondary" : "outline"}
+              size="sm"
+              className="gap-2"
+              onClick={() => setShowFilters(true)}
+            >
+              <Filter className="h-4 w-4" />
+              Filtros
+              {hasActiveFilters && (
+                <span className="bg-primary text-primary-foreground text-xs rounded-full px-1.5">
+                  {[filterStatus, filterService, filterSource].filter(f => f !== 'all').length}
+                </span>
+              )}
+            </Button>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Filter className="h-4 w-4" />
+                <span className="text-sm">Filtros:</span>
+              </div>
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-[140px] bg-background border-border">
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="confirmed">Confirmado</SelectItem>
+                  <SelectItem value="pending">Pendiente</SelectItem>
+                  <SelectItem value="canceled">Cancelado</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={filterService} onValueChange={setFilterService}>
+                <SelectTrigger className="w-[180px] bg-background border-border">
+                  <SelectValue placeholder="Servicio" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los servicios</SelectItem>
+                  {services.map(s => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterSource} onValueChange={setFilterSource}>
+                <SelectTrigger className="w-[140px] bg-background border-border">
+                  <SelectValue placeholder="Origen" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="chat">Chat</SelectItem>
+                  <SelectItem value="campaign">Campaña</SelectItem>
+                  <SelectItem value="direct">Directo</SelectItem>
+                  <SelectItem value="referral">Referido</SelectItem>
+                </SelectContent>
+              </Select>
+            </>
+          )}
+          
+          {hasActiveFilters && isMobile && (
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
           {/* Calendar View */}
-          <Card className="lg:col-span-2 border-border">
-            <CardHeader className="pb-4">
+          <Card className={cn("border-border", isMobile ? "" : "lg:col-span-2")}>
+            <CardHeader className="pb-3 md:pb-4">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <Button variant="ghost" size="icon" onClick={navigatePrevious}>
-                    <ChevronLeft className="h-5 w-5" />
+                <div className="flex items-center gap-2 md:gap-4">
+                  <Button variant="ghost" size="icon" onClick={navigatePrevious} className="h-8 w-8 md:h-10 md:w-10">
+                    <ChevronLeft className="h-4 w-4 md:h-5 md:w-5" />
                   </Button>
-                  <h2 className="text-lg font-semibold capitalize min-w-[200px] text-center text-foreground">
+                  <h2 className={cn(
+                    "font-semibold capitalize text-center text-foreground",
+                    isMobile ? "text-sm min-w-[120px]" : "text-lg min-w-[200px]"
+                  )}>
                     {getNavigationTitle()}
                   </h2>
-                  <Button variant="ghost" size="icon" onClick={navigateNext}>
-                    <ChevronRight className="h-5 w-5" />
+                  <Button variant="ghost" size="icon" onClick={navigateNext} className="h-8 w-8 md:h-10 md:w-10">
+                    <ChevronRight className="h-4 w-4 md:h-5 md:w-5" />
                   </Button>
                 </div>
                 <Tabs value={view} onValueChange={(v) => setView(v as CalendarView)}>
-                  <TabsList className="bg-secondary">
-                    <TabsTrigger value="month">Mes</TabsTrigger>
-                    <TabsTrigger value="week">Semana</TabsTrigger>
-                    <TabsTrigger value="day">Día</TabsTrigger>
+                  <TabsList className={cn("bg-secondary", isMobile && "h-8")}>
+                    <TabsTrigger value="month" className={cn(isMobile && "text-xs px-2 py-1")}>Mes</TabsTrigger>
+                    <TabsTrigger value="week" className={cn(isMobile && "text-xs px-2 py-1")}>Semana</TabsTrigger>
+                    {!isMobile && <TabsTrigger value="day">Día</TabsTrigger>}
                   </TabsList>
                 </Tabs>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className={cn(isMobile && "px-2")}>
               {/* Blocking mode overlay message */}
               <BlockingModeOverlay />
 
               {view === 'month' && (
-                <div className="space-y-2">
+                <div className="space-y-1 md:space-y-2">
                   {/* Weekday headers */}
-                  <div className="grid grid-cols-7 gap-1">
-                    {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(day => (
-                      <div key={day} className="text-center text-xs text-muted-foreground py-2 font-medium">
+                  <div className="grid grid-cols-7 gap-0.5 md:gap-1">
+                    {(isMobile ? ['L', 'M', 'X', 'J', 'V', 'S', 'D'] : ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']).map(day => (
+                      <div key={day} className="text-center text-[10px] md:text-xs text-muted-foreground py-1 md:py-2 font-medium">
                         {day}
                       </div>
                     ))}
                   </div>
                   {/* Days grid */}
-                  <div className="grid grid-cols-7 gap-1">
+                  <div className="grid grid-cols-7 gap-0.5 md:gap-1">
                     {getDaysForMonth().map((day, idx) => {
                       const dayAppointments = getAppointmentsForDate(day);
                       const isCurrentMonth = day.getMonth() === currentDate.getMonth();
                       const isToday = isSameDay(day, new Date());
                       const isSelected = isSameDay(day, selectedDate);
+
+                      if (isMobile) {
+                        const blocked = isDateBlocked(day);
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => handleDateSelect(day)}
+                            disabled={blocked}
+                            className={cn(
+                              "aspect-square p-1 rounded-lg text-center transition-all relative",
+                              !isCurrentMonth && "opacity-40",
+                              blocked && "bg-slate-100 cursor-default",
+                              !blocked && "active:bg-secondary",
+                              isToday && !blocked && "ring-1 ring-primary",
+                              isSelected && !blocked && "bg-primary/10"
+                            )}
+                          >
+                            <span className={cn(
+                              "text-sm font-medium",
+                              isSelected && !blocked && "text-primary",
+                              blocked && "text-slate-400"
+                            )}>
+                              {format(day, 'd')}
+                            </span>
+                            {!blocked && dayAppointments.length > 0 && (
+                              <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5">
+                                {dayAppointments.slice(0, 3).map((apt, i) => (
+                                  <div
+                                    key={i}
+                                    className={cn(
+                                      "w-1 h-1 rounded-full",
+                                      apt.status === 'confirmed' && "bg-success",
+                                      apt.status === 'pending' && "bg-warning",
+                                      apt.status === 'canceled' && "bg-destructive"
+                                    )}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                          </button>
+                        );
+                      }
 
                       return (
                         <CalendarDayCell
@@ -276,7 +491,7 @@ const CalendarContent = () => {
                           isToday={isToday}
                           isSelected={isSelected}
                           appointments={dayAppointments}
-                          onSelect={setSelectedDate}
+                          onSelect={handleDateSelect}
                         />
                       );
                     })}
@@ -286,7 +501,10 @@ const CalendarContent = () => {
 
               {view === 'week' && (
                 <div className="space-y-2">
-                  <div className="grid grid-cols-7 gap-2">
+                  <div className={cn(
+                    "grid gap-1 md:gap-2",
+                    isMobile ? "grid-cols-7" : "grid-cols-7"
+                  )}>
                     {getDaysForWeek().map((day, idx) => {
                       const dayAppointments = getAppointmentsForDate(day);
                       const isToday = isSameDay(day, new Date());
@@ -296,40 +514,41 @@ const CalendarContent = () => {
                       return (
                         <button
                           key={idx}
-                          onClick={() => !blocked && setSelectedDate(day)}
+                          onClick={() => !blocked && handleDateSelect(day)}
                           className={cn(
-                            "p-3 rounded-lg text-center transition-all min-h-[120px] flex flex-col",
+                            "p-2 md:p-3 rounded-lg text-center transition-all flex flex-col",
+                            isMobile ? "min-h-[80px]" : "min-h-[120px]",
                             "focus:outline-none focus:ring-2 focus:ring-primary/50",
                             "border border-border",
                             blocked 
                               ? "bg-slate-100 dark:bg-slate-800 cursor-default"
-                              : "hover:bg-secondary",
+                              : "hover:bg-secondary active:bg-secondary",
                             isToday && !blocked && "ring-1 ring-primary",
                             isSelected && !blocked && "bg-primary/10 border-primary"
                           )}
                           disabled={blocked}
                         >
-                          <div className="text-xs text-muted-foreground capitalize">
-                            {format(day, 'EEE', { locale: es })}
+                          <div className="text-[10px] md:text-xs text-muted-foreground capitalize">
+                            {format(day, isMobile ? 'EEEEE' : 'EEE', { locale: es })}
                           </div>
                           <div className={cn(
-                            "text-lg font-semibold",
+                            "text-base md:text-lg font-semibold",
                             blocked && "text-slate-400 dark:text-slate-500",
                             isSelected && !blocked && "text-primary"
                           )}>
                             {format(day, 'd')}
                           </div>
                           {blocked ? (
-                            <div className="flex-1 mt-2 flex items-center justify-center">
-                              <Lock className="h-4 w-4 text-slate-300 dark:text-slate-600" />
+                            <div className="flex-1 mt-1 flex items-center justify-center">
+                              <Lock className="h-3 w-3 md:h-4 md:w-4 text-slate-300 dark:text-slate-600" />
                             </div>
                           ) : (
-                            <div className="flex-1 mt-2 space-y-1">
-                              {dayAppointments.slice(0, 3).map((apt, i) => (
+                            <div className="flex-1 mt-1 space-y-0.5">
+                              {dayAppointments.slice(0, isMobile ? 2 : 3).map((apt, i) => (
                                 <div
                                   key={i}
                                   className={cn(
-                                    "text-[10px] px-1.5 py-0.5 rounded truncate",
+                                    "text-[8px] md:text-[10px] px-1 py-0.5 rounded truncate",
                                     apt.status === 'confirmed' && "bg-success/10 text-success",
                                     apt.status === 'pending' && "bg-warning/10 text-warning",
                                     apt.status === 'canceled' && "bg-destructive/10 text-destructive"
@@ -338,9 +557,9 @@ const CalendarContent = () => {
                                   {format(apt.datetime, 'HH:mm')}
                                 </div>
                               ))}
-                              {dayAppointments.length > 3 && (
-                                <div className="text-[10px] text-muted-foreground">
-                                  +{dayAppointments.length - 3} más
+                              {dayAppointments.length > (isMobile ? 2 : 3) && (
+                                <div className="text-[8px] md:text-[10px] text-muted-foreground">
+                                  +{dayAppointments.length - (isMobile ? 2 : 3)} más
                                 </div>
                               )}
                             </div>
@@ -352,7 +571,7 @@ const CalendarContent = () => {
                 </div>
               )}
 
-              {view === 'day' && (
+              {view === 'day' && !isMobile && (
                 <div className="space-y-2">
                   <div className="text-center mb-4">
                     <div className="text-xl font-semibold capitalize text-foreground">
@@ -419,69 +638,79 @@ const CalendarContent = () => {
             </CardContent>
           </Card>
 
-          {/* Right Panel - Selected Date Appointments or Blocking Panel */}
-          <Card className="border-border">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2 text-foreground">
-                <CalendarIcon className="h-4 w-4 text-primary" />
-                {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {/* Show blocking panel when in blocking mode or viewing blocked day */}
-              <BlockingPanel 
-                selectedDate={selectedDate} 
-                onSelectDate={setSelectedDate} 
-              />
-              
-              {/* Show normal appointments list when not in blocking mode and day is not blocked */}
-              {!isBlockingMode && !isDateBlocked(selectedDate) && (
-                <ScrollArea className="h-[500px]">
-                  {selectedDateAppointments.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <CalendarIcon className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                      <p>No hay citas para este día</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {selectedDateAppointments
-                        .sort((a, b) => a.datetime.getTime() - b.datetime.getTime())
-                        .map(apt => (
-                          <button
-                            key={apt.id}
-                            onClick={() => setSelectedAppointment(apt)}
-                            className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-secondary transition-all space-y-2"
-                          >
-                            <div className="flex items-start justify-between">
-                              <div>
-                                <div className="font-medium text-foreground">{apt.clientName}</div>
-                                <div className="text-sm text-muted-foreground">{apt.service}</div>
+          {/* Right Panel - Desktop only */}
+          {!isMobile && (
+            <Card className="border-border">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2 text-foreground">
+                  <CalendarIcon className="h-4 w-4 text-primary" />
+                  {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* Show blocking panel when in blocking mode or viewing blocked day */}
+                <BlockingPanel 
+                  selectedDate={selectedDate} 
+                  onSelectDate={setSelectedDate} 
+                />
+                
+                {/* Show normal appointments list when not in blocking mode and day is not blocked */}
+                {!isBlockingMode && !isDateBlocked(selectedDate) && (
+                  <ScrollArea className="h-[500px]">
+                    {selectedDateAppointments.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <CalendarIcon className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                        <p>No hay citas para este día</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {selectedDateAppointments
+                          .sort((a, b) => a.datetime.getTime() - b.datetime.getTime())
+                          .map(apt => (
+                            <button
+                              key={apt.id}
+                              onClick={() => setSelectedAppointment(apt)}
+                              className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-secondary transition-all space-y-2"
+                            >
+                              <div className="flex items-start justify-between">
+                                <div>
+                                  <div className="font-medium text-foreground">{apt.clientName}</div>
+                                  <div className="text-sm text-muted-foreground">{apt.service}</div>
+                                </div>
+                                <StatusBadge status={apt.status} />
                               </div>
-                              <StatusBadge status={apt.status} />
-                            </div>
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                {format(apt.datetime, 'HH:mm')}
-                              </span>
-                              <Badge variant="outline" className="text-[10px]">
-                                {sourceLabels[apt.source]}
-                              </Badge>
-                            </div>
-                          </button>
-                        ))}
-                    </div>
-                  )}
-                </ScrollArea>
-              )}
-            </CardContent>
-          </Card>
+                              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  {format(apt.datetime, 'HH:mm')}
+                                </span>
+                                <Badge variant="outline" className="text-[10px]">
+                                  {sourceLabels[apt.source]}
+                                </Badge>
+                              </div>
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </ScrollArea>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
 
+      {/* Mobile Sheets */}
+      {isMobile && (
+        <>
+          <FilterSheet />
+          <DayDetailSheet />
+        </>
+      )}
+
       {/* Appointment Details Modal */}
       <Dialog open={!!selectedAppointment} onOpenChange={() => setSelectedAppointment(null)}>
-        <DialogContent className="border-border">
+        <DialogContent className={cn("border-border", isMobile && "w-[calc(100%-2rem)] rounded-2xl")}>
           <DialogHeader>
             <DialogTitle>Detalles de la cita</DialogTitle>
           </DialogHeader>
@@ -522,10 +751,10 @@ const CalendarContent = () => {
               </div>
 
               <div className="flex gap-2 pt-2">
-                <Button variant="outline" className="flex-1" disabled>
+                <Button variant="outline" className={cn("flex-1", isMobile && "h-12")} disabled>
                   Reagendar
                 </Button>
-                <Button variant="outline" className="flex-1 text-destructive hover:text-destructive" disabled>
+                <Button variant="outline" className={cn("flex-1 text-destructive hover:text-destructive", isMobile && "h-12")} disabled>
                   Cancelar
                 </Button>
               </div>

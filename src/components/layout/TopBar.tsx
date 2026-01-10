@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { 
   Bell, 
   ChevronDown, 
@@ -11,6 +11,7 @@ import {
   CheckCircle,
   Info,
   ChevronRight,
+  ArrowLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { logout, getCurrentUser } from "@/lib/auth";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // Función para obtener el perfil del usuario desde localStorage
 const getUserProfile = () => {
@@ -43,6 +45,25 @@ const getUserProfile = () => {
     console.error('Error loading profile:', e);
   }
   return null;
+};
+
+// Page titles for mobile header
+const pageTitles: Record<string, string> = {
+  "/": "Dashboard",
+  "/ajustes-agente": "Agente",
+  "/chats": "Chats",
+  "/calendario": "Calendario",
+  "/resultados": "Resultados",
+  "/resultados/metricas": "Métricas",
+  "/resultados/ventas": "Ventas",
+  "/facturacion": "Facturación",
+  "/reportes": "Reportes",
+  "/marketing": "Marketing",
+  "/marketing/plantillas": "Plantillas",
+  "/marketing/performance": "Performance",
+  "/notificaciones": "Notificaciones",
+  "/soporte": "Soporte",
+  "/configuracion": "Configuración",
 };
 
 // Tipos de notificación
@@ -168,29 +189,34 @@ const getNotificationColor = (type: NotificationType) => {
 
 // Mapa de redirección por tipo de notificación
 const notificationRoutes: Record<NotificationType, string> = {
-  appointment: '/calendario',  // Citas agendadas, recordatorios, reagendamientos
-  alert: '/calendario',        // Cancelaciones, no-shows (relacionados con citas)
-  success: '/calendario',      // Confirmaciones de citas
-  message: '/chats',           // Mensajes (aunque no se usan actualmente)
-  system: '/configuracion',    // Actualizaciones del sistema, facturación
+  appointment: '/calendario',
+  alert: '/calendario',
+  success: '/calendario',
+  message: '/chats',
+  system: '/configuracion',
 };
 
 export function TopBar() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isMobile = useIsMobile();
   const [notifications, setNotifications] = useState<Notification[]>(getNotificationsWithReadState);
   const [isOpen, setIsOpen] = useState(false);
   const [userProfile, setUserProfile] = useState(getUserProfile());
   
+  // Get current page title
+  const currentPageTitle = pageTitles[location.pathname] || "VEXA";
+  
+  // Check if we can go back
+  const canGoBack = location.pathname !== "/" && window.history.length > 1;
+
   // Escuchar cambios en el perfil (evento personalizado y storage)
   useEffect(() => {
     const handleProfileUpdate = () => {
       setUserProfile(getUserProfile());
     };
 
-    // Escuchar evento personalizado
     window.addEventListener('profile-updated', handleProfileUpdate);
-    
-    // Escuchar cambios en storage (para otras pestañas)
     window.addEventListener('storage', handleProfileUpdate);
 
     return () => {
@@ -217,56 +243,69 @@ export function TopBar() {
     .slice(0, 2);
 
   const markAsRead = (id: string) => {
-    // Actualizar estado local
     setNotifications(prev => 
       prev.map(n => n.id === id ? { ...n, read: true } : n)
     );
     
-    // Persistir en localStorage
     const readIds = getReadNotificationIds();
     readIds.add(id);
     saveReadNotificationIds(readIds);
   };
 
   const getRouteForNotification = (notification: Notification): string => {
-    // Primero verificar si hay rutas específicas según el título/contenido
     const title = notification.title.toLowerCase();
     
-    // Rutas específicas por contenido
     if (title.includes('factura')) {
       return '/facturacion';
     }
     
-    // Por defecto, usar el mapa de rutas por tipo
     return notificationRoutes[notification.type] || '/';
   };
 
   const handleNotificationClick = (notification: Notification) => {
-    // 1. Marcar como leída
     markAsRead(notification.id);
-    
-    // 2. Cerrar el popup
     setIsOpen(false);
-    
-    // 3. Navegar a la sección correspondiente
     const route = getRouteForNotification(notification);
     navigate(route);
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background px-6">
-      {/* Left side - can be used for breadcrumbs or page title */}
-      <div />
+    <header className={cn(
+      "sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/95 backdrop-blur-sm",
+      // Desktop
+      "md:h-16 md:px-6",
+      // Mobile: compact header
+      "h-14 px-4"
+    )}>
+      {/* Left side - Mobile: Back button + Title, Desktop: empty */}
+      <div className="flex items-center gap-3">
+        {isMobile && canGoBack && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 -ml-2"
+            onClick={() => navigate(-1)}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+        )}
+        {isMobile && (
+          <h1 className="font-semibold text-foreground">{currentPageTitle}</h1>
+        )}
+      </div>
 
       {/* Right side - notifications + user */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 md:gap-4">
         {/* Notifications Popover */}
         <Popover open={isOpen} onOpenChange={setIsOpen}>
           <PopoverTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="relative text-muted-foreground hover:text-foreground hover:bg-secondary"
+              className={cn(
+                "relative text-muted-foreground hover:text-foreground hover:bg-secondary",
+                "h-9 w-9 md:h-10 md:w-10"
+              )}
             >
               <Bell className="h-5 w-5" />
               {unreadCount > 0 && (
@@ -279,7 +318,11 @@ export function TopBar() {
           <PopoverContent 
             align="end" 
             sideOffset={8}
-            className="w-96 p-0 bg-white/95 backdrop-blur-sm border border-border/50 shadow-lg rounded-xl overflow-hidden animate-in fade-in-0 slide-in-from-top-2 duration-200"
+            className={cn(
+              "p-0 bg-white/95 backdrop-blur-sm border border-border/50 shadow-lg rounded-xl overflow-hidden animate-in fade-in-0 slide-in-from-top-2 duration-200",
+              // Mobile: full width with margins
+              "w-[calc(100vw-2rem)] max-w-[400px] md:w-96"
+            )}
           >
             {/* Header */}
             <div className="px-4 py-3 border-b border-border/50 bg-secondary/30">
@@ -303,7 +346,7 @@ export function TopBar() {
                   <div
                     key={notification.id}
                     className={cn(
-                      "flex items-start gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors cursor-pointer border-b border-border/30 last:border-b-0",
+                      "flex items-start gap-3 px-4 py-3 hover:bg-secondary/50 active:bg-secondary transition-colors cursor-pointer border-b border-border/30 last:border-b-0",
                       !notification.read && "bg-primary/5"
                     )}
                     onClick={() => handleNotificationClick(notification)}
@@ -353,48 +396,60 @@ export function TopBar() {
           </PopoverContent>
         </Popover>
 
-        {/* User Dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              className="flex items-center gap-2 px-2 hover:bg-secondary"
-            >
-              <Avatar className="h-8 w-8 border border-border">
-                {displayLogo && <AvatarImage src={displayLogo} alt={displayName} />}
-                <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex flex-col items-start">
-                <span className="text-sm font-medium text-foreground">
-                  {displayName}
-                </span>
-                <span className="text-xs text-muted-foreground capitalize">
-                  {displayRole}
-                </span>
-              </div>
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuItem className="cursor-pointer" onClick={() => navigate('/configuracion')}>
-              <Settings className="mr-2 h-4 w-4" />
-              Configuración
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem 
-              className="cursor-pointer text-destructive focus:text-destructive"
-              onClick={() => {
-                logout();
-                navigate('/auth');
-              }}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Cerrar sesión
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* User Dropdown - Desktop only, on mobile it's in the drawer */}
+        {!isMobile && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                className="flex items-center gap-2 px-2 hover:bg-secondary"
+              >
+                <Avatar className="h-8 w-8 border border-border">
+                  {displayLogo && <AvatarImage src={displayLogo} alt={displayName} />}
+                  <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col items-start">
+                  <span className="text-sm font-medium text-foreground">
+                    {displayName}
+                  </span>
+                  <span className="text-xs text-muted-foreground capitalize">
+                    {displayRole}
+                  </span>
+                </div>
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem className="cursor-pointer" onClick={() => navigate('/configuracion')}>
+                <Settings className="mr-2 h-4 w-4" />
+                Configuración
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem 
+                className="cursor-pointer text-destructive focus:text-destructive"
+                onClick={() => {
+                  logout();
+                  navigate('/auth');
+                }}
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Cerrar sesión
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
+        {/* Mobile: Simple avatar indicator */}
+        {isMobile && (
+          <Avatar className="h-8 w-8 border border-border">
+            {displayLogo && <AvatarImage src={displayLogo} alt={displayName} />}
+            <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+        )}
       </div>
     </header>
   );

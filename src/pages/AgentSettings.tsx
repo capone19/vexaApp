@@ -14,6 +14,8 @@ import { FAQSection } from "@/components/agent-settings/sections/FAQSection";
 import { LimitsSection } from "@/components/agent-settings/sections/LimitsSection";
 import { mockAgentSettings } from "@/lib/mock/data";
 import type { AgentSettings as AgentSettingsType } from "@/lib/types";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 
 export type AgentSettingsSectionId = 
   | "personality"
@@ -50,6 +52,7 @@ export default function AgentSettings() {
   const activeSection = (searchParams.get("section") as AgentSettingsSectionId) || "personality";
   const [settings, setSettings] = useState<AgentSettingsType>(mockAgentSettings);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const isMobile = useIsMobile();
 
   const handleSectionChange = (sectionId: AgentSettingsSectionId) => {
     setSearchParams({ section: sectionId });
@@ -86,7 +89,6 @@ export default function AgentSettings() {
     // Mock save - in real app would call API
     console.log("Saving settings:", settings);
     setHasUnsavedChanges(false);
-    // Aquí se actualizaría la fecha de última modificación de la sección actual
   };
 
   const renderSection = () => {
@@ -161,25 +163,47 @@ export default function AgentSettings() {
 
   return (
     <MainLayout>
-      <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
-        {/* Sidebar de secciones */}
-        <AgentSettingsSidebar
-          sections={sections}
-          activeSection={activeSection}
-          onSectionChange={handleSectionChange}
-        />
-
-        {/* Contenido principal */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <AgentSettingsHeader
-            currentSection={currentSection}
-            onSave={handleSave}
-            hasUnsavedChanges={hasUnsavedChanges}
+      <div className={cn(
+        "flex flex-col overflow-hidden",
+        isMobile ? "h-auto min-h-[calc(100vh-8rem)]" : "h-[calc(100vh-4rem)]"
+      )}>
+        {/* Mobile: Horizontal section tabs at top */}
+        {isMobile && (
+          <AgentSettingsSidebar
+            sections={sections}
+            activeSection={activeSection}
+            onSectionChange={handleSectionChange}
           />
+        )}
 
-          {/* Contenido de la sección */}
-          <div className="flex-1 overflow-y-auto p-6 bg-background">
-            {renderSection()}
+        <div className={cn(
+          "flex flex-1 overflow-hidden",
+          isMobile ? "flex-col" : "flex-row"
+        )}>
+          {/* Desktop: Sidebar de secciones */}
+          {!isMobile && (
+            <AgentSettingsSidebar
+              sections={sections}
+              activeSection={activeSection}
+              onSectionChange={handleSectionChange}
+            />
+          )}
+
+          {/* Contenido principal */}
+          <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+            <AgentSettingsHeader
+              currentSection={currentSection}
+              onSave={handleSave}
+              hasUnsavedChanges={hasUnsavedChanges}
+            />
+
+            {/* Contenido de la sección */}
+            <div className={cn(
+              "flex-1 overflow-y-auto bg-background",
+              isMobile ? "p-4" : "p-6"
+            )}>
+              {renderSection()}
+            </div>
           </div>
         </div>
       </div>

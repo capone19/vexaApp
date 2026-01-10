@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import {
   Smile,
   Building2,
@@ -13,6 +14,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import type { AgentSettingsSectionId, AgentSettingsSectionInfo } from "@/pages/AgentSettings";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface AgentSettingsSidebarProps {
   sections: AgentSettingsSectionInfo[];
@@ -37,8 +39,44 @@ export function AgentSettingsSidebar({
   activeSection,
   onSectionChange,
 }: AgentSettingsSidebarProps) {
+  const isMobile = useIsMobile();
+
+  // Mobile: Horizontal scrollable tabs
+  if (isMobile) {
+    return (
+      <div className="border-b border-border bg-card -mx-4 px-4">
+        <ScrollArea className="w-full">
+          <div className="flex gap-2 py-3">
+            {sections.map((section) => {
+              const Icon = sectionIcons[section.id];
+              const isActive = section.id === activeSection;
+
+              return (
+                <button
+                  key={section.id}
+                  onClick={() => onSectionChange(section.id)}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2.5 rounded-full whitespace-nowrap transition-all shrink-0",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-secondary text-muted-foreground active:bg-secondary/80"
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="text-sm font-medium">{section.title.split(' ')[0]}</span>
+                </button>
+              );
+            })}
+          </div>
+          <ScrollBar orientation="horizontal" className="h-0" />
+        </ScrollArea>
+      </div>
+    );
+  }
+
+  // Desktop: Vertical sidebar
   return (
-    <aside className="w-80 border-r border-border bg-card overflow-y-auto">
+    <aside className="w-80 border-r border-border bg-card overflow-y-auto shrink-0">
       <div className="p-4">
         <h2 className="text-lg font-semibold text-foreground mb-1">Configuración</h2>
         <p className="text-sm text-muted-foreground mb-4">
