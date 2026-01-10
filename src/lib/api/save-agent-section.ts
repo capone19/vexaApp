@@ -30,61 +30,66 @@ export async function saveAgentSection(
 ): Promise<SaveSectionResult> {
   const errors: string[] = [];
 
-  // Ejecutar DB save y webhook EN PARALELO para máxima velocidad
-  const [dbResult, webhookResult] = await Promise.allSettled([
-    // 1. Guardar en agent_settings_ui (persistencia UI)
-    (async () => {
-      const { error: upsertError } = await (supabase as any)
-        .from('agent_settings_ui')
-        .upsert(
-          {
-            tenant_id: tenantId,
-            section_key: sectionId,
-            data: sectionData,
-            updated_by: userId,
-          },
-          {
-            onConflict: 'tenant_id,section_key',
-          }
-        );
-      
-      if (upsertError) {
-        throw new Error(upsertError.message || "Error en base de datos");
-      }
-      console.log("[SaveSection] Guardado en agent_settings_ui:", sectionId);
-      return true;
-    })(),
-    
-    // 2. Webhook a n8n con timeout de 5 segundos (no-blocking)
-    (async () => {
-      const timeoutPromise = new Promise<{ success: false; error: string }>((resolve) => {
-        setTimeout(() => resolve({ success: false, error: "Timeout" }), 5000);
-      });
-      
-      const webhookPromise = sendWebhookToN8n(sectionId, sectionData, tenantId, userId);
-      
-      // Race: el que termine primero gana
-      const result = await Promise.race([webhookPromise, timeoutPromise]);
-      
-      if (!result.success) {
-        // Si falla o timeout, solo logueamos - no bloqueamos al usuario
-        console.warn("[SaveSection] Webhook no completado:", result.error);
-      }
-      return result.success;
-    })(),
-  ]);
+  // 1) Guardar en agent_settings_ui (esto define el éxito del guardado en UI)
+  let cloudSaved = false;
+  try {
+    const { error: upsertError } = await (supabase as any)
+      .from("agent_settings_ui")
+      .upsert(
+        {
+          tenant_id: tenantId,
+          section_key: sectionId,
+          data: sectionData,
+          updated_by: userId,
+        },
+        {
+          onConflict: "tenant_id,section_key",
+        }
+      );
 
-  // Procesar resultados
-  const cloudSaved = dbResult.status === 'fulfilled' && dbResult.value === true;
-  const webhookSent = webhookResult.status === 'fulfilled' && webhookResult.value === true;
+    if (upsertError) {
+      throw new Error(upsertError.message || "Error en base de datos");
+    }
 
-  if (dbResult.status === 'rejected') {
-    errors.push(dbResult.reason?.message || "Error guardando en base de datos");
+    cloudSaved = true;
+    console.log("[SaveSection] Guardado en agent_settings_ui:", sectionId);
+  } catch (err) {
+    console.error("[SaveSection] Error guardando en DB:", err);
+    errors.push(err instanceof Error ? err.message : "Error guardando en base de datos");
   }
 
-  // El webhook es "fire and forget" - no bloquea el éxito si la DB guardó
+  // 2) Webhook a n8n: fire-and-forget (NO bloquea el botón Guardar)
+  // Nota: no podemos cancelar supabase.functions.invoke, pero tampoco lo esperamos.
+  let webhookSent = false;
+  if (cloudSaved) {
+    const timeoutMs = 5000;
+
+    void (async () => {
+      try {
+        const timeoutPromise = new Promise<{ success: false; error: string }>((resolve) => {
+          setTimeout(() => resolve({ success: false, error: "Timeout" }), timeoutMs);
+        });
+
+        const webhookPromise = sendWebhookToN8n(sectionId, sectionData, tenantId, userId);
+        const result = await Promise.race([webhookPromise, timeoutPromise]);
+
+        if (!result.success) {
+          console.warn("[SaveSection] Webhook no completado:", result.error);
+        } else {
+          console.log("[SaveSection] Webhook enviado:", sectionId);
+        }
+      } catch (e) {
+        console.warn("[SaveSection] Webhook error:", e);
+      }
+    })();
+
+    // Importante: reportamos 'webhookSent' como false por defecto porque es async.
+    // El usuario ya ve el guardado instantáneo; el procesamiento continúa en background.
+    webhookSent = false;
+  }
+
   return {
-    success: cloudSaved, // Solo dependemos de la DB, webhook es secundario
+    success: cloudSaved,
     cloudSaved,
     webhookSent,
     error: errors.length > 0 ? errors.join(". ") : undefined,
