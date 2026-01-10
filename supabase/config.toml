@@ -1,1 +1,4 @@
 project_id = "ymlvklodwwvkfpnrlfsa"
+
+[functions.save-agent-settings]
+verify_jwt = false
