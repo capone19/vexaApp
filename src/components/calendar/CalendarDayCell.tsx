@@ -40,6 +40,7 @@ export const CalendarDayCell = ({
         toggleBlockDay(day);
       }
     } else {
+      // Allow clicking on blocked days to show unblock option
       onSelect(day);
     }
   };
@@ -70,11 +71,11 @@ export const CalendarDayCell = ({
   let stateClasses = "";
   
   if (blocked) {
-    // Blocked day - with diagonal stripes pattern
+    // Blocked day - with diagonal stripes pattern, but still clickable
     stateClasses = cn(
       "bg-slate-100 dark:bg-slate-800",
       "text-slate-400 dark:text-slate-500",
-      "cursor-default"
+      "cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 hover:ring-2 hover:ring-slate-300 dark:hover:ring-slate-600"
     );
   } else if (isBlockingMode && selectedForBlock) {
     // Selected for blocking - slate/blue-gray with opacity
@@ -111,7 +112,6 @@ export const CalendarDayCell = ({
       onMouseEnter={handleMouseEnter}
       onMouseUp={handleMouseUp}
       className={cn(baseClasses, stateClasses)}
-      disabled={blocked && !isBlockingMode}
     >
       {/* Diagonal stripes pattern for blocked days */}
       {blocked && (

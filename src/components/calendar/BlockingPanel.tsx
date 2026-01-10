@@ -157,31 +157,72 @@ export const BlockingPanel = ({ selectedDate, onSelectDate }: BlockingPanelProps
   // Blocked day info panel - show when viewing a blocked day
   if (isSelectedBlocked && blockedInfo) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Lock className="h-5 w-5 text-slate-500" />
-          <h3 className="font-semibold text-foreground">Día bloqueado</h3>
+      <div className="space-y-5">
+        {/* Header with icon */}
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-slate-500 to-slate-600 shadow-lg shadow-slate-500/20">
+            <Lock className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-foreground">Día bloqueado</h3>
+            <p className="text-xs text-muted-foreground">No se aceptan reservas</p>
+          </div>
         </div>
         
-        <div className="p-4 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-          <p className="font-medium text-foreground">
-            {format(blockedInfo.date, "EEEE d 'de' MMMM", { locale: es })}
-          </p>
-          {blockedInfo.reason && (
-            <p className="text-sm text-muted-foreground mt-2">
-              <span className="font-medium">Motivo:</span> {blockedInfo.reason}
-            </p>
-          )}
+        {/* Date card with stripes pattern */}
+        <div className="relative overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900">
+          {/* Decorative stripes */}
+          <div 
+            className="absolute inset-0 opacity-10"
+            style={{
+              background: `repeating-linear-gradient(
+                -45deg,
+                transparent,
+                transparent 8px,
+                hsl(var(--foreground)) 8px,
+                hsl(var(--foreground)) 10px
+              )`
+            }}
+          />
+          
+          <div className="relative p-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-lg font-bold text-foreground capitalize">
+                  {format(blockedInfo.date, "EEEE", { locale: es })}
+                </p>
+                <p className="text-2xl font-bold text-foreground">
+                  {format(blockedInfo.date, "d 'de' MMMM", { locale: es })}
+                </p>
+              </div>
+              <div className="px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300">
+                Bloqueado
+              </div>
+            </div>
+            
+            {blockedInfo.reason && (
+              <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Motivo</p>
+                <p className="text-sm text-foreground">{blockedInfo.reason}</p>
+              </div>
+            )}
+          </div>
         </div>
         
+        {/* Unblock button - premium style */}
         <Button
-          variant="outline"
           onClick={() => unblockDay(selectedDate)}
-          className="w-full"
+          className="w-full group relative overflow-hidden bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white border-0 shadow-lg shadow-emerald-500/20 transition-all duration-300"
         >
-          <Unlock className="h-4 w-4 mr-2" />
-          Desbloquear día
+          <span className="relative flex items-center justify-center gap-2">
+            <Unlock className="h-4 w-4 transition-transform group-hover:scale-110" />
+            Desbloquear día
+          </span>
         </Button>
+        
+        <p className="text-xs text-center text-muted-foreground">
+          Al desbloquear, este día volverá a aceptar reservas
+        </p>
       </div>
     );
   }
