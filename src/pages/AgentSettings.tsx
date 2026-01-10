@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { AgentSettingsSidebar } from "@/components/agent-settings/AgentSettingsSidebar";
@@ -17,8 +17,9 @@ import type { AgentSettings as AgentSettingsType } from "@/lib/types";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
-import { saveAgentSection } from "@/lib/api/save-agent-section";
+import { saveAgentSection, loadAgentSection } from "@/lib/api/save-agent-section";
 import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
 
 export type AgentSettingsSectionId = 
   | "personality"
@@ -56,9 +57,64 @@ export default function AgentSettings() {
   const [settings, setSettings] = useState<AgentSettingsType>(mockAgentSettings);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const { toast } = useToast();
+
+  // Cargar datos guardados de todas las secciones al montar
+  const loadAllSections = useCallback(async () => {
+    if (!user?.tenantId) {
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    
+    try {
+      const sectionIds: AgentSettingsSectionId[] = [
+        "personality", "business", "policies", "services", 
+        "rescheduling", "payments", "intervention", "faq", "limits"
+      ];
+
+      // Cargar todas las secciones en paralelo
+      const loadPromises = sectionIds.map(async (sectionId) => {
+        const data = await loadAgentSection(sectionId, user.tenantId!);
+        return { sectionId, data };
+      });
+
+      const results = await Promise.all(loadPromises);
+
+      // Aplicar los datos cargados al estado
+      setSettings(prev => {
+        const updated = { ...prev };
+        
+        for (const { sectionId, data } of results) {
+          if (data) {
+            // Merge con los datos existentes para mantener estructura
+            (updated as any)[sectionId] = {
+              ...mockAgentSettings[sectionId as keyof typeof mockAgentSettings],
+              ...data,
+              lastModified: data.lastModified ? new Date(data.lastModified as string) : new Date(),
+            };
+          }
+        }
+        
+        return updated;
+      });
+
+      console.log("[AgentSettings] Datos cargados desde DB:", results.filter(r => r.data).length, "secciones");
+    } catch (error) {
+      console.error("[AgentSettings] Error cargando datos:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.tenantId]);
+
+  // Cargar datos al montar y cuando cambie el tenant
+  useEffect(() => {
+    loadAllSections();
+  }, [loadAllSections]);
 
   const handleSectionChange = (sectionId: AgentSettingsSectionId) => {
     setSearchParams({ section: sectionId });
@@ -269,7 +325,13 @@ export default function AgentSettings() {
               "flex-1 overflow-y-auto bg-background",
               isMobile ? "p-4" : "p-6"
             )}>
-              {renderSection()}
+              {isLoading ? (
+                <div className="flex items-center justify-center h-64">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                renderSection()
+              )}
             </div>
           </div>
         </div>
