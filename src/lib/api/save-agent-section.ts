@@ -1,9 +1,9 @@
 // ============================================
 // VEXA - Save Agent Section (Arquitectura Híbrida)
 // ============================================
-// 1. Guarda en Lovable Cloud (persistencia UI)
+// 1. Guarda en agent_settings_ui (persistencia UI)
 // 2. Dispara webhook a n8n con DATA RAW COMPLETA
-// 3. n8n procesa y guarda mini-prompts en Supabase
+// 3. n8n procesa y guarda mini-prompts en agent_prompts
 
 import { supabase } from "@/integrations/supabase/client";
 import { sendWebhookToN8n } from "./webhook-n8n";
@@ -19,8 +19,8 @@ export interface SaveSectionResult {
 /**
  * Guarda una sección de ajustes del agente
  * Arquitectura híbrida:
- * - Lovable Cloud: persistencia UI (siempre intenta guardar)
- * - n8n webhook: procesamiento para bot (siempre intenta enviar)
+ * - agent_settings_ui: persistencia UI (datos raw del formulario)
+ * - n8n webhook: procesamiento para bot → guarda en agent_prompts
  */
 export async function saveAgentSection(
   sectionId: AgentSettingsSectionId,
@@ -32,13 +32,30 @@ export async function saveAgentSection(
   let webhookSent = false;
   let error: string | undefined;
 
-  // 1. Guardar en Lovable Cloud (persistencia UI)
-  // Por ahora es mock - se puede conectar a tabla específica si se necesita
+  // 1. Guardar en agent_settings_ui (persistencia UI)
   try {
-    // TODO: Implementar persistencia en tabla de Lovable Cloud si es necesario
-    // Por ahora el estado se mantiene en memoria y localStorage
-    cloudSaved = true;
-    console.log("[SaveSection] Guardado en Cloud (mock):", sectionId);
+    // Cast to any because types may not be updated yet
+    const { error: upsertError } = await (supabase as any)
+      .from('agent_settings_ui')
+      .upsert(
+        {
+          tenant_id: tenantId,
+          section_key: sectionId,
+          data: sectionData,
+          updated_by: userId,
+        },
+        {
+          onConflict: 'tenant_id,section_key',
+        }
+      );
+
+    if (upsertError) {
+      console.error("[SaveSection] Error guardando en DB:", upsertError);
+      error = "Error guardando en base de datos";
+    } else {
+      cloudSaved = true;
+      console.log("[SaveSection] Guardado en agent_settings_ui:", sectionId);
+    }
   } catch (err) {
     console.error("[SaveSection] Error guardando en Cloud:", err);
     error = "Error guardando localmente";
@@ -72,4 +89,36 @@ export async function saveAgentSection(
     webhookSent,
     error,
   };
+}
+
+/**
+ * Carga los datos guardados de una sección para restaurar el formulario
+ */
+export async function loadAgentSection(
+  sectionId: AgentSettingsSectionId,
+  tenantId: string
+): Promise<Record<string, unknown> | null> {
+  try {
+    // Cast to any because types may not be updated yet
+    const { data, error } = await (supabase as any)
+      .from('agent_settings_ui')
+      .select('data, updated_at')
+      .eq('tenant_id', tenantId)
+      .eq('section_key', sectionId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No data found - not an error
+        return null;
+      }
+      console.error("[LoadSection] Error:", error);
+      return null;
+    }
+
+    return data?.data as Record<string, unknown> | null;
+  } catch (err) {
+    console.error("[LoadSection] Error cargando sección:", err);
+    return null;
+  }
 }
