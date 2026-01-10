@@ -2,84 +2,108 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Growth Partners - Dark Futuristic Theme
-   All colors MUST be HSL.
+/* Growth Partners - Enterprise Light Theme
+   Paleta profesional, minimalista y confiable
+   Estilo: Vercel / Stripe / Linear
 */
 
 @layer base {
   :root {
-    /* Dark theme by default - Growth Partners style */
-    --background: 220 20% 2%;
-    --foreground: 210 40% 98%;
+    /* Background - Clean whites and light grays */
+    --background: 0 0% 100%;
+    --foreground: 220 13% 9%;
 
-    --card: 220 15% 5%;
-    --card-foreground: 210 40% 98%;
+    /* Cards - Slightly off-white */
+    --card: 210 20% 98%;
+    --card-foreground: 220 13% 9%;
 
-    --popover: 220 15% 6%;
-    --popover-foreground: 210 40% 98%;
+    /* Popover */
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 13% 9%;
 
-    /* Primary: Neon Green/Teal */
-    --primary: 160 84% 39%;
-    --primary-foreground: 220 20% 2%;
+    /* Primary - Professional Blue */
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
 
-    /* Secondary: Darker shade */
-    --secondary: 220 15% 10%;
-    --secondary-foreground: 210 40% 98%;
+    /* Secondary - Light gray */
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 13% 9%;
 
-    --muted: 220 15% 12%;
-    --muted-foreground: 215 20% 55%;
+    /* Muted - Subtle grays */
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
 
-    /* Accent: Cyan/Teal glow */
-    --accent: 175 70% 41%;
-    --accent-foreground: 220 20% 2%;
+    /* Accent - Soft blue */
+    --accent: 214 95% 93%;
+    --accent-foreground: 217 91% 60%;
 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 98%;
+    /* Destructive */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 220 15% 15%;
-    --input: 220 15% 12%;
-    --ring: 160 84% 39%;
+    /* Borders - Subtle gray */
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 217 91% 60%;
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;
 
-    /* Sidebar - slightly lighter than background */
-    --sidebar-background: 220 18% 4%;
-    --sidebar-foreground: 210 30% 80%;
-    --sidebar-primary: 160 84% 39%;
-    --sidebar-primary-foreground: 220 20% 2%;
-    --sidebar-accent: 220 15% 10%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 220 15% 12%;
-    --sidebar-ring: 160 84% 39%;
+    /* Sidebar - Light gray panel */
+    --sidebar-background: 220 14% 96%;
+    --sidebar-foreground: 220 9% 46%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 214 95% 97%;
+    --sidebar-accent-foreground: 217 91% 60%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217 91% 60%;
 
-    /* Custom accent colors for metrics */
-    --success: 160 84% 39%;
-    --success-foreground: 220 20% 2%;
+    /* Status colors - Semantic */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
     
     --warning: 38 92% 50%;
-    --warning-foreground: 220 20% 2%;
+    --warning-foreground: 0 0% 100%;
     
     --info: 199 89% 48%;
-    --info-foreground: 220 20% 2%;
+    --info-foreground: 0 0% 100%;
     
-    --hot: 16 85% 57%;
-    --hot-foreground: 220 20% 2%;
+    --error: 0 84% 60%;
+    --error-foreground: 0 0% 100%;
 
-    /* Funnel stages */
+    /* Soft status backgrounds */
+    --success-soft: 142 76% 95%;
+    --success-soft-foreground: 142 71% 29%;
+    
+    --warning-soft: 45 93% 94%;
+    --warning-soft-foreground: 32 81% 29%;
+    
+    --info-soft: 204 94% 94%;
+    --info-soft-foreground: 201 90% 27%;
+    
+    --error-soft: 0 86% 97%;
+    --error-soft-foreground: 0 74% 42%;
+
+    /* Funnel stages - Soft versions */
     --tofu: 199 89% 48%;
-    --mofu: 160 84% 39%;
+    --tofu-soft: 204 94% 94%;
+    --tofu-soft-foreground: 201 90% 27%;
+    
+    --mofu: 142 71% 45%;
+    --mofu-soft: 142 76% 95%;
+    --mofu-soft-foreground: 142 71% 29%;
+    
     --hotlead: 38 92% 50%;
-    --bofu: 16 85% 57%;
+    --hotlead-soft: 45 93% 94%;
+    --hotlead-soft-foreground: 32 81% 29%;
+    
+    --bofu: 17 88% 55%;
+    --bofu-soft: 17 100% 96%;
+    --bofu-soft-foreground: 17 78% 35%;
 
-    /* Glow effects */
-    --glow-primary: 160 84% 39%;
-    --glow-accent: 175 70% 41%;
-  }
-
-  .dark {
-    /* Already dark by default, but keeping for compatibility */
-    --background: 220 20% 2%;
-    --foreground: 210 40% 98%;
+    /* Hot color for specific use */
+    --hot: 17 88% 55%;
+    --hot-foreground: 0 0% 100%;
   }
 }
 
@@ -95,76 +119,35 @@
 }
 
 @layer utilities {
-  /* Glow effects */
-  .glow-primary {
-    box-shadow: 0 0 20px -5px hsl(var(--primary) / 0.4),
-                0 0 40px -10px hsl(var(--primary) / 0.2);
-  }
-  
-  .glow-accent {
-    box-shadow: 0 0 20px -5px hsl(var(--accent) / 0.4),
-                0 0 40px -10px hsl(var(--accent) / 0.2);
+  /* Subtle shadow for cards */
+  .shadow-card {
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05);
   }
 
-  .glow-subtle {
-    box-shadow: 0 0 15px -5px hsl(var(--primary) / 0.2);
-  }
-
-  /* Card hover effects */
+  /* Card hover - subtle lift */
   .card-hover {
-    @apply transition-all duration-300 ease-out;
+    @apply transition-all duration-200 ease-out;
   }
   
   .card-hover:hover {
-    @apply glow-subtle;
-    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
   }
 
-  /* Text gradient */
-  .text-gradient-primary {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent;
-  }
-
-  /* Border glow */
-  .border-glow {
-    @apply border border-primary/30;
-    box-shadow: inset 0 0 20px -10px hsl(var(--primary) / 0.1);
-  }
-
-  /* Scrollbar styling */
+  /* Scrollbar styling - minimal */
   .scrollbar-thin::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-track {
-    @apply bg-muted/50 rounded-full;
+    @apply bg-transparent;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground/30 rounded-full;
+    @apply bg-border rounded-full;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted-foreground/50;
-  }
-
-  /* Animate pulse glow */
-  .animate-pulse-glow {
-    animation: pulse-glow 2s ease-in-out infinite;
-  }
-
-  @keyframes pulse-glow {
-    0%, 100% {
-      box-shadow: 0 0 15px -5px hsl(var(--primary) / 0.3);
-    }
-    50% {
-      box-shadow: 0 0 25px -5px hsl(var(--primary) / 0.5);
-    }
-  }
-
-  /* Skeleton dark */
-  .skeleton-dark {
-    @apply animate-pulse bg-muted/50 rounded;
+    @apply bg-muted-foreground/30;
   }
 }

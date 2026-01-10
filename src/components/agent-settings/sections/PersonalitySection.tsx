@@ -22,7 +22,7 @@ const humorValues: PersonalitySettings["humor"][] = ["ausente", "sutil", "modera
 const emojiLabels = ["Nunca", "Ocasional", "Frecuente"];
 const emojiValues: PersonalitySettings["emojis"][] = ["nunca", "ocasional", "frecuente"];
 
-// Mock responses based on personality
+// Generate preview responses based on personality settings
 const getPreviewResponses = (settings: PersonalitySettings): string[] => {
   const { formality, empathy, humor, emojis } = settings;
   
@@ -50,7 +50,6 @@ const getPreviewResponses = (settings: PersonalitySettings): string[] => {
   return [
     `${greeting}, bienvenido/a a Beauty Salon Pro.${emoji} ¿En qué puedo ayudarte hoy?`,
     `${empathyPhrase} Tenemos disponibilidad para corte de cabello mañana a las 10:00 y 15:00.${humorPhrase}${emoji}`,
-    `¡Perfecto! Tu cita ha sido agendada.${emoji} Te enviaremos un recordatorio 24 horas antes.${humorPhrase}`,
   ];
 };
 
@@ -175,7 +174,7 @@ export function PersonalitySection({ settings, onChange }: PersonalitySectionPro
         </CardContent>
       </Card>
 
-      {/* Preview */}
+      {/* Vista previa dinámica */}
       <Card className="bg-card border-border">
         <CardHeader>
           <div className="flex items-center gap-2">
@@ -191,7 +190,7 @@ export function PersonalitySection({ settings, onChange }: PersonalitySectionPro
             {previewMessages.map((message, index) => (
               <div
                 key={index}
-                className="bg-primary/10 border border-primary/20 rounded-lg rounded-bl-none p-3 max-w-[85%]"
+                className="bg-primary/10 border border-primary/20 rounded-lg rounded-bl-none p-3 max-w-[90%]"
               >
                 <p className="text-sm text-foreground">{message}</p>
               </div>

@@ -76,7 +76,6 @@ const Calendar = () => {
     return format(currentDate, "EEEE d 'de' MMMM", { locale: es });
   };
 
-  // Generate calendar days
   const getDaysForMonth = () => {
     const start = startOfWeek(startOfMonth(currentDate), { locale: es });
     const end = endOfWeek(endOfMonth(currentDate), { locale: es });
@@ -131,7 +130,7 @@ const Calendar = () => {
             <span className="text-sm">Filtros:</span>
           </div>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-[140px] bg-card border-border/50">
+            <SelectTrigger className="w-[140px] bg-background border-border">
               <SelectValue placeholder="Estado" />
             </SelectTrigger>
             <SelectContent>
@@ -142,7 +141,7 @@ const Calendar = () => {
             </SelectContent>
           </Select>
           <Select value={filterService} onValueChange={setFilterService}>
-            <SelectTrigger className="w-[180px] bg-card border-border/50">
+            <SelectTrigger className="w-[180px] bg-background border-border">
               <SelectValue placeholder="Servicio" />
             </SelectTrigger>
             <SelectContent>
@@ -153,7 +152,7 @@ const Calendar = () => {
             </SelectContent>
           </Select>
           <Select value={filterSource} onValueChange={setFilterSource}>
-            <SelectTrigger className="w-[140px] bg-card border-border/50">
+            <SelectTrigger className="w-[140px] bg-background border-border">
               <SelectValue placeholder="Origen" />
             </SelectTrigger>
             <SelectContent>
@@ -168,14 +167,14 @@ const Calendar = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Calendar View */}
-          <Card className="lg:col-span-2 bg-card/50 border-border/50">
+          <Card className="lg:col-span-2 border-border">
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <Button variant="ghost" size="icon" onClick={navigatePrevious}>
                     <ChevronLeft className="h-5 w-5" />
                   </Button>
-                  <h2 className="text-lg font-semibold capitalize min-w-[200px] text-center">
+                  <h2 className="text-lg font-semibold capitalize min-w-[200px] text-center text-foreground">
                     {getNavigationTitle()}
                   </h2>
                   <Button variant="ghost" size="icon" onClick={navigateNext}>
@@ -183,7 +182,7 @@ const Calendar = () => {
                   </Button>
                 </div>
                 <Tabs value={view} onValueChange={(v) => setView(v as CalendarView)}>
-                  <TabsList className="bg-background/50">
+                  <TabsList className="bg-secondary">
                     <TabsTrigger value="month">Mes</TabsTrigger>
                     <TabsTrigger value="week">Semana</TabsTrigger>
                     <TabsTrigger value="day">Día</TabsTrigger>
@@ -216,7 +215,7 @@ const Calendar = () => {
                           onClick={() => setSelectedDate(day)}
                           className={cn(
                             "aspect-square p-1 rounded-lg text-sm transition-all relative",
-                            "hover:bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/50",
+                            "hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-primary/50",
                             !isCurrentMonth && "text-muted-foreground/50",
                             isToday && "ring-1 ring-primary",
                             isSelected && "bg-primary text-primary-foreground hover:bg-primary"
@@ -258,11 +257,11 @@ const Calendar = () => {
                           key={idx}
                           onClick={() => setSelectedDate(day)}
                           className={cn(
-                            "p-3 rounded-xl text-center transition-all min-h-[120px] flex flex-col",
-                            "hover:bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/50",
-                            "border border-border/30",
+                            "p-3 rounded-lg text-center transition-all min-h-[120px] flex flex-col",
+                            "hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-primary/50",
+                            "border border-border",
                             isToday && "ring-1 ring-primary",
-                            isSelected && "bg-primary/20 border-primary"
+                            isSelected && "bg-primary/10 border-primary"
                           )}
                         >
                           <div className="text-xs text-muted-foreground capitalize">
@@ -280,9 +279,9 @@ const Calendar = () => {
                                 key={i}
                                 className={cn(
                                   "text-[10px] px-1.5 py-0.5 rounded truncate",
-                                  apt.status === 'confirmed' && "bg-success/20 text-success",
-                                  apt.status === 'pending' && "bg-warning/20 text-warning",
-                                  apt.status === 'canceled' && "bg-destructive/20 text-destructive"
+                                  apt.status === 'confirmed' && "bg-success/10 text-success",
+                                  apt.status === 'pending' && "bg-warning/10 text-warning",
+                                  apt.status === 'canceled' && "bg-destructive/10 text-destructive"
                                 )}
                               >
                                 {format(apt.datetime, 'HH:mm')}
@@ -304,7 +303,7 @@ const Calendar = () => {
               {view === 'day' && (
                 <div className="space-y-2">
                   <div className="text-center mb-4">
-                    <div className="text-2xl font-bold capitalize">
+                    <div className="text-xl font-semibold capitalize text-foreground">
                       {format(currentDate, "EEEE d 'de' MMMM", { locale: es })}
                     </div>
                   </div>
@@ -317,7 +316,7 @@ const Calendar = () => {
                         );
                         
                         return (
-                          <div key={hour} className="flex gap-3 py-2 border-b border-border/30">
+                          <div key={hour} className="flex gap-3 py-2 border-b border-border">
                             <div className="w-16 text-sm text-muted-foreground shrink-0">
                               {String(hour).padStart(2, '0')}:00
                             </div>
@@ -330,19 +329,19 @@ const Calendar = () => {
                                       onClick={() => setSelectedAppointment(apt)}
                                       className={cn(
                                         "w-full text-left px-3 py-2 rounded-lg text-sm transition-all",
-                                        "hover:scale-[1.02]",
-                                        apt.status === 'confirmed' && "bg-success/20 border border-success/30",
-                                        apt.status === 'pending' && "bg-warning/20 border border-warning/30",
-                                        apt.status === 'canceled' && "bg-destructive/20 border border-destructive/30 line-through opacity-60"
+                                        "hover:opacity-80",
+                                        apt.status === 'confirmed' && "bg-success/10 border border-success/20",
+                                        apt.status === 'pending' && "bg-warning/10 border border-warning/20",
+                                        apt.status === 'canceled' && "bg-destructive/10 border border-destructive/20 line-through opacity-60"
                                       )}
                                     >
-                                      <div className="font-medium">{apt.clientName}</div>
+                                      <div className="font-medium text-foreground">{apt.clientName}</div>
                                       <div className="text-xs text-muted-foreground">{apt.service}</div>
                                     </button>
                                   ))}
                                 </div>
                               ) : (
-                                <div className="h-10 border border-dashed border-border/30 rounded-lg flex items-center justify-center text-xs text-muted-foreground">
+                                <div className="h-10 border border-dashed border-border rounded-lg flex items-center justify-center text-xs text-muted-foreground">
                                   Disponible
                                 </div>
                               )}
@@ -358,9 +357,9 @@ const Calendar = () => {
           </Card>
 
           {/* Selected Date Appointments */}
-          <Card className="bg-card/50 border-border/50">
+          <Card className="border-border">
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
+              <CardTitle className="text-base flex items-center gap-2 text-foreground">
                 <CalendarIcon className="h-4 w-4 text-primary" />
                 {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
               </CardTitle>
@@ -380,11 +379,11 @@ const Calendar = () => {
                         <button
                           key={apt.id}
                           onClick={() => setSelectedAppointment(apt)}
-                          className="w-full text-left p-4 rounded-xl border border-border/50 bg-background/50 hover:bg-background/80 transition-all space-y-2"
+                          className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-secondary transition-all space-y-2"
                         >
                           <div className="flex items-start justify-between">
                             <div>
-                              <div className="font-medium">{apt.clientName}</div>
+                              <div className="font-medium text-foreground">{apt.clientName}</div>
                               <div className="text-sm text-muted-foreground">{apt.service}</div>
                             </div>
                             <StatusBadge status={apt.status} />
@@ -410,7 +409,7 @@ const Calendar = () => {
 
       {/* Appointment Details Modal */}
       <Dialog open={!!selectedAppointment} onOpenChange={() => setSelectedAppointment(null)}>
-        <DialogContent className="bg-card border-border/50">
+        <DialogContent className="border-border">
           <DialogHeader>
             <DialogTitle>Detalles de la cita</DialogTitle>
           </DialogHeader>
@@ -418,30 +417,30 @@ const Calendar = () => {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold">{selectedAppointment.clientName}</h3>
+                  <h3 className="text-lg font-semibold text-foreground">{selectedAppointment.clientName}</h3>
                   <p className="text-muted-foreground">{selectedAppointment.service}</p>
                 </div>
                 <StatusBadge status={selectedAppointment.status} />
               </div>
 
-              <div className="space-y-3 py-4 border-t border-b border-border/50">
+              <div className="space-y-3 py-4 border-t border-b border-border">
                 <div className="flex items-center gap-3 text-sm">
                   <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                  <span>{format(selectedAppointment.datetime, "EEEE d 'de' MMMM, yyyy", { locale: es })}</span>
+                  <span className="text-foreground">{format(selectedAppointment.datetime, "EEEE d 'de' MMMM, yyyy", { locale: es })}</span>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
                   <Clock className="h-4 w-4 text-muted-foreground" />
-                  <span>{format(selectedAppointment.datetime, 'HH:mm')} hrs</span>
+                  <span className="text-foreground">{format(selectedAppointment.datetime, 'HH:mm')} hrs</span>
                 </div>
                 {selectedAppointment.clientPhone && (
                   <div className="flex items-center gap-3 text-sm">
                     <Phone className="h-4 w-4 text-muted-foreground" />
-                    <span>{selectedAppointment.clientPhone}</span>
+                    <span className="text-foreground">{selectedAppointment.clientPhone}</span>
                   </div>
                 )}
                 <div className="flex items-center gap-3 text-sm">
                   <MapPin className="h-4 w-4 text-muted-foreground" />
-                  <span>Sede Providencia</span>
+                  <span className="text-foreground">Sede Providencia</span>
                 </div>
               </div>
 

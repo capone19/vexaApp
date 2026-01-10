@@ -1,6 +1,5 @@
-import { ExternalLink, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -14,21 +13,17 @@ import type { AgentSettingsSectionInfo } from "@/pages/AgentSettings";
 
 interface AgentSettingsHeaderProps {
   currentSection: AgentSettingsSectionInfo;
-  activeTab: "live" | "playground";
-  onTabChange: (tab: "live" | "playground") => void;
   onPublish: () => void;
   hasUnsavedChanges: boolean;
 }
 
 export function AgentSettingsHeader({
   currentSection,
-  activeTab,
-  onTabChange,
   onPublish,
   hasUnsavedChanges,
 }: AgentSettingsHeaderProps) {
   return (
-    <div className="border-b border-border bg-card/30 px-6 py-4">
+    <div className="border-b border-border bg-background px-6 py-4">
       {/* Breadcrumb */}
       <Breadcrumb className="mb-4">
         <BreadcrumbList>
@@ -54,33 +49,16 @@ export function AgentSettingsHeader({
             <p className="text-sm text-muted-foreground">{currentSection.description}</p>
           </div>
           {hasUnsavedChanges && (
-            <Badge variant="outline" className="border-warning text-warning">
+            <Badge variant="outline" className="border-warning/50 bg-warning/10 text-warning">
               Sin guardar
             </Badge>
           )}
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Tabs versión */}
-          <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as "live" | "playground")}>
-            <TabsList className="bg-muted/50">
-              <TabsTrigger value="live" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                Versión en vivo
-              </TabsTrigger>
-              <TabsTrigger value="playground" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                Playground
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-
-          {/* Botones */}
-          <Button variant="outline" size="sm" className="gap-2">
-            <ExternalLink className="h-4 w-4" />
-            Probar en playground
-          </Button>
-          <Button size="sm" className="gap-2 glow-subtle" onClick={onPublish}>
+          <Button size="sm" className="gap-2" onClick={onPublish}>
             <Upload className="h-4 w-4" />
-            Publicar cambios
+            Guardar cambios
           </Button>
         </div>
       </div>

@@ -48,7 +48,6 @@ const sectionsList: Omit<AgentSettingsSectionInfo, "lastModified">[] = [
 export default function AgentSettings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeSection = (searchParams.get("section") as AgentSettingsSectionId) || "personality";
-  const [activeTab, setActiveTab] = useState<"live" | "playground">("live");
   const [settings, setSettings] = useState<AgentSettingsType>(mockAgentSettings);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
@@ -179,23 +178,21 @@ export default function AgentSettings() {
         <div className="flex-1 flex flex-col overflow-hidden">
           <AgentSettingsHeader
             currentSection={currentSection}
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
             onPublish={handlePublish}
             hasUnsavedChanges={hasUnsavedChanges}
           />
 
           {/* Contenido de la sección */}
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-6 bg-background">
             {renderSection()}
           </div>
 
           {/* Botón flotante guardar */}
           {hasUnsavedChanges && (
-            <div className="sticky bottom-0 border-t border-border bg-background/95 backdrop-blur p-4 flex justify-end">
+            <div className="sticky bottom-0 border-t border-border bg-background p-4 flex justify-end">
               <button
                 onClick={handleSave}
-                className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors glow-subtle"
+                className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
               >
                 Guardar cambios
               </button>

@@ -12,19 +12,19 @@ const stageConfig: Record<
 > = {
   dead: {
     label: "Sin respuesta",
-    className: "bg-muted text-muted-foreground border-muted",
+    className: "bg-secondary text-muted-foreground",
   },
   warm: {
     label: "Warm",
-    className: "bg-info/10 text-info border-info/30",
+    className: "bg-info/10 text-info",
   },
   hot: {
     label: "Hot",
-    className: "bg-warning/10 text-warning border-warning/30",
+    className: "bg-warning/10 text-warning",
   },
   converted: {
     label: "Convertido",
-    className: "bg-success/10 text-success border-success/30",
+    className: "bg-success/10 text-success",
   },
 };
 
@@ -34,7 +34,7 @@ export function FunnelStageBadge({ stage, className }: FunnelStageBadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
+        "inline-flex items-center rounded-md px-2 py-1 text-xs font-medium",
         config.className,
         className
       )}

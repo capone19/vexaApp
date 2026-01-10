@@ -17,6 +17,14 @@ import {
   CalendarCheck,
   ArrowRight,
   DollarSign,
+  Radio,
+  Flag,
+  Flame,
+  ShoppingCart,
+  Snowflake,
+  Thermometer,
+  Zap,
+  Target,
 } from "lucide-react";
 import {
   Table,
@@ -87,48 +95,94 @@ export default function Dashboard() {
 
         {/* Funnel Card */}
         <div className="rounded-xl border border-border bg-card p-6">
-          <h3 className="text-lg font-semibold mb-6">Resumen del Funnel de Ventas</h3>
+          <div className="mb-6">
+            <h3 className="text-base font-semibold text-foreground">Resumen del Funnel de Ventas</h3>
+            <p className="text-sm text-muted-foreground">TOFU → MOFU → BOFU en tiempo real</p>
+          </div>
           
-          {/* Pipeline Visual */}
-          <div className="flex items-center justify-between mb-8">
+          {/* Pipeline Visual - 4 Cards */}
+          <div className="grid grid-cols-4 gap-3 mb-6">
             {[
-              { label: "TOFU", sublabel: "Meta Ads", value: metrics.funnel.tofu, color: "bg-info" },
-              { label: "MOFU", sublabel: "Sesiones WhatsApp", value: metrics.funnel.mofu, color: "bg-primary" },
-              { label: "Hot Leads", sublabel: "6+ mensajes", value: metrics.funnel.hotLeads, color: "bg-warning" },
-              { label: "BOFU", sublabel: "Ventas / Agendamientos", value: metrics.funnel.bofu, color: "bg-hot" },
+              { 
+                label: "TOFU", 
+                sublabel: "Meta Ads", 
+                value: metrics.funnel.tofu || "--", 
+                icon: Radio,
+                bgColor: "bg-slate-100 border-slate-200",
+                iconBg: "bg-slate-200",
+                iconColor: "text-slate-600"
+              },
+              { 
+                label: "MOFU", 
+                sublabel: "Sesiones WhatsApp", 
+                value: metrics.funnel.mofu, 
+                icon: Flag,
+                bgColor: "bg-emerald-50 border-emerald-200",
+                iconBg: "bg-emerald-100",
+                iconColor: "text-emerald-600"
+              },
+              { 
+                label: "Hot Leads", 
+                sublabel: "6+ mensajes", 
+                value: metrics.funnel.hotLeads, 
+                icon: Flame,
+                bgColor: "bg-amber-50 border-amber-200",
+                iconBg: "bg-amber-100",
+                iconColor: "text-amber-600"
+              },
+              { 
+                label: "BOFU", 
+                sublabel: "Ventas", 
+                value: metrics.funnel.bofu, 
+                icon: ShoppingCart,
+                bgColor: "bg-green-50 border-green-200",
+                iconBg: "bg-green-100",
+                iconColor: "text-green-600"
+              },
             ].map((stage, idx, arr) => (
-              <div key={stage.label} className="flex items-center flex-1">
-                <div className="flex-1 text-center">
-                  <div className={`inline-flex items-center justify-center w-16 h-16 rounded-xl ${stage.color} mb-2`}>
-                    <span className="text-xl font-bold text-background">{stage.value.toLocaleString()}</span>
+              <div key={stage.label} className="flex items-center">
+                <div className={`flex-1 rounded-xl border p-4 ${stage.bgColor}`}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className={`rounded-md p-1.5 ${stage.iconBg}`}>
+                      <stage.icon className={`h-3.5 w-3.5 ${stage.iconColor}`} />
+                    </div>
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{stage.label}</span>
                   </div>
-                  <p className="text-sm font-medium text-foreground">{stage.label}</p>
+                  <p className="text-3xl font-bold text-foreground mb-1">
+                    {typeof stage.value === 'number' ? stage.value.toLocaleString() : stage.value}
+                  </p>
                   <p className="text-xs text-muted-foreground">{stage.sublabel}</p>
                 </div>
                 {idx < arr.length - 1 && (
-                  <ArrowRight className="h-5 w-5 text-muted-foreground mx-2 flex-shrink-0" />
+                  <ArrowRight className="h-4 w-4 text-muted-foreground/40 mx-1 flex-shrink-0" />
                 )}
               </div>
             ))}
           </div>
 
-          {/* Rates */}
-          <div className="grid grid-cols-4 gap-4">
+          {/* Rates Bar */}
+          <div className="flex items-center gap-6 pt-4 border-t border-border">
             {[
-              { label: "Dead Rate", value: metrics.funnel.deadRate, color: "bg-muted" },
-              { label: "Warm Rate", value: metrics.funnel.warmRate, color: "bg-info" },
-              { label: "Hot Rate", value: metrics.funnel.hotRate, color: "bg-warning" },
-              { label: "Conversión", value: metrics.funnel.conversionRate, color: "bg-primary" },
-            ].map((rate) => (
-              <div key={rate.label} className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">{rate.label}</span>
-                  <span className="font-medium">{rate.value}%</span>
+              { label: "Dead Rate", value: metrics.funnel.deadRate, color: "bg-slate-400", icon: Snowflake, iconColor: "text-slate-500" },
+              { label: "Warm Rate", value: metrics.funnel.warmRate, color: "bg-sky-400", icon: Thermometer, iconColor: "text-sky-500" },
+              { label: "Hot Rate", value: metrics.funnel.hotRate, color: "bg-amber-400", icon: Zap, iconColor: "text-amber-500" },
+              { label: "Conversión", value: metrics.funnel.conversionRate, color: "bg-emerald-500", icon: Target, iconColor: "text-emerald-500" },
+            ].map((rate, idx, arr) => (
+              <div key={rate.label} className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <rate.icon className={`h-3.5 w-3.5 ${rate.iconColor}`} />
+                  <span className="text-xs text-muted-foreground">{rate.label}</span>
+                  <span className={`text-sm font-semibold ml-auto ${
+                    rate.label === "Dead Rate" ? "text-slate-600" :
+                    rate.label === "Warm Rate" ? "text-sky-600" :
+                    rate.label === "Hot Rate" ? "text-amber-600" :
+                    "text-emerald-600"
+                  }`}>{rate.value}%</span>
                 </div>
-                <div className="h-2 rounded-full bg-muted/30 overflow-hidden">
+                <div className="h-2 rounded-full bg-secondary/50 overflow-hidden">
                   <div
                     className={`h-full ${rate.color} rounded-full transition-all`}
-                    style={{ width: `${rate.value}%` }}
+                    style={{ width: `${Math.min(rate.value * 2, 100)}%` }}
                   />
                 </div>
               </div>
@@ -137,21 +191,14 @@ export default function Dashboard() {
         </div>
 
         {/* Revenue Card */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="rounded-xl border border-primary/30 bg-primary/5 p-6 glow-subtle">
-            <div className="flex items-center gap-3 mb-2">
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="rounded-lg bg-primary/10 p-2">
               <DollarSign className="h-5 w-5 text-primary" />
-              <span className="text-sm font-medium text-muted-foreground">Revenue Total</span>
             </div>
-            <p className="text-3xl font-bold text-foreground">{formatCurrency(metrics.revenue)}</p>
+            <span className="text-sm font-medium text-muted-foreground">Revenue Total</span>
           </div>
-          <div className="rounded-xl border border-warning/30 bg-warning/5 p-6">
-            <div className="flex items-center gap-3 mb-2">
-              <TrendingUp className="h-5 w-5 text-warning" />
-              <span className="text-sm font-medium text-muted-foreground">Comisión GP (35%)</span>
-            </div>
-            <p className="text-3xl font-bold text-foreground">{formatCurrency(metrics.commission)}</p>
-          </div>
+          <p className="text-2xl font-semibold text-foreground">{formatCurrency(metrics.revenue)}</p>
         </div>
 
         {/* KPI Cards */}
@@ -178,34 +225,34 @@ export default function Dashboard() {
             title="Servicios agendados"
             value={metrics.servicesBooked}
             icon={CalendarCheck}
-            variant="hot"
+            variant="warning"
           />
         </div>
 
         {/* Appointments Table */}
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="p-4 border-b border-border">
-            <h3 className="text-lg font-semibold">Últimos agendamientos</h3>
+            <h3 className="text-base font-semibold text-foreground">Últimos agendamientos</h3>
           </div>
           <Table>
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
-                <TableHead>Fecha/Hora</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Servicio</TableHead>
-                <TableHead>Origen</TableHead>
-                <TableHead>Estado</TableHead>
+                <TableHead className="text-muted-foreground font-medium">Fecha/Hora</TableHead>
+                <TableHead className="text-muted-foreground font-medium">Cliente</TableHead>
+                <TableHead className="text-muted-foreground font-medium">Servicio</TableHead>
+                <TableHead className="text-muted-foreground font-medium">Origen</TableHead>
+                <TableHead className="text-muted-foreground font-medium">Estado</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {mockAppointments.slice(0, 8).map((apt) => (
-                <TableRow key={apt.id} className="border-border">
-                  <TableCell className="font-medium">
+                <TableRow key={apt.id} className="border-border hover:bg-secondary/50">
+                  <TableCell className="font-medium text-foreground">
                     {format(apt.datetime, "dd MMM, HH:mm", { locale: es })}
                   </TableCell>
-                  <TableCell>{apt.clientName}</TableCell>
-                  <TableCell>{apt.service}</TableCell>
-                  <TableCell className="capitalize">{apt.source}</TableCell>
+                  <TableCell className="text-foreground">{apt.clientName}</TableCell>
+                  <TableCell className="text-muted-foreground">{apt.service}</TableCell>
+                  <TableCell className="text-muted-foreground capitalize">{apt.source}</TableCell>
                   <TableCell>
                     <StatusBadge status={apt.status} />
                   </TableCell>

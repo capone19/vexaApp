@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { Bell, ChevronDown, LogOut, User, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,7 +11,11 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { mockUser } from "@/lib/mock/data";
 
+// Contador de notificaciones sin leer (en producción vendría del backend)
+const unreadNotifications = 3;
+
 export function TopBar() {
+  const navigate = useNavigate();
   const initials = mockUser.name
     .split(" ")
     .map((n) => n[0])
@@ -18,7 +23,7 @@ export function TopBar() {
     .toUpperCase();
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/80 backdrop-blur-sm px-6">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background px-6">
       {/* Left side - can be used for breadcrumbs or page title */}
       <div />
 
@@ -28,12 +33,15 @@ export function TopBar() {
         <Button
           variant="ghost"
           size="icon"
-          className="relative text-muted-foreground hover:text-foreground"
+          className="relative text-muted-foreground hover:text-foreground hover:bg-secondary"
+          onClick={() => navigate("/notificaciones")}
         >
           <Bell className="h-5 w-5" />
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-            3
-          </span>
+          {unreadNotifications > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground animate-pulse">
+              {unreadNotifications}
+            </span>
+          )}
         </Button>
 
         {/* User Dropdown */}
@@ -41,7 +49,7 @@ export function TopBar() {
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="flex items-center gap-2 px-2 hover:bg-muted"
+              className="flex items-center gap-2 px-2 hover:bg-secondary"
             >
               <Avatar className="h-8 w-8 border border-border">
                 <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">

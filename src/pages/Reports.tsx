@@ -54,9 +54,9 @@ const reportTypes = [
     locked: true,
   },
   {
-    id: 'channels',
-    title: 'Rendimiento por Canal',
-    description: 'Comparativa de métricas entre WhatsApp, Instagram, Messenger y Web.',
+    id: 'whatsapp',
+    title: 'Rendimiento WhatsApp',
+    description: 'Métricas detalladas de rendimiento del funnel de ventas por WhatsApp.',
     icon: PieChart,
     frequency: 'Semanal',
     locked: true,
@@ -91,7 +91,7 @@ const Reports = () => {
           />
 
           {/* Upgrade Banner */}
-          <Card className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-primary/20">
+          <Card className="bg-primary/5 border-primary/20">
             <CardContent className="p-6">
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div className="flex items-start gap-4">
@@ -127,20 +127,20 @@ const Reports = () => {
                   key={report.id}
                   className={`relative overflow-hidden transition-all ${
                     isLocked 
-                      ? 'bg-card/30 border-border/30 opacity-75' 
-                      : 'bg-card/50 border-border/50 hover:border-primary/30'
+                      ? 'border-border opacity-75' 
+                      : 'border-border hover:border-primary/50'
                   }`}
                 >
                   {isLocked && (
                     <div className="absolute top-3 right-3">
-                      <div className="p-1.5 rounded-full bg-muted/50">
+                      <div className="p-1.5 rounded-full bg-secondary">
                         <Lock className="h-3.5 w-3.5 text-muted-foreground" />
                       </div>
                     </div>
                   )}
                   <CardHeader className="pb-3">
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${
-                      isLocked ? 'bg-muted/30' : 'bg-primary/10'
+                      isLocked ? 'bg-secondary' : 'bg-primary/10'
                     }`}>
                       <Icon className={`h-5 w-5 ${isLocked ? 'text-muted-foreground' : 'text-primary'}`} />
                     </div>
@@ -173,17 +173,17 @@ const Reports = () => {
           </div>
 
           {/* Scheduled Reports Section (Locked) */}
-          <Card className="bg-card/30 border-border/30">
+          <Card className="border-border">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-muted/30">
+                  <div className="p-2 rounded-lg bg-secondary">
                     <Calendar className="h-5 w-5 text-muted-foreground" />
                   </div>
                   <div>
                     <CardTitle className="text-base flex items-center gap-2">
                       Reportes Programados
-                      <div className="p-1 rounded-full bg-muted/50">
+                      <div className="p-1 rounded-full bg-secondary">
                         <Lock className="h-3 w-3 text-muted-foreground" />
                       </div>
                     </CardTitle>
@@ -200,7 +200,7 @@ const Reports = () => {
             <CardContent>
               <div className="space-y-3 opacity-50">
                 {scheduledReports.map((report, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-muted/20">
+                  <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-secondary">
                     <div className="flex items-center gap-3">
                       <FileText className="h-4 w-4 text-muted-foreground" />
                       <span className="text-sm">{report.name}</span>
@@ -213,10 +213,10 @@ const Reports = () => {
           </Card>
 
           {/* Export Section (Locked) */}
-          <Card className="bg-card/30 border-border/30">
+          <Card className="border-border">
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-muted/30">
+                <div className="p-2 rounded-lg bg-secondary">
                   <Download className="h-5 w-5 text-muted-foreground" />
                 </div>
                 <div>
@@ -251,7 +251,7 @@ const Reports = () => {
           </Card>
 
           {/* Feature Comparison */}
-          <Card className="bg-gradient-to-br from-card/80 to-card/40 border-border/50">
+          <Card className="border-border">
             <CardHeader>
               <CardTitle className="text-lg">Compara Planes</CardTitle>
             </CardHeader>

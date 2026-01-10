@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, MapPin, Phone, Clock, MessageSquare, Send } from "lucide-react";
+import { Plus, Trash2, MapPin, Phone, Clock } from "lucide-react";
 import type { BusinessSettings, Location, DaySchedule } from "@/lib/types";
 
 interface BusinessSectionProps {
@@ -295,72 +295,6 @@ export function BusinessSection({ settings, onChange }: BusinessSectionProps) {
         </CardContent>
       </Card>
 
-      {/* Mini Chat Demo */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MessageSquare className="h-5 w-5 text-primary" />
-            Prueba tu Chatbot
-          </CardTitle>
-          <CardDescription>
-            Vista previa de cómo interactúa el agente
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="bg-muted/30 rounded-lg border border-border overflow-hidden">
-            {/* Chat messages */}
-            <div className="p-4 space-y-3 min-h-[200px]">
-              {/* User message */}
-              <div className="flex justify-end">
-                <div className="bg-primary/20 border border-primary/30 rounded-lg rounded-br-none px-4 py-2 max-w-[80%]">
-                  <p className="text-sm">¿Dónde están ubicados?</p>
-                </div>
-              </div>
-              {/* Bot message */}
-              <div className="flex justify-start">
-                <div className="bg-muted border border-border rounded-lg rounded-bl-none px-4 py-2 max-w-[80%]">
-                  <p className="text-sm">
-                    ¡Hola! 👋 {settings.hasPhysicalStore && settings.locations.length > 0 
-                      ? `Estamos ubicados en ${settings.locations[0].name || "nuestra sede principal"}, ${settings.locations[0].address || "consulta nuestra dirección exacta"} en ${settings.locations[0].city || "la ciudad"}.`
-                      : "Actualmente operamos de forma remota. ¿En qué puedo ayudarte?"}
-                  </p>
-                </div>
-              </div>
-              {/* User message */}
-              <div className="flex justify-end">
-                <div className="bg-primary/20 border border-primary/30 rounded-lg rounded-br-none px-4 py-2 max-w-[80%]">
-                  <p className="text-sm">¿A qué número puedo llamar?</p>
-                </div>
-              </div>
-              {/* Bot message */}
-              <div className="flex justify-start">
-                <div className="bg-muted border border-border rounded-lg rounded-bl-none px-4 py-2 max-w-[80%]">
-                  <p className="text-sm">
-                    Puedes contactarnos al {settings.phoneNumbers[0] || "nuestro número de atención"}. 
-                    ¡Estamos para ayudarte! 😊
-                  </p>
-                </div>
-              </div>
-            </div>
-            {/* Input */}
-            <div className="border-t border-border p-3">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Escribe un mensaje..."
-                  disabled
-                  className="bg-muted/50 border-border"
-                />
-                <Button size="icon" disabled className="shrink-0">
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground text-center mt-2">
-                Demo visual - El chat completo estará disponible en Playground
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

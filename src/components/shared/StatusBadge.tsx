@@ -12,46 +12,46 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   // Appointment statuses
   confirmed: {
     label: "Confirmado",
-    className: "bg-success/10 text-success border-success/30",
+    className: "bg-success/10 text-success-soft-foreground",
   },
   pending: {
     label: "Pendiente",
-    className: "bg-warning/10 text-warning border-warning/30",
+    className: "bg-warning/10 text-warning-soft-foreground",
   },
   canceled: {
     label: "Cancelado",
-    className: "bg-destructive/10 text-destructive border-destructive/30",
+    className: "bg-destructive/10 text-destructive",
   },
   // Chat statuses
   active: {
     label: "Activo",
-    className: "bg-success/10 text-success border-success/30",
+    className: "bg-success/10 text-success-soft-foreground",
   },
   closed: {
     label: "Cerrado",
-    className: "bg-muted text-muted-foreground border-muted",
+    className: "bg-secondary text-muted-foreground",
   },
   // Template statuses
   approved: {
     label: "Aprobado",
-    className: "bg-success/10 text-success border-success/30",
+    className: "bg-success/10 text-success-soft-foreground",
   },
   rejected: {
     label: "Rechazado",
-    className: "bg-destructive/10 text-destructive border-destructive/30",
+    className: "bg-destructive/10 text-destructive",
   },
 };
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
   const config = statusConfig[status] || {
     label: status,
-    className: "bg-muted text-muted-foreground",
+    className: "bg-secondary text-muted-foreground",
   };
 
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
+        "inline-flex items-center rounded-md px-2 py-1 text-xs font-medium",
         config.className,
         className
       )}

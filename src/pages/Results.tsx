@@ -27,12 +27,15 @@ const generateConversionTrend = () => {
   return data;
 };
 
-const channelPerformance = [
-  { channel: 'WhatsApp', chats: 1800, conversions: 220, revenue: 9900000, conversionRate: 12.2, avgTicket: 45000, trend: 15.3 },
-  { channel: 'Instagram', chats: 650, conversions: 75, revenue: 3150000, conversionRate: 11.5, avgTicket: 42000, trend: -2.1 },
-  { channel: 'Messenger', chats: 300, conversions: 35, revenue: 1400000, conversionRate: 11.7, avgTicket: 40000, trend: 8.7 },
-  { channel: 'Web', chats: 90, conversions: 12, revenue: 480000, conversionRate: 13.3, avgTicket: 40000, trend: 22.5 },
-];
+// WhatsApp performance data
+const whatsappPerformance = {
+  chats: 1800,
+  conversions: 220,
+  revenue: 9900000,
+  conversionRate: 12.2,
+  avgTicket: 45000,
+  trend: 15.3
+};
 
 const topServices = [
   { name: 'Corte de cabello', conversions: 145, revenue: 2175000, growth: 18.5 },
@@ -69,7 +72,7 @@ const Results = () => {
     return (
       <MainLayout>
         <div className="space-y-6">
-          <PageHeader title="Resultados" subtitle="Impacto en el negocio y rendimiento comercial" />
+          <PageHeader title="Ventas" subtitle="Impacto en el negocio y rendimiento comercial" />
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {[...Array(4)].map((_, i) => <SkeletonCard key={i} />)}
           </div>
@@ -81,8 +84,8 @@ const Results = () => {
     );
   }
 
-  const totalConversions = channelPerformance.reduce((sum, ch) => sum + ch.conversions, 0);
-  const totalRevenue = channelPerformance.reduce((sum, ch) => sum + ch.revenue, 0);
+  const totalConversions = whatsappPerformance.conversions;
+  const totalRevenue = whatsappPerformance.revenue;
   const avgConversionRate = (totalConversions / metrics.totalChats) * 100;
 
   return (
@@ -116,18 +119,12 @@ const Results = () => {
             trend={{ value: 22.4, isPositive: true }}
             variant="warning"
           />
-          <KPICard
-            title="Comisión GP (35%)"
-            value={formatCurrency(metrics.commission)}
-            icon={Zap}
-            trend={{ value: 22.4, isPositive: true }}
-          />
         </div>
 
         {/* Conversion Trend & Impact Summary */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Conversion Trend Chart */}
-          <Card className="lg:col-span-2 bg-card/50 border-border/50">
+          <Card className="lg:col-span-2 border-border">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Target className="h-4 w-4 text-primary" />
@@ -168,7 +165,7 @@ const Results = () => {
           </Card>
 
           {/* Business Impact Summary */}
-          <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+          <Card className="bg-primary/5 border-primary/20">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Award className="h-4 w-4 text-primary" />
@@ -213,72 +210,9 @@ const Results = () => {
           </Card>
         </div>
 
-        {/* Channel Performance Table */}
-        <Card className="bg-card/50 border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-cyan-400" />
-              Rendimiento por Canal
-            </CardTitle>
-            <CardDescription>Comparativa de conversión y revenue por origen de conversación</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border/50">
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Canal</th>
-                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Chats</th>
-                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Conversiones</th>
-                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Tasa Conv.</th>
-                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Revenue</th>
-                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Ticket Prom.</th>
-                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Tendencia</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {channelPerformance.map((row, idx) => (
-                    <tr key={idx} className="border-b border-border/30 hover:bg-background/50 transition-colors">
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          <div className={cn(
-                            "w-2 h-2 rounded-full",
-                            row.channel === 'WhatsApp' && "bg-success",
-                            row.channel === 'Instagram' && "bg-pink-500",
-                            row.channel === 'Messenger' && "bg-blue-500",
-                            row.channel === 'Web' && "bg-cyan-500"
-                          )} />
-                          <span className="font-medium">{row.channel}</span>
-                        </div>
-                      </td>
-                      <td className="text-right py-3 px-4">{row.chats.toLocaleString()}</td>
-                      <td className="text-right py-3 px-4 font-medium">{row.conversions}</td>
-                      <td className="text-right py-3 px-4">
-                        <Badge variant="outline" className="bg-primary/10 border-primary/30">
-                          {row.conversionRate}%
-                        </Badge>
-                      </td>
-                      <td className="text-right py-3 px-4 font-medium">{formatCurrency(row.revenue)}</td>
-                      <td className="text-right py-3 px-4 text-muted-foreground">{formatCurrency(row.avgTicket)}</td>
-                      <td className="text-right py-3 px-4">
-                        <span className={cn(
-                          "flex items-center justify-end gap-1 text-sm font-medium",
-                          row.trend >= 0 ? "text-success" : "text-destructive"
-                        )}>
-                          {row.trend >= 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                          {Math.abs(row.trend)}%
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Top Services */}
-        <Card className="bg-card/50 border-border/50">
+        <Card className="border-border">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Award className="h-4 w-4 text-warning" />
@@ -291,7 +225,7 @@ const Results = () => {
               {topServices.map((service, idx) => (
                 <div 
                   key={idx}
-                  className="p-4 rounded-xl border border-border/50 bg-background/50 hover:bg-background/80 transition-all space-y-3"
+                  className="p-4 rounded-lg border border-border bg-card hover:bg-secondary/50 transition-all space-y-3"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">

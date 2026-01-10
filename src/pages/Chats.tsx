@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { FunnelStageBadge } from "@/components/shared/FunnelStagesBadge";
-import { ChannelBadge } from "@/components/shared/ChannelBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,19 +9,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { fetchChats } from "@/lib/mock/data";
-import type { Chat, FunnelStage, Channel, ChatStatus } from "@/lib/types";
+import type { Chat, FunnelStage, ChatStatus } from "@/lib/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { Search, User, AlertTriangle, Send } from "lucide-react";
+import { Search, User, Send, Bot } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 export default function Chats() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
+  const [botEnabled, setBotEnabled] = useState<Record<string, boolean>>({});
   const [filters, setFilters] = useState({
     search: "",
     status: "all" as "all" | ChatStatus,
-    channel: "all" as "all" | Channel,
     stage: "all" as "all" | FunnelStage,
   });
 
@@ -39,7 +40,6 @@ export default function Chats() {
   const filteredChats = chats.filter((chat) => {
     if (filters.search && !chat.userName.toLowerCase().includes(filters.search.toLowerCase())) return false;
     if (filters.status !== "all" && chat.status !== filters.status) return false;
-    if (filters.channel !== "all" && chat.channel !== filters.channel) return false;
     if (filters.stage !== "all" && chat.funnelStage !== filters.stage) return false;
     return true;
   });
@@ -57,28 +57,19 @@ export default function Chats() {
               placeholder="Buscar por nombre..."
               value={filters.search}
               onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-              className="pl-9 bg-card border-border"
+              className="pl-9 bg-background border-border"
             />
           </div>
           <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v as typeof filters.status })}>
-            <SelectTrigger className="w-32 bg-card border-border"><SelectValue placeholder="Estado" /></SelectTrigger>
+            <SelectTrigger className="w-32 bg-background border-border"><SelectValue placeholder="Estado" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos</SelectItem>
               <SelectItem value="active">Activo</SelectItem>
               <SelectItem value="closed">Cerrado</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={filters.channel} onValueChange={(v) => setFilters({ ...filters, channel: v as typeof filters.channel })}>
-            <SelectTrigger className="w-36 bg-card border-border"><SelectValue placeholder="Canal" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="whatsapp">WhatsApp</SelectItem>
-              <SelectItem value="instagram">Instagram</SelectItem>
-              <SelectItem value="messenger">Messenger</SelectItem>
-            </SelectContent>
-          </Select>
           <Select value={filters.stage} onValueChange={(v) => setFilters({ ...filters, stage: v as typeof filters.stage })}>
-            <SelectTrigger className="w-32 bg-card border-border"><SelectValue placeholder="Etapa" /></SelectTrigger>
+            <SelectTrigger className="w-32 bg-background border-border"><SelectValue placeholder="Etapa" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas</SelectItem>
               <SelectItem value="dead">Dead</SelectItem>
@@ -92,23 +83,23 @@ export default function Chats() {
         {/* Chat Interface */}
         <div className="flex flex-1 gap-4 min-h-0">
           {/* Chat List */}
-          <div className="w-80 flex-shrink-0 rounded-xl border border-border bg-card overflow-hidden flex flex-col">
+          <div className="w-80 flex-shrink-0 rounded-lg border border-border bg-card overflow-hidden flex flex-col">
             <ScrollArea className="flex-1">
               {filteredChats.map((chat) => (
                 <button
                   key={chat.id}
                   onClick={() => setSelectedChat(chat)}
                   className={cn(
-                    "w-full p-4 text-left border-b border-border transition-colors hover:bg-muted/50",
-                    selectedChat?.id === chat.id && "bg-muted/50"
+                    "w-full p-4 text-left border-b border-border transition-colors hover:bg-secondary/50",
+                    selectedChat?.id === chat.id && "bg-secondary"
                   )}
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
                         <User className="h-4 w-4 text-muted-foreground" />
                       </div>
-                      <span className="font-medium text-sm">{chat.userName}</span>
+                      <span className="font-medium text-sm text-foreground">{chat.userName}</span>
                     </div>
                     <span className="text-xs text-muted-foreground">
                       {format(chat.lastMessageAt, "HH:mm", { locale: es })}
@@ -119,10 +110,10 @@ export default function Chats() {
                   </p>
                   <div className="flex items-center gap-2 flex-wrap">
                     <FunnelStageBadge stage={chat.funnelStage} />
-                    <ChannelBadge channel={chat.channel} showLabel={false} />
-                    {chat.hasHumanIntervention && (
-                      <span className="inline-flex items-center gap-1 text-xs text-warning">
-                        <AlertTriangle className="h-3 w-3" />
+                    {botEnabled[chat.id] === false && (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                        <Bot className="h-3 w-3" />
+                        Off
                       </span>
                     )}
                   </div>
@@ -132,32 +123,42 @@ export default function Chats() {
           </div>
 
           {/* Chat Messages */}
-          <div className="flex-1 rounded-xl border border-border bg-card flex flex-col overflow-hidden">
+          <div className="flex-1 rounded-lg border border-border bg-card flex flex-col overflow-hidden">
             {selectedChat ? (
               <>
                 {/* Chat Header */}
-                <div className="p-4 border-b border-border flex items-center justify-between">
+                <div className="p-4 border-b border-border flex items-center justify-between bg-background">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
                       <User className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
-                      <h3 className="font-semibold">{selectedChat.userName}</h3>
+                      <h3 className="font-semibold text-foreground">{selectedChat.userName}</h3>
                       <p className="text-xs text-muted-foreground">Session: {selectedChat.sessionId}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     <StatusBadge status={selectedChat.status} />
                     <FunnelStageBadge stage={selectedChat.funnelStage} />
-                    <Button variant="outline" size="sm" className="gap-2">
-                      <AlertTriangle className="h-4 w-4" />
-                      Intervención
-                    </Button>
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-secondary/50">
+                      <Bot className="h-4 w-4 text-muted-foreground" />
+                      <Label htmlFor="bot-toggle" className="text-sm font-medium cursor-pointer">
+                        Bot
+                      </Label>
+                      <Switch
+                        id="bot-toggle"
+                        checked={botEnabled[selectedChat.id] !== false}
+                        onCheckedChange={(checked) => {
+                          setBotEnabled(prev => ({ ...prev, [selectedChat.id]: checked }));
+                          // Aquí se conectará con n8n/Supabase para actualizar el estado
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
 
                 {/* Messages */}
-                <ScrollArea className="flex-1 p-4">
+                <ScrollArea className="flex-1 p-4 bg-secondary/30">
                   <div className="space-y-4">
                     {selectedChat.messages.map((msg) => (
                       <div
@@ -169,18 +170,18 @@ export default function Chats() {
                       >
                         <div
                           className={cn(
-                            "max-w-[70%] rounded-2xl px-4 py-2.5",
+                            "max-w-[70%] rounded-lg px-4 py-2.5 shadow-sm",
                             msg.sender === "user"
-                              ? "bg-muted text-foreground rounded-bl-md"
+                              ? "bg-background border border-border text-foreground"
                               : msg.sender === "bot"
-                              ? "bg-primary text-primary-foreground rounded-br-md"
-                              : "bg-warning text-warning-foreground rounded-br-md"
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-warning text-warning-foreground"
                           )}
                         >
                           <p className="text-sm">{msg.content}</p>
                           <p className={cn(
-                            "text-xs mt-1 opacity-70",
-                            msg.sender === "user" ? "text-muted-foreground" : ""
+                            "text-xs mt-1",
+                            msg.sender === "user" ? "text-muted-foreground" : "opacity-70"
                           )}>
                             {format(msg.timestamp, "HH:mm", { locale: es })}
                           </p>
@@ -191,12 +192,12 @@ export default function Chats() {
                 </ScrollArea>
 
                 {/* Input (disabled for demo) */}
-                <div className="p-4 border-t border-border">
+                <div className="p-4 border-t border-border bg-background">
                   <div className="flex gap-2">
                     <Input
                       placeholder="Escribe un mensaje..."
                       disabled
-                      className="bg-muted/50 border-border"
+                      className="bg-secondary border-border"
                     />
                     <Button disabled size="icon">
                       <Send className="h-4 w-4" />

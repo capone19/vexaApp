@@ -36,13 +36,6 @@ const generateFunnelData = () => [
   { stage: 'BOFU', value: 342, fill: 'hsl(var(--bofu))' },
 ];
 
-const generateChannelFunnelData = () => [
-  { channel: 'WhatsApp', tofu: 1800, mofu: 800, hot: 320, bofu: 220 },
-  { channel: 'Instagram', tofu: 650, mofu: 280, hot: 100, bofu: 75 },
-  { channel: 'Messenger', tofu: 300, mofu: 120, hot: 50, bofu: 35 },
-  { channel: 'Web', tofu: 90, mofu: 47, hot: 16, bofu: 12 },
-];
-
 const generateAbandonmentData = () => [
   { hour: '08:00', rate: 12 },
   { hour: '10:00', rate: 8 },
@@ -60,7 +53,6 @@ const Metrics = () => {
   const [showComparison, setShowComparison] = useState(false);
   const [timeSeriesData] = useState(generateTimeSeriesData);
   const [funnelData] = useState(generateFunnelData);
-  const [channelFunnelData] = useState(generateChannelFunnelData);
   const [abandonmentData] = useState(generateAbandonmentData);
 
   useEffect(() => {
@@ -146,7 +138,7 @@ const Metrics = () => {
         {/* Charts Row 1 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Chat Volume Chart */}
-          <Card className="bg-card/50 border-border/50">
+          <Card className="border-border">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <MessageSquare className="h-4 w-4 text-primary" />
@@ -197,10 +189,10 @@ const Metrics = () => {
           </Card>
 
           {/* Messages per Conversation */}
-          <Card className="bg-card/50 border-border/50">
+          <Card className="border-border">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-cyan-400" />
+                <BarChart3 className="h-4 w-4 text-primary" />
                 Mensajes por Conversación
               </CardTitle>
               <CardDescription>Promedio de mensajes intercambiados</CardDescription>
@@ -233,7 +225,7 @@ const Metrics = () => {
         {/* Charts Row 2 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Funnel Visualization */}
-          <Card className="bg-card/50 border-border/50">
+          <Card className="border-border">
             <CardHeader>
               <CardTitle className="text-base">Funnel de Conversaciones</CardTitle>
               <CardDescription>Distribución por etapa del funnel</CardDescription>
@@ -262,7 +254,7 @@ const Metrics = () => {
           </Card>
 
           {/* Abandonment Rate */}
-          <Card className="bg-card/50 border-border/50">
+          <Card className="border-border">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <TrendingDown className="h-4 w-4 text-destructive" />
@@ -297,45 +289,6 @@ const Metrics = () => {
           </Card>
         </div>
 
-        {/* Channel Funnel Table */}
-        <Card className="bg-card/50 border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base">Rendimiento por Canal y Etapa</CardTitle>
-            <CardDescription>Distribución de conversaciones por canal en cada etapa del funnel</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border/50">
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Canal</th>
-                    <th className="text-right py-3 px-4 text-sm font-medium" style={{ color: 'hsl(var(--tofu))' }}>TOFU</th>
-                    <th className="text-right py-3 px-4 text-sm font-medium" style={{ color: 'hsl(var(--mofu))' }}>MOFU</th>
-                    <th className="text-right py-3 px-4 text-sm font-medium" style={{ color: 'hsl(var(--hotlead))' }}>Hot Leads</th>
-                    <th className="text-right py-3 px-4 text-sm font-medium" style={{ color: 'hsl(var(--bofu))' }}>BOFU</th>
-                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Conversión</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {channelFunnelData.map((row, idx) => (
-                    <tr key={idx} className="border-b border-border/30 hover:bg-background/50 transition-colors">
-                      <td className="py-3 px-4 font-medium">{row.channel}</td>
-                      <td className="text-right py-3 px-4">{row.tofu.toLocaleString()}</td>
-                      <td className="text-right py-3 px-4">{row.mofu.toLocaleString()}</td>
-                      <td className="text-right py-3 px-4">{row.hot.toLocaleString()}</td>
-                      <td className="text-right py-3 px-4">{row.bofu.toLocaleString()}</td>
-                      <td className="text-right py-3 px-4">
-                        <span className="text-success font-medium">
-                          {((row.bofu / row.tofu) * 100).toFixed(1)}%
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </MainLayout>
   );

@@ -10,8 +10,11 @@ import Calendar from "./pages/Calendar";
 import Metrics from "./pages/Metrics";
 import Results from "./pages/Results";
 import Marketing from "./pages/Marketing";
+import MarketingTemplates from "./pages/MarketingTemplates";
+import MarketingPerformance from "./pages/MarketingPerformance";
 import Reports from "./pages/Reports";
 import Billing from "./pages/Billing";
+import Notifications from "./pages/Notifications";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,14 +27,19 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/chats" element={<Chats />} />
           <Route path="/ajustes-agente" element={<AgentSettings />} />
+          <Route path="/chats" element={<Chats />} />
           <Route path="/calendario" element={<Calendar />} />
-          <Route path="/metricas" element={<Metrics />} />
-          <Route path="/resultados" element={<Results />} />
+          {/* Resultados routes */}
+          <Route path="/resultados" element={<Metrics />} />
+          <Route path="/resultados/metricas" element={<Metrics />} />
+          <Route path="/resultados/ventas" element={<Results />} />
           <Route path="/marketing" element={<Marketing />} />
+          <Route path="/marketing/plantillas" element={<MarketingTemplates />} />
+          <Route path="/marketing/performance" element={<MarketingPerformance />} />
           <Route path="/reportes" element={<Reports />} />
           <Route path="/facturacion" element={<Billing />} />
+          <Route path="/notificaciones" element={<Notifications />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

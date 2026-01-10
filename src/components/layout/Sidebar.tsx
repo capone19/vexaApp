@@ -5,12 +5,11 @@ import {
   LayoutDashboard,
   MessageSquare,
   Calendar,
-  BarChart3,
   TrendingUp,
   FileText,
   Megaphone,
   CreditCard,
-  Settings,
+  Bot,
   Bell,
   HelpCircle,
   Cog,
@@ -30,10 +29,19 @@ interface NavItem {
 
 const mainNavItems: NavItem[] = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
+  { title: "Ajustes del Agente", href: "/ajustes-agente", icon: Bot },
   { title: "Chats", href: "/chats", icon: MessageSquare },
   { title: "Calendario", href: "/calendario", icon: Calendar },
-  { title: "Métricas", href: "/metricas", icon: BarChart3 },
-  { title: "Resultados", href: "/resultados", icon: TrendingUp },
+  {
+    title: "Resultados",
+    href: "/resultados",
+    icon: TrendingUp,
+    children: [
+      { title: "Métricas", href: "/resultados/metricas" },
+      { title: "Ventas", href: "/resultados/ventas" },
+    ],
+  },
+  { title: "Facturación", href: "/facturacion", icon: CreditCard },
   { title: "Reportes", href: "/reportes", icon: FileText, isUpgrade: true },
   {
     title: "Marketing",
@@ -45,8 +53,6 @@ const mainNavItems: NavItem[] = [
       { title: "Performance", href: "/marketing/performance" },
     ],
   },
-  { title: "Facturación", href: "/facturacion", icon: CreditCard },
-  { title: "Ajustes del Agente", href: "/ajustes-agente", icon: Settings },
 ];
 
 const bottomNavItems: NavItem[] = [
@@ -55,9 +61,14 @@ const bottomNavItems: NavItem[] = [
   { title: "Configuración", href: "/configuracion", icon: Cog },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  isExpanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+}
+
+export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
   const location = useLocation();
-  const [expandedItems, setExpandedItems] = useState<string[]>(["Marketing"]);
+  const [expandedItems, setExpandedItems] = useState<string[]>(["Resultados", "Marketing"]);
 
   const toggleExpanded = (title: string) => {
     setExpandedItems((prev) =>
@@ -73,13 +84,26 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-sidebar-border bg-sidebar flex flex-col">
+    <aside 
+      className={cn(
+        "fixed left-0 top-0 z-40 h-screen border-r border-border bg-sidebar flex flex-col transition-all duration-300 ease-in-out",
+        isExpanded ? "w-64" : "w-[72px]"
+      )}
+      onMouseEnter={() => onExpandedChange(true)}
+      onMouseLeave={() => onExpandedChange(false)}
+    >
       {/* Logo */}
-      <div className="flex h-16 items-center gap-2 border-b border-sidebar-border px-6">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-          <Sparkles className="h-4 w-4 text-primary-foreground" />
+      <div className={cn(
+        "flex h-16 items-center gap-3 border-b border-border transition-all duration-300",
+        isExpanded ? "px-6" : "px-4 justify-center"
+      )}>
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary shrink-0">
+          <Sparkles className="h-5 w-5 text-primary-foreground" />
         </div>
-        <span className="text-lg font-semibold text-sidebar-foreground">
+        <span className={cn(
+          "text-lg font-semibold text-foreground whitespace-nowrap transition-all duration-300",
+          isExpanded ? "opacity-100" : "opacity-0 w-0 overflow-hidden"
+        )}>
           Growth Partners
         </span>
       </div>
@@ -92,28 +116,40 @@ export function Sidebar() {
               {item.children ? (
                 <div>
                   <button
-                    onClick={() => toggleExpanded(item.title)}
+                    onClick={() => isExpanded && toggleExpanded(item.title)}
                     className={cn(
-                      "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                      "flex w-full items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                      isExpanded ? "justify-between" : "justify-center",
                       isActive(item.href)
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent/50"
+                        : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                     )}
+                    title={!isExpanded ? item.title : undefined}
                   >
-                    <div className="flex items-center gap-3">
-                      <item.icon className="h-5 w-5" />
-                      <span>{item.title}</span>
-                      {item.isUpgrade && (
+                    <div className={cn(
+                      "flex items-center",
+                      isExpanded ? "gap-3" : "gap-0"
+                    )}>
+                      <item.icon className="h-5 w-5 shrink-0" />
+                      <span className={cn(
+                        "whitespace-nowrap transition-all duration-300",
+                        isExpanded ? "opacity-100" : "opacity-0 w-0 overflow-hidden"
+                      )}>
+                        {item.title}
+                      </span>
+                      {item.isUpgrade && isExpanded && (
                         <Lock className="h-3.5 w-3.5 text-warning" />
                       )}
                     </div>
-                    {expandedItems.includes(item.title) ? (
-                      <ChevronDown className="h-4 w-4" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4" />
+                    {isExpanded && (
+                      expandedItems.includes(item.title) ? (
+                        <ChevronDown className="h-4 w-4 shrink-0" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 shrink-0" />
+                      )
                     )}
                   </button>
-                  {expandedItems.includes(item.title) && (
+                  {isExpanded && expandedItems.includes(item.title) && (
                     <ul className="ml-8 mt-1 space-y-1">
                       {item.children.map((child) => (
                         <li key={child.href}>
@@ -123,8 +159,8 @@ export function Sidebar() {
                               cn(
                                 "block rounded-lg px-3 py-2 text-sm transition-colors",
                                 isActive
-                                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                                  ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                                  : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                               )
                             }
                           >
@@ -141,16 +177,23 @@ export function Sidebar() {
                   end={item.href === "/"}
                   className={({ isActive }) =>
                     cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                      "flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                      isExpanded ? "gap-3" : "justify-center",
                       isActive
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground glow-subtle"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent/50"
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                     )
                   }
+                  title={!isExpanded ? item.title : undefined}
                 >
-                  <item.icon className="h-5 w-5" />
-                  <span>{item.title}</span>
-                  {item.isUpgrade && (
+                  <item.icon className="h-5 w-5 shrink-0" />
+                  <span className={cn(
+                    "whitespace-nowrap transition-all duration-300",
+                    isExpanded ? "opacity-100" : "opacity-0 w-0 overflow-hidden"
+                  )}>
+                    {item.title}
+                  </span>
+                  {item.isUpgrade && isExpanded && (
                     <Lock className="h-3.5 w-3.5 text-warning" />
                   )}
                 </NavLink>
@@ -161,7 +204,7 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom Navigation */}
-      <div className="border-t border-sidebar-border px-3 py-4">
+      <div className="border-t border-border px-3 py-4">
         <ul className="space-y-1">
           {bottomNavItems.map((item) => (
             <li key={item.title}>
@@ -169,15 +212,22 @@ export function Sidebar() {
                 to={item.href}
                 className={({ isActive }) =>
                   cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                    "flex items-center rounded-lg px-3 py-2 text-sm transition-colors",
+                    isExpanded ? "gap-3" : "justify-center",
                     isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                      : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                   )
                 }
+                title={!isExpanded ? item.title : undefined}
               >
-                <item.icon className="h-4 w-4" />
-                <span>{item.title}</span>
+                <item.icon className="h-4 w-4 shrink-0" />
+                <span className={cn(
+                  "whitespace-nowrap transition-all duration-300",
+                  isExpanded ? "opacity-100" : "opacity-0 w-0 overflow-hidden"
+                )}>
+                  {item.title}
+                </span>
               </NavLink>
             </li>
           ))}

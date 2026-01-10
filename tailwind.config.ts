@@ -60,23 +60,51 @@ export default {
         success: {
           DEFAULT: "hsl(var(--success))",
           foreground: "hsl(var(--success-foreground))",
+          soft: "hsl(var(--success-soft))",
+          "soft-foreground": "hsl(var(--success-soft-foreground))",
         },
         warning: {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
+          soft: "hsl(var(--warning-soft))",
+          "soft-foreground": "hsl(var(--warning-soft-foreground))",
         },
         info: {
           DEFAULT: "hsl(var(--info))",
           foreground: "hsl(var(--info-foreground))",
+          soft: "hsl(var(--info-soft))",
+          "soft-foreground": "hsl(var(--info-soft-foreground))",
+        },
+        error: {
+          DEFAULT: "hsl(var(--error))",
+          foreground: "hsl(var(--error-foreground))",
+          soft: "hsl(var(--error-soft))",
+          "soft-foreground": "hsl(var(--error-soft-foreground))",
         },
         hot: {
           DEFAULT: "hsl(var(--hot))",
           foreground: "hsl(var(--hot-foreground))",
         },
-        tofu: "hsl(var(--tofu))",
-        mofu: "hsl(var(--mofu))",
-        hotlead: "hsl(var(--hotlead))",
-        bofu: "hsl(var(--bofu))",
+        tofu: {
+          DEFAULT: "hsl(var(--tofu))",
+          soft: "hsl(var(--tofu-soft))",
+          "soft-foreground": "hsl(var(--tofu-soft-foreground))",
+        },
+        mofu: {
+          DEFAULT: "hsl(var(--mofu))",
+          soft: "hsl(var(--mofu-soft))",
+          "soft-foreground": "hsl(var(--mofu-soft-foreground))",
+        },
+        hotlead: {
+          DEFAULT: "hsl(var(--hotlead))",
+          soft: "hsl(var(--hotlead-soft))",
+          "soft-foreground": "hsl(var(--hotlead-soft-foreground))",
+        },
+        bofu: {
+          DEFAULT: "hsl(var(--bofu))",
+          soft: "hsl(var(--bofu-soft))",
+          "soft-foreground": "hsl(var(--bofu-soft-foreground))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

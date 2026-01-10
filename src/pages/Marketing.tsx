@@ -43,11 +43,11 @@ const categoryLabels: Record<TemplateCategory, string> = {
 };
 
 const categoryColors: Record<TemplateCategory, string> = {
-  followup: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  reminder: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  reactivation: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  postservice: 'bg-green-500/20 text-green-400 border-green-500/30',
-  promotion: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+  followup: 'bg-blue-50 text-blue-700 border-blue-200',
+  reminder: 'bg-amber-50 text-amber-700 border-amber-200',
+  reactivation: 'bg-purple-50 text-purple-700 border-purple-200',
+  postservice: 'bg-green-50 text-green-700 border-green-200',
+  promotion: 'bg-pink-50 text-pink-700 border-pink-200',
 };
 
 const Marketing = () => {
@@ -166,9 +166,9 @@ const Marketing = () => {
 
   const getStatusIcon = (status: TemplateStatus) => {
     switch (status) {
-      case 'approved': return <CheckCircle className="h-4 w-4 text-green-400" />;
-      case 'pending': return <AlertCircle className="h-4 w-4 text-amber-400" />;
-      case 'rejected': return <XCircle className="h-4 w-4 text-red-400" />;
+      case 'approved': return <CheckCircle className="h-4 w-4 text-success" />;
+      case 'pending': return <AlertCircle className="h-4 w-4 text-warning" />;
+      case 'rejected': return <XCircle className="h-4 w-4 text-destructive" />;
     }
   };
 
@@ -188,46 +188,46 @@ const Marketing = () => {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card className="bg-card/50 border-border/50">
+          <Card className="border-border">
             <CardContent className="p-4 flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/10">
                 <MessageSquare className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{stats.total}</p>
+                <p className="text-2xl font-semibold text-foreground">{stats.total}</p>
                 <p className="text-xs text-muted-foreground">Total</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-card/50 border-border/50">
+          <Card className="border-border">
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-green-500/10">
-                <CheckCircle className="h-5 w-5 text-green-400" />
+              <div className="p-2 rounded-lg bg-success/10">
+                <CheckCircle className="h-5 w-5 text-success" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{stats.approved}</p>
+                <p className="text-2xl font-semibold text-foreground">{stats.approved}</p>
                 <p className="text-xs text-muted-foreground">Aprobadas</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-card/50 border-border/50">
+          <Card className="border-border">
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-amber-500/10">
-                <Clock className="h-5 w-5 text-amber-400" />
+              <div className="p-2 rounded-lg bg-warning/10">
+                <Clock className="h-5 w-5 text-warning" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{stats.pending}</p>
+                <p className="text-2xl font-semibold text-foreground">{stats.pending}</p>
                 <p className="text-xs text-muted-foreground">Pendientes</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-card/50 border-border/50">
+          <Card className="border-border">
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-red-500/10">
-                <XCircle className="h-5 w-5 text-red-400" />
+              <div className="p-2 rounded-lg bg-destructive/10">
+                <XCircle className="h-5 w-5 text-destructive" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{stats.rejected}</p>
+                <p className="text-2xl font-semibold text-foreground">{stats.rejected}</p>
                 <p className="text-xs text-muted-foreground">Rechazadas</p>
               </div>
             </CardContent>
@@ -242,11 +242,11 @@ const Marketing = () => {
               placeholder="Buscar plantillas..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 bg-card/50"
+              className="pl-9 bg-background border-border"
             />
           </div>
           <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-            <SelectTrigger className="w-full sm:w-[180px] bg-card/50">
+            <SelectTrigger className="w-full sm:w-[180px] bg-background border-border">
               <Filter className="h-4 w-4 mr-2" />
               <SelectValue placeholder="Categoría" />
             </SelectTrigger>
@@ -258,7 +258,7 @@ const Marketing = () => {
             </SelectContent>
           </Select>
           <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-            <SelectTrigger className="w-full sm:w-[160px] bg-card/50">
+            <SelectTrigger className="w-full sm:w-[160px] bg-background border-border">
               <SelectValue placeholder="Estado" />
             </SelectTrigger>
             <SelectContent>
@@ -275,7 +275,7 @@ const Marketing = () => {
           {filteredTemplates.map(template => (
             <Card 
               key={template.id} 
-              className="bg-card/50 border-border/50 hover:border-primary/30 transition-colors cursor-pointer group"
+              className="border-border hover:border-primary/50 transition-colors cursor-pointer group"
               onClick={() => setViewingTemplate(template)}
             >
               <CardHeader className="pb-3">
@@ -295,7 +295,7 @@ const Marketing = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Preview */}
-                <div className="bg-background/50 rounded-lg p-3 border border-border/30">
+                <div className="bg-secondary rounded-lg p-3 border border-border">
                   <p className="text-sm text-muted-foreground line-clamp-3">
                     {template.content}
                   </p>
@@ -320,7 +320,7 @@ const Marketing = () => {
                 )}
 
                 {/* Meta & Actions */}
-                <div className="flex items-center justify-between pt-2 border-t border-border/30">
+                <div className="flex items-center justify-between pt-2 border-t border-border">
                   <span className="text-xs text-muted-foreground">
                     {template.lastUsedAt 
                       ? `Usado ${format(template.lastUsedAt, 'dd MMM', { locale: es })}`
@@ -423,7 +423,7 @@ const Marketing = () => {
               </p>
             </div>
 
-            <div className="flex items-center gap-3 p-4 rounded-lg bg-muted/30">
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-secondary border border-border">
               <Switch
                 checked={formData.hasButton}
                 onCheckedChange={(checked) => setFormData({ ...formData, hasButton: checked })}

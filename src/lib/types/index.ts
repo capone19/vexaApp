@@ -159,7 +159,7 @@ export interface LimitsSettings {
 // Chat & Messages
 export type FunnelStage = 'dead' | 'warm' | 'hot' | 'converted';
 export type ChatStatus = 'active' | 'closed';
-export type Channel = 'whatsapp' | 'instagram' | 'messenger' | 'web';
+export type Channel = 'whatsapp';
 
 export interface Chat {
   id: string;
@@ -231,7 +231,6 @@ export interface DashboardMetrics {
   avgConversionTime: number; // hours
   servicesBooked: number;
   revenue: number;
-  commission: number;
   funnel: FunnelMetrics;
 }
 

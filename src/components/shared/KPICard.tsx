@@ -15,21 +15,21 @@ interface KPICardProps {
 }
 
 const variantStyles = {
-  default: "border-border",
-  primary: "border-primary/30 bg-primary/5",
-  success: "border-success/30 bg-success/5",
-  warning: "border-warning/30 bg-warning/5",
-  info: "border-info/30 bg-info/5",
-  hot: "border-hot/30 bg-hot/5",
+  default: "border-border bg-card",
+  primary: "border-primary/20 bg-primary/5",
+  success: "border-success/20 bg-success/5",
+  warning: "border-warning/20 bg-warning/5",
+  info: "border-info/20 bg-info/5",
+  hot: "border-hot/20 bg-hot/5",
 };
 
 const iconVariantStyles = {
-  default: "text-muted-foreground",
-  primary: "text-primary",
-  success: "text-success",
-  warning: "text-warning",
-  info: "text-info",
-  hot: "text-hot",
+  default: "text-muted-foreground bg-secondary",
+  primary: "text-primary bg-primary/10",
+  success: "text-success bg-success/10",
+  warning: "text-warning bg-warning/10",
+  info: "text-info bg-info/10",
+  hot: "text-hot bg-hot/10",
 };
 
 export function KPICard({
@@ -44,7 +44,7 @@ export function KPICard({
   return (
     <div
       className={cn(
-        "rounded-xl border bg-card p-5 transition-all card-hover",
+        "rounded-lg border p-5 transition-all card-hover",
         variantStyles[variant],
         className
       )}
@@ -53,7 +53,7 @@ export function KPICard({
         <div className="space-y-1">
           <p className="text-sm font-medium text-muted-foreground">{title}</p>
           <div className="flex items-baseline gap-2">
-            <p className="text-2xl font-bold tracking-tight text-foreground">
+            <p className="text-2xl font-semibold tracking-tight text-foreground">
               {value}
             </p>
             {trend && (
@@ -75,7 +75,7 @@ export function KPICard({
         {Icon && (
           <div
             className={cn(
-              "rounded-lg bg-muted/50 p-2",
+              "rounded-lg p-2.5",
               iconVariantStyles[variant]
             )}
           >
