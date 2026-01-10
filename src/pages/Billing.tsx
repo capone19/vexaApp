@@ -28,10 +28,21 @@ import { mockBilling, mockClient } from '@/lib/mock/data';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-const plans = [
+type PlanId = 'basic' | 'pro' | 'enterprise';
+
+const plans: Array<{
+  id: PlanId;
+  name: string;
+  price: number;
+  onboarding: number;
+  currency: string;
+  description: string;
+  features: string[];
+  popular: boolean;
+}> = [
   {
-    id: 'standard',
-    name: 'Estándar',
+    id: 'basic',
+    name: 'Básico',
     price: 99,
     onboarding: 150,
     currency: 'USD',
@@ -63,8 +74,8 @@ const plans = [
     popular: true,
   },
   {
-    id: 'max',
-    name: 'Max',
+    id: 'enterprise',
+    name: 'Enterprise',
     price: 499,
     onboarding: 550,
     currency: 'USD',
@@ -346,7 +357,7 @@ const Billing = () => {
             {plans.map((plan) => (
               <div
                 key={plan.id}
-                onClick={() => setSelectedPlan(plan.id as 'standard' | 'pro' | 'max')}
+                onClick={() => setSelectedPlan(plan.id)}
                 className={`relative p-4 rounded-lg border-2 cursor-pointer transition-all ${
                   selectedPlan === plan.id
                     ? 'border-primary bg-primary/5'
