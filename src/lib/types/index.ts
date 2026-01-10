@@ -1,5 +1,5 @@
 // ============================================
-// Growth Partners - Type Definitions
+// VEXA - Type Definitions
 // ============================================
 
 // Client (Tenant)
@@ -39,6 +39,10 @@ export interface PersonalitySettings {
   empathy: 'baja' | 'media' | 'alta';
   humor: 'ausente' | 'sutil' | 'moderado' | 'marcado';
   emojis: 'nunca' | 'ocasional' | 'frecuente';
+  // New fields
+  primaryObjective: 'agendar' | 'vender' | 'calificar' | 'informar' | 'mixto';
+  actionPriority: 'agendar_informar' | 'informar_agendar' | 'derivar_humano' | 'resolver_cerrar';
+  closingPreference: 'proponer_agendamiento' | 'solicitar_datos' | 'enviar_link' | 'derivar_humano' | 'cerrar_educadamente';
   lastModified: Date;
 }
 
@@ -47,8 +51,16 @@ export interface BusinessSettings {
   hasPhysicalStore: boolean;
   locations: Location[];
   phoneNumbers: string[];
+  // New fields
+  serviceCoverage: ServiceCoverageType[];
+  coverageZones: string;
+  idealClientTypes: IdealClientType[];
+  valueProposition: string;
   lastModified: Date;
 }
+
+export type ServiceCoverageType = 'presencial_local' | 'domicilio' | 'online' | 'hibrido';
+export type IdealClientType = 'personas_naturales' | 'empresas' | 'premium' | 'masivo' | 'urgente' | 'planificado';
 
 export interface Location {
   id: string;
@@ -88,7 +100,17 @@ export interface Service {
   duration: number; // minutes
   price: number;
   currency: string;
+  // New fields
+  actionObjective: ServiceActionType;
+  requiredData: RequiredDataType[];
+  otherRequiredData?: string; // Custom field when 'otros' is selected
+  capacityPerSlot?: number;
+  noAvailabilityAction: NoAvailabilityActionType;
 }
+
+export type ServiceActionType = 'agendar' | 'cotizar' | 'informar' | 'derivar_humano';
+export type RequiredDataType = 'nombre' | 'telefono' | 'email' | 'servicio' | 'fecha_preferida' | 'medio_pago' | 'observaciones' | 'otros';
+export type NoAvailabilityActionType = 'lista_espera' | 'sugerir_horario' | 'derivar_humano' | 'solicitar_flexibilidad';
 
 export interface ReschedulingSettings {
   allowRescheduling: boolean;
@@ -106,6 +128,9 @@ export interface PaymentSettings {
   methods: PaymentMethod[];
   restrictions: PaymentRestriction[];
   instructions: string;
+  // New fields
+  requiresDeposit: boolean;
+  depositPercentage: number;
   lastModified: Date;
 }
 
@@ -124,8 +149,12 @@ export interface InterventionSettings {
   enabled: boolean;
   conditions: InterventionCondition[];
   customRules: string;
+  // New field
+  unqualifiedLeadHandling: UnqualifiedLeadHandlingType;
   lastModified: Date;
 }
+
+export type UnqualifiedLeadHandlingType = 'responder_cerrar' | 'ofrecer_alternativa' | 'derivar_humano' | 'finalizar_educadamente';
 
 export interface InterventionCondition {
   id: string;
@@ -153,8 +182,12 @@ export interface LimitsSettings {
     description: string;
   };
   avoidedLanguage: string[];
+  // New field
+  prohibitedTopicAction: ProhibitedTopicActionType;
   lastModified: Date;
 }
+
+export type ProhibitedTopicActionType = 'redirigir' | 'responder_genericamente' | 'derivar_humano';
 
 // Chat & Messages
 export type FunnelStage = 'dead' | 'warm' | 'hot' | 'converted';

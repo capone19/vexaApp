@@ -4,8 +4,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Users, AlertTriangle, MessageSquare } from "lucide-react";
-import type { InterventionSettings, InterventionCondition } from "@/lib/types";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Users, AlertTriangle, MessageSquare, UserX } from "lucide-react";
+import type { InterventionSettings, InterventionCondition, UnqualifiedLeadHandlingType } from "@/lib/types";
 
 interface InterventionSectionProps {
   settings: InterventionSettings;
@@ -127,6 +128,48 @@ export function InterventionSection({ settings, onChange }: InterventionSectionP
                 {enabledConditionsCount} condición{enabledConditionsCount !== 1 ? "es" : ""} activa{enabledConditionsCount !== 1 ? "s" : ""}
               </span>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Manejo de leads no calificados */}
+      {settings.enabled && (
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserX className="h-5 w-5 text-warning" />
+              Manejo de leads no calificados
+            </CardTitle>
+            <CardDescription>
+              ¿Qué hacer con conversaciones que no cumplen criterios mínimos?
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Select 
+              value={settings.unqualifiedLeadHandling} 
+              onValueChange={(v) => onChange({ 
+                ...settings, 
+                unqualifiedLeadHandling: v as UnqualifiedLeadHandlingType, 
+                lastModified: new Date() 
+              })}
+            >
+              <SelectTrigger className="w-full max-w-md bg-muted/30 border-border">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="responder_cerrar">Responder y cerrar conversación</SelectItem>
+                <SelectItem value="ofrecer_alternativa">Ofrecer alternativa o información general</SelectItem>
+                <SelectItem value="derivar_humano">Derivar a humano para evaluación</SelectItem>
+                <SelectItem value="finalizar_educadamente">Finalizar conversación educadamente</SelectItem>
+              </SelectContent>
+            </Select>
+            <Alert className="bg-info/10 border-info/30">
+              <MessageSquare className="h-4 w-4 text-info" />
+              <AlertDescription className="text-sm">
+                Esto evita escalar conversaciones que no cumplen criterios mínimos de calificación, 
+                ahorrando tiempo del equipo humano.
+              </AlertDescription>
+            </Alert>
           </CardContent>
         </Card>
       )}

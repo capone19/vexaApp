@@ -2,7 +2,9 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { MessageSquare } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MessageSquare, Target, Zap, CheckCircle } from "lucide-react";
 import type { PersonalitySettings } from "@/lib/types";
 
 interface PersonalitySectionProps {
@@ -22,9 +24,32 @@ const humorValues: PersonalitySettings["humor"][] = ["ausente", "sutil", "modera
 const emojiLabels = ["Nunca", "Ocasional", "Frecuente"];
 const emojiValues: PersonalitySettings["emojis"][] = ["nunca", "ocasional", "frecuente"];
 
+const objectiveLabels: Record<PersonalitySettings["primaryObjective"], string> = {
+  agendar: "Agendar citas",
+  vender: "Vender servicios",
+  calificar: "Calificar leads",
+  informar: "Informar / Soporte",
+  mixto: "Mixto",
+};
+
+const priorityLabels: Record<PersonalitySettings["actionPriority"], string> = {
+  agendar_informar: "Agendar → Informar",
+  informar_agendar: "Informar → Agendar",
+  derivar_humano: "Derivar a humano",
+  resolver_cerrar: "Resolver y cerrar",
+};
+
+const closingLabels: Record<PersonalitySettings["closingPreference"], string> = {
+  proponer_agendamiento: "Proponer agendamiento",
+  solicitar_datos: "Solicitar datos de contacto",
+  enviar_link: "Enviar link de acción",
+  derivar_humano: "Derivar a humano",
+  cerrar_educadamente: "Cerrar conversación educadamente",
+};
+
 // Generate preview responses based on personality settings
 const getPreviewResponses = (settings: PersonalitySettings): string[] => {
-  const { formality, empathy, humor, emojis } = settings;
+  const { formality, empathy, humor, emojis, primaryObjective, closingPreference } = settings;
   
   const emoji = emojis === "frecuente" ? " 😊💅✨" : emojis === "ocasional" ? " 😊" : "";
   const greeting = formality === "muy_formal" ? "Estimado/a cliente" 
@@ -47,9 +72,22 @@ const getPreviewResponses = (settings: PersonalitySettings): string[] => {
     ? " Estoy seguro/a de que quedarás satisfecho/a."
     : "";
 
+  // Closing based on preference and objective
+  let closing = "";
+  if (primaryObjective === "agendar" || closingPreference === "proponer_agendamiento") {
+    closing = "¿Te gustaría que agendemos tu cita ahora?";
+  } else if (closingPreference === "solicitar_datos") {
+    closing = "¿Me compartes tu nombre y número para contactarte?";
+  } else if (closingPreference === "enviar_link") {
+    closing = "Te comparto el link para que puedas agendar directamente.";
+  } else {
+    closing = "¿Hay algo más en lo que pueda ayudarte?";
+  }
+
   return [
-    `${greeting}, bienvenido/a a Beauty Salon Pro.${emoji} ¿En qué puedo ayudarte hoy?`,
-    `${empathyPhrase} Tenemos disponibilidad para corte de cabello mañana a las 10:00 y 15:00.${humorPhrase}${emoji}`,
+    `${greeting}, bienvenido/a a nuestro servicio.${emoji} ¿En qué puedo ayudarte hoy?`,
+    `${empathyPhrase} Tenemos disponibilidad mañana a las 10:00 y 15:00.${humorPhrase}${emoji}`,
+    `${closing}${emoji}`,
   ];
 };
 
@@ -73,134 +111,219 @@ export function PersonalitySection({ settings, onChange }: PersonalitySectionPro
     });
   };
 
+  const handleObjectiveChange = (value: PersonalitySettings["primaryObjective"]) => {
+    onChange({ ...settings, primaryObjective: value, lastModified: new Date() });
+  };
+
+  const handlePriorityChange = (value: PersonalitySettings["actionPriority"]) => {
+    onChange({ ...settings, actionPriority: value, lastModified: new Date() });
+  };
+
+  const handleClosingChange = (value: PersonalitySettings["closingPreference"]) => {
+    onChange({ ...settings, closingPreference: value, lastModified: new Date() });
+  };
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Controles */}
+    <div className="space-y-6">
+      {/* Objetivo y Prioridades */}
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle>Ajustes de personalidad</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Target className="h-5 w-5 text-primary" />
+            Objetivo del agente
+          </CardTitle>
           <CardDescription>
-            Define cómo se comunica tu agente con los clientes
+            Define qué debe priorizar tu agente en cada conversación
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-8">
-          {/* Formalidad */}
-          <div className="space-y-4">
-            <div className="flex justify-between">
-              <Label className="text-sm font-medium">Formalidad</Label>
-              <span className="text-sm text-primary font-medium">
-                {formalityLabels[formalityValues.indexOf(settings.formality)]}
-              </span>
-            </div>
-            <Slider
-              value={[formalityValues.indexOf(settings.formality)]}
-              onValueChange={(v) => handleSliderChange("formality", formalityValues, v)}
-              max={4}
-              step={1}
-              className="w-full"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              {formalityLabels.map((label) => (
-                <span key={label}>{label}</span>
+        <CardContent className="space-y-6">
+          {/* Objetivo principal */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Objetivo principal</Label>
+            <RadioGroup
+              value={settings.primaryObjective}
+              onValueChange={handleObjectiveChange}
+              className="grid grid-cols-2 md:grid-cols-3 gap-3"
+            >
+              {(Object.keys(objectiveLabels) as PersonalitySettings["primaryObjective"][]).map((key) => (
+                <div key={key} className="flex items-center space-x-2">
+                  <RadioGroupItem value={key} id={`obj-${key}`} />
+                  <Label htmlFor={`obj-${key}`} className="font-normal cursor-pointer">
+                    {objectiveLabels[key]}
+                  </Label>
+                </div>
               ))}
-            </div>
+            </RadioGroup>
           </div>
 
-          {/* Empatía */}
-          <div className="space-y-4">
-            <div className="flex justify-between">
-              <Label className="text-sm font-medium">Empatía</Label>
-              <span className="text-sm text-primary font-medium">
-                {empathyLabels[empathyValues.indexOf(settings.empathy)]}
-              </span>
-            </div>
-            <Slider
-              value={[empathyValues.indexOf(settings.empathy)]}
-              onValueChange={(v) => handleSliderChange("empathy", empathyValues, v)}
-              max={2}
-              step={1}
-              className="w-full"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              {empathyLabels.map((label) => (
-                <span key={label}>{label}</span>
-              ))}
-            </div>
+          {/* Prioridad de acción */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium flex items-center gap-2">
+              <Zap className="h-4 w-4 text-warning" />
+              Prioridad de acción
+            </Label>
+            <Select value={settings.actionPriority} onValueChange={handlePriorityChange}>
+              <SelectTrigger className="w-full max-w-sm bg-muted/30 border-border">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(priorityLabels) as PersonalitySettings["actionPriority"][]).map((key) => (
+                  <SelectItem key={key} value={key}>{priorityLabels[key]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Define qué hacer primero cuando el cliente tiene múltiples necesidades
+            </p>
           </div>
 
-          {/* Humor */}
-          <div className="space-y-4">
-            <div className="flex justify-between">
-              <Label className="text-sm font-medium">Humor</Label>
-              <span className="text-sm text-primary font-medium">
-                {humorLabels[humorValues.indexOf(settings.humor)]}
-              </span>
-            </div>
-            <Slider
-              value={[humorValues.indexOf(settings.humor)]}
-              onValueChange={(v) => handleSliderChange("humor", humorValues, v)}
-              max={3}
-              step={1}
-              className="w-full"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              {humorLabels.map((label) => (
-                <span key={label}>{label}</span>
-              ))}
-            </div>
-          </div>
-
-          {/* Emojis */}
-          <div className="space-y-4">
-            <div className="flex justify-between">
-              <Label className="text-sm font-medium">Uso de emojis</Label>
-              <span className="text-sm text-primary font-medium">
-                {emojiLabels[emojiValues.indexOf(settings.emojis)]}
-              </span>
-            </div>
-            <Slider
-              value={[emojiValues.indexOf(settings.emojis)]}
-              onValueChange={(v) => handleSliderChange("emojis", emojiValues, v)}
-              max={2}
-              step={1}
-              className="w-full"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              {emojiLabels.map((label) => (
-                <span key={label}>{label}</span>
-              ))}
-            </div>
+          {/* Forma de cierre */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-success" />
+              Forma de cierre preferida
+            </Label>
+            <Select value={settings.closingPreference} onValueChange={handleClosingChange}>
+              <SelectTrigger className="w-full max-w-sm bg-muted/30 border-border">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(closingLabels) as PersonalitySettings["closingPreference"][]).map((key) => (
+                  <SelectItem key={key} value={key}>{closingLabels[key]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Cómo debe cerrar el agente una conversación exitosa
+            </p>
           </div>
         </CardContent>
       </Card>
 
-      {/* Vista previa dinámica */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <MessageSquare className="h-5 w-5 text-primary" />
-            <CardTitle>Vista previa</CardTitle>
-          </div>
-          <CardDescription>
-            Así responderá tu agente con la configuración actual
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="bg-muted/30 rounded-lg p-4 space-y-3">
-            {previewMessages.map((message, index) => (
-              <div
-                key={index}
-                className="bg-primary/10 border border-primary/20 rounded-lg rounded-bl-none p-3 max-w-[90%]"
-              >
-                <p className="text-sm text-foreground">{message}</p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Controles de personalidad */}
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <CardTitle>Tono de comunicación</CardTitle>
+            <CardDescription>
+              Ajusta cómo se comunica tu agente con los clientes
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-8">
+            {/* Formalidad */}
+            <div className="space-y-4">
+              <div className="flex justify-between">
+                <Label className="text-sm font-medium">Formalidad</Label>
+                <span className="text-sm text-primary font-medium">
+                  {formalityLabels[formalityValues.indexOf(settings.formality)]}
+                </span>
               </div>
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground mt-3 text-center">
-            Los mensajes se actualizan en tiempo real según tus ajustes
-          </p>
-        </CardContent>
-      </Card>
+              <Slider
+                value={[formalityValues.indexOf(settings.formality)]}
+                onValueChange={(v) => handleSliderChange("formality", formalityValues, v)}
+                max={4}
+                step={1}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Casual</span>
+                <span>Profesional</span>
+              </div>
+            </div>
+
+            {/* Empatía */}
+            <div className="space-y-4">
+              <div className="flex justify-between">
+                <Label className="text-sm font-medium">Empatía</Label>
+                <span className="text-sm text-primary font-medium">
+                  {empathyLabels[empathyValues.indexOf(settings.empathy)]}
+                </span>
+              </div>
+              <Slider
+                value={[empathyValues.indexOf(settings.empathy)]}
+                onValueChange={(v) => handleSliderChange("empathy", empathyValues, v)}
+                max={2}
+                step={1}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Directo</span>
+                <span>Comprensivo</span>
+              </div>
+            </div>
+
+            {/* Humor */}
+            <div className="space-y-4">
+              <div className="flex justify-between">
+                <Label className="text-sm font-medium">Humor</Label>
+                <span className="text-sm text-primary font-medium">
+                  {humorLabels[humorValues.indexOf(settings.humor)]}
+                </span>
+              </div>
+              <Slider
+                value={[humorValues.indexOf(settings.humor)]}
+                onValueChange={(v) => handleSliderChange("humor", humorValues, v)}
+                max={3}
+                step={1}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Serio</span>
+                <span>Divertido</span>
+              </div>
+            </div>
+
+            {/* Emojis */}
+            <div className="space-y-4">
+              <div className="flex justify-between">
+                <Label className="text-sm font-medium">Uso de emojis</Label>
+                <span className="text-sm text-primary font-medium">
+                  {emojiLabels[emojiValues.indexOf(settings.emojis)]}
+                </span>
+              </div>
+              <Slider
+                value={[emojiValues.indexOf(settings.emojis)]}
+                onValueChange={(v) => handleSliderChange("emojis", emojiValues, v)}
+                max={2}
+                step={1}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Sin emojis</span>
+                <span>Expresivo</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Vista previa dinámica */}
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-primary" />
+              <CardTitle>Vista previa</CardTitle>
+            </div>
+            <CardDescription>
+              Así responderá tu agente con la configuración actual
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="bg-muted/30 rounded-lg p-4 space-y-3">
+              {previewMessages.map((message, index) => (
+                <div
+                  key={index}
+                  className="bg-primary/10 border border-primary/20 rounded-lg rounded-bl-none p-3 max-w-[90%]"
+                >
+                  <p className="text-sm text-foreground">{message}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-3 text-center">
+              Los mensajes se actualizan en tiempo real según tus ajustes
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

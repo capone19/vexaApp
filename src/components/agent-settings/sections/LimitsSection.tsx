@@ -7,8 +7,9 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ShieldAlert, X, Plus, AlertTriangle, Ban, MessageSquareOff } from "lucide-react";
-import type { LimitsSettings } from "@/lib/types";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ShieldAlert, X, Plus, AlertTriangle, Ban, MessageSquareOff, ArrowRight } from "lucide-react";
+import type { LimitsSettings, ProhibitedTopicActionType } from "@/lib/types";
 
 interface LimitsSectionProps {
   settings: LimitsSettings;
@@ -96,7 +97,7 @@ export function LimitsSection({ settings, onChange }: LimitsSectionProps) {
             Temas prohibidos
           </CardTitle>
           <CardDescription>
-            El agente no hablará sobre estos temas y redirigirá la conversación
+            El agente no hablará sobre estos temas
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -131,6 +132,41 @@ export function LimitsSection({ settings, onChange }: LimitsSectionProps) {
               <Plus className="h-4 w-4" />
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Acción ante temas prohibidos */}
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ArrowRight className="h-5 w-5 text-primary" />
+            Acción ante temas prohibidos
+          </CardTitle>
+          <CardDescription>
+            ¿Qué debe hacer el agente cuando detecta un tema prohibido?
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Select 
+            value={settings.prohibitedTopicAction} 
+            onValueChange={(v) => onChange({ 
+              ...settings, 
+              prohibitedTopicAction: v as ProhibitedTopicActionType, 
+              lastModified: new Date() 
+            })}
+          >
+            <SelectTrigger className="w-full max-w-md bg-muted/30 border-border">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="redirigir">Redirigir a otro tema amablemente</SelectItem>
+              <SelectItem value="responder_genericamente">Responder de forma genérica y continuar</SelectItem>
+              <SelectItem value="derivar_humano">Derivar a humano para manejo especial</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Esta acción se aplicará automáticamente cuando el cliente mencione cualquier tema de la lista prohibida
+          </p>
         </CardContent>
       </Card>
 

@@ -6,8 +6,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, MapPin, Phone, Clock } from "lucide-react";
-import type { BusinessSettings, Location, DaySchedule } from "@/lib/types";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Plus, Trash2, MapPin, Phone, Clock, Globe, Users, Sparkles } from "lucide-react";
+import type { BusinessSettings, Location, DaySchedule, ServiceCoverageType, IdealClientType } from "@/lib/types";
 
 interface BusinessSectionProps {
   settings: BusinessSettings;
@@ -24,6 +25,22 @@ const dayLabels: Record<DaySchedule["day"], string> = {
   domingo: "Domingo",
 };
 
+const coverageOptions: { value: ServiceCoverageType; label: string; description: string }[] = [
+  { value: "presencial_local", label: "Presencial en local", description: "Clientes vienen a tu ubicación" },
+  { value: "domicilio", label: "A domicilio", description: "Vas donde el cliente" },
+  { value: "online", label: "Online", description: "Servicios remotos/virtuales" },
+  { value: "hibrido", label: "Híbrido", description: "Combinas modalidades" },
+];
+
+const clientTypeOptions: { value: IdealClientType; label: string }[] = [
+  { value: "personas_naturales", label: "Personas naturales" },
+  { value: "empresas", label: "Empresas" },
+  { value: "premium", label: "Premium" },
+  { value: "masivo", label: "Masivo" },
+  { value: "urgente", label: "Urgente" },
+  { value: "planificado", label: "Planificado" },
+];
+
 export function BusinessSection({ settings, onChange }: BusinessSectionProps) {
   const [newPhone, setNewPhone] = useState("");
 
@@ -33,6 +50,28 @@ export function BusinessSection({ settings, onChange }: BusinessSectionProps) {
 
   const handleTogglePhysicalStore = (hasPhysicalStore: boolean) => {
     onChange({ ...settings, hasPhysicalStore, lastModified: new Date() });
+  };
+
+  const handleCoverageChange = (coverage: ServiceCoverageType, checked: boolean) => {
+    const newCoverage = checked
+      ? [...settings.serviceCoverage, coverage]
+      : settings.serviceCoverage.filter((c) => c !== coverage);
+    onChange({ ...settings, serviceCoverage: newCoverage, lastModified: new Date() });
+  };
+
+  const handleCoverageZonesChange = (coverageZones: string) => {
+    onChange({ ...settings, coverageZones, lastModified: new Date() });
+  };
+
+  const handleClientTypeChange = (clientType: IdealClientType, checked: boolean) => {
+    const newTypes = checked
+      ? [...settings.idealClientTypes, clientType]
+      : settings.idealClientTypes.filter((t) => t !== clientType);
+    onChange({ ...settings, idealClientTypes: newTypes, lastModified: new Date() });
+  };
+
+  const handleValuePropositionChange = (valueProposition: string) => {
+    onChange({ ...settings, valueProposition, lastModified: new Date() });
   };
 
   const handleAddPhone = () => {
@@ -104,6 +143,9 @@ export function BusinessSection({ settings, onChange }: BusinessSectionProps) {
     onChange({ ...settings, locations: newLocations, lastModified: new Date() });
   };
 
+  const showCoverageZones = settings.serviceCoverage.includes("domicilio") || 
+                            settings.serviceCoverage.includes("hibrido");
+
   return (
     <div className="space-y-6">
       {/* Información general */}
@@ -123,6 +165,114 @@ export function BusinessSection({ settings, onChange }: BusinessSectionProps) {
           />
           <p className="text-xs text-muted-foreground mt-2">
             {settings.description.length} / 1000 caracteres
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Propuesta de valor */}
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            Propuesta de valor
+          </CardTitle>
+          <CardDescription>
+            Resume en una frase qué hace único a tu negocio
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Input
+            value={settings.valueProposition}
+            onChange={(e) => handleValuePropositionChange(e.target.value)}
+            placeholder="Ej: Atención rápida y profesional con foco en experiencia premium."
+            className="bg-muted/30 border-border"
+            maxLength={150}
+          />
+          <p className="text-xs text-muted-foreground mt-2">
+            {settings.valueProposition.length} / 150 caracteres
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Cobertura del servicio */}
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-5 w-5 text-primary" />
+            Cobertura del servicio
+          </CardTitle>
+          <CardDescription>
+            ¿Cómo entregas tus servicios?
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {coverageOptions.map((option) => (
+              <div
+                key={option.value}
+                className={`flex items-start gap-3 rounded-lg border p-4 transition-colors cursor-pointer ${
+                  settings.serviceCoverage.includes(option.value)
+                    ? "border-primary/30 bg-primary/5"
+                    : "border-border bg-muted/10 hover:border-primary/20"
+                }`}
+                onClick={() => handleCoverageChange(option.value, !settings.serviceCoverage.includes(option.value))}
+              >
+                <Checkbox
+                  checked={settings.serviceCoverage.includes(option.value)}
+                  onCheckedChange={(checked) => handleCoverageChange(option.value, checked as boolean)}
+                />
+                <div>
+                  <Label className="font-medium cursor-pointer">{option.label}</Label>
+                  <p className="text-xs text-muted-foreground">{option.description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {showCoverageZones && (
+            <div className="pt-4 space-y-2">
+              <Label>Zonas de cobertura</Label>
+              <Textarea
+                value={settings.coverageZones}
+                onChange={(e) => handleCoverageZonesChange(e.target.value)}
+                placeholder="Describe las zonas donde ofreces servicio a domicilio o híbrido. Ej: Santiago Centro, Providencia, Las Condes, Ñuñoa..."
+                className="min-h-[80px] bg-muted/30 border-border"
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Tipo de cliente ideal */}
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
+            Tipo de cliente ideal (ICP)
+          </CardTitle>
+          <CardDescription>
+            ¿A quién va dirigido principalmente tu servicio?
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2">
+            {clientTypeOptions.map((option) => (
+              <Badge
+                key={option.value}
+                variant={settings.idealClientTypes.includes(option.value) ? "default" : "outline"}
+                className={`cursor-pointer transition-all px-3 py-1.5 ${
+                  settings.idealClientTypes.includes(option.value)
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted/30 hover:bg-muted/50"
+                }`}
+                onClick={() => handleClientTypeChange(option.value, !settings.idealClientTypes.includes(option.value))}
+              >
+                {option.label}
+              </Badge>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground mt-3">
+            Selecciona todos los que apliquen. Esto ayuda al agente a personalizar la comunicación.
           </p>
         </CardContent>
       </Card>

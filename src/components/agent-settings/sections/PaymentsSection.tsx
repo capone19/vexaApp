@@ -223,6 +223,53 @@ export function PaymentsSection({ settings, onChange }: PaymentsSectionProps) {
         </Card>
       )}
 
+      {/* Abono requerido */}
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Abono para confirmar</CardTitle>
+              <CardDescription>
+                ¿Se requiere un pago parcial para confirmar la reserva?
+              </CardDescription>
+            </div>
+            <Switch
+              checked={settings.requiresDeposit}
+              onCheckedChange={(checked) => 
+                onChange({ ...settings, requiresDeposit: checked, lastModified: new Date() })
+              }
+            />
+          </div>
+        </CardHeader>
+        {settings.requiresDeposit && (
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Porcentaje de abono requerido</Label>
+              <div className="flex items-center gap-3">
+                <Input
+                  type="number"
+                  value={settings.depositPercentage}
+                  onChange={(e) => 
+                    onChange({ 
+                      ...settings, 
+                      depositPercentage: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)),
+                      lastModified: new Date() 
+                    })
+                  }
+                  className="w-24 bg-muted/30 border-border"
+                  min={0}
+                  max={100}
+                />
+                <span className="text-muted-foreground">%</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                El agente informará que se requiere un {settings.depositPercentage}% de abono para confirmar
+              </p>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
       {/* Instrucciones generales */}
       <Card className="bg-card border-border">
         <CardHeader>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { Logo, LogoMark } from "@/components/shared/Logo";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -16,7 +17,6 @@ import {
   ChevronDown,
   ChevronRight,
   Lock,
-  Sparkles,
 } from "lucide-react";
 
 interface NavItem {
@@ -92,20 +92,16 @@ export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
       onMouseEnter={() => onExpandedChange(true)}
       onMouseLeave={() => onExpandedChange(false)}
     >
-      {/* Logo */}
+      {/* Logo VEXA */}
       <div className={cn(
-        "flex h-16 items-center gap-3 border-b border-border transition-all duration-300",
-        isExpanded ? "px-6" : "px-4 justify-center"
+        "flex h-16 items-center border-b border-border transition-all duration-300",
+        isExpanded ? "px-6 gap-3" : "px-4 justify-center"
       )}>
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary shrink-0">
-          <Sparkles className="h-5 w-5 text-primary-foreground" />
-        </div>
-        <span className={cn(
-          "text-lg font-semibold text-foreground whitespace-nowrap transition-all duration-300",
-          isExpanded ? "opacity-100" : "opacity-0 w-0 overflow-hidden"
-        )}>
-          Growth Partners
-        </span>
+        {isExpanded ? (
+          <Logo variant="full" color="dark" className="h-7" />
+        ) : (
+          <LogoMark background="muted" className="h-9 w-9" />
+        )}
       </div>
 
       {/* Main Navigation */}

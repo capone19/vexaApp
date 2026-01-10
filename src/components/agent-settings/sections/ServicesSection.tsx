@@ -8,14 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -25,8 +18,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit2, Clock, Briefcase, DollarSign } from "lucide-react";
-import type { ServicesSettings, Service, DaySchedule } from "@/lib/types";
+import { Plus, Trash2, Edit2, Clock, Briefcase, DollarSign, Target, ClipboardList, AlertCircle, Users } from "lucide-react";
+import type { ServicesSettings, Service, DaySchedule, ServiceActionType, RequiredDataType, NoAvailabilityActionType } from "@/lib/types";
 
 interface ServicesSectionProps {
   settings: ServicesSettings;
@@ -43,12 +36,41 @@ const dayLabels: Record<DaySchedule["day"], string> = {
   domingo: "Domingo",
 };
 
+const actionObjectiveLabels: Record<ServiceActionType, string> = {
+  agendar: "Agendar cita",
+  cotizar: "Cotizar",
+  informar: "Solo informar",
+  derivar_humano: "Derivar a humano",
+};
+
+const requiredDataLabels: Record<RequiredDataType, string> = {
+  nombre: "Nombre",
+  telefono: "Teléfono",
+  email: "Email",
+  servicio: "Servicio",
+  fecha_preferida: "Fecha preferida",
+  medio_pago: "Medio de pago",
+  observaciones: "Observaciones",
+  otros: "Otros (especificar)",
+};
+
+const noAvailabilityLabels: Record<NoAvailabilityActionType, string> = {
+  lista_espera: "Ofrecer lista de espera",
+  sugerir_horario: "Sugerir otro horario",
+  derivar_humano: "Derivar a humano",
+  solicitar_flexibilidad: "Solicitar flexibilidad al cliente",
+};
+
 const emptyService: Omit<Service, "id"> = {
   name: "",
   description: "",
   duration: 60,
   price: 0,
   currency: "CLP",
+  actionObjective: "agendar",
+  requiredData: ["nombre", "telefono", "fecha_preferida"],
+  otherRequiredData: "",
+  noAvailabilityAction: "sugerir_horario",
 };
 
 export function ServicesSection({ settings, onChange }: ServicesSectionProps) {
@@ -112,6 +134,10 @@ export function ServicesSection({ settings, onChange }: ServicesSectionProps) {
       duration: service.duration,
       price: service.price,
       currency: service.currency,
+      actionObjective: service.actionObjective,
+      requiredData: service.requiredData,
+      capacityPerSlot: service.capacityPerSlot,
+      noAvailabilityAction: service.noAvailabilityAction,
     });
     setIsDialogOpen(true);
   };
@@ -120,13 +146,11 @@ export function ServicesSection({ settings, onChange }: ServicesSectionProps) {
     if (!serviceForm.name.trim()) return;
 
     if (editingService) {
-      // Edit existing
       const newServices = settings.services.map((s) =>
         s.id === editingService.id ? { ...s, ...serviceForm } : s
       );
       onChange({ ...settings, services: newServices, lastModified: new Date() });
     } else {
-      // Add new
       const newService: Service = {
         id: `svc-${Date.now()}`,
         ...serviceForm,
@@ -146,6 +170,13 @@ export function ServicesSection({ settings, onChange }: ServicesSectionProps) {
       services: settings.services.filter((s) => s.id !== serviceId),
       lastModified: new Date(),
     });
+  };
+
+  const handleRequiredDataChange = (data: RequiredDataType, checked: boolean) => {
+    const newData = checked
+      ? [...serviceForm.requiredData, data]
+      : serviceForm.requiredData.filter((d) => d !== data);
+    setServiceForm({ ...serviceForm, requiredData: newData });
   };
 
   const formatPrice = (price: number, currency: string) => {
@@ -277,7 +308,7 @@ export function ServicesSection({ settings, onChange }: ServicesSectionProps) {
             <div>
               <CardTitle>Catálogo de servicios</CardTitle>
               <CardDescription>
-                Lista de servicios que ofreces
+                Lista de servicios que ofreces con su configuración de agente
               </CardDescription>
             </div>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -287,52 +318,148 @@ export function ServicesSection({ settings, onChange }: ServicesSectionProps) {
                   Agregar servicio
                 </Button>
               </DialogTrigger>
-              <DialogContent className="bg-card border-border">
+              <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>
                     {editingService ? "Editar servicio" : "Nuevo servicio"}
                   </DialogTitle>
                   <DialogDescription>
-                    Completa la información del servicio
+                    Completa la información del servicio y cómo debe manejarlo el agente
                   </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label>Nombre del servicio</Label>
-                    <Input
-                      value={serviceForm.name}
-                      onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
-                      placeholder="Ej: Corte de cabello"
-                      className="bg-muted/30 border-border"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Descripción breve</Label>
-                    <Textarea
-                      value={serviceForm.description}
-                      onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })}
-                      placeholder="Describe el servicio..."
-                      className="bg-muted/30 border-border min-h-[80px]"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-6 py-4">
+                  {/* Info básica */}
+                  <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label>Duración (minutos)</Label>
+                      <Label>Nombre del servicio</Label>
                       <Input
-                        type="number"
-                        value={serviceForm.duration}
-                        onChange={(e) => setServiceForm({ ...serviceForm, duration: parseInt(e.target.value) || 0 })}
+                        value={serviceForm.name}
+                        onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
+                        placeholder="Ej: Corte de cabello"
                         className="bg-muted/30 border-border"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Precio ({serviceForm.currency})</Label>
-                      <Input
-                        type="number"
-                        value={serviceForm.price}
-                        onChange={(e) => setServiceForm({ ...serviceForm, price: parseInt(e.target.value) || 0 })}
-                        className="bg-muted/30 border-border"
+                      <Label>Descripción breve</Label>
+                      <Textarea
+                        value={serviceForm.description}
+                        onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })}
+                        placeholder="Describe el servicio..."
+                        className="bg-muted/30 border-border min-h-[80px]"
                       />
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label>Duración (min)</Label>
+                        <Input
+                          type="number"
+                          value={serviceForm.duration}
+                          onChange={(e) => setServiceForm({ ...serviceForm, duration: parseInt(e.target.value) || 0 })}
+                          className="bg-muted/30 border-border"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Precio ({serviceForm.currency})</Label>
+                        <Input
+                          type="number"
+                          value={serviceForm.price}
+                          onChange={(e) => setServiceForm({ ...serviceForm, price: parseInt(e.target.value) || 0 })}
+                          className="bg-muted/30 border-border"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Capacidad/hora</Label>
+                        <Input
+                          type="number"
+                          value={serviceForm.capacityPerSlot || ""}
+                          onChange={(e) => setServiceForm({ ...serviceForm, capacityPerSlot: parseInt(e.target.value) || undefined })}
+                          placeholder="Opcional"
+                          className="bg-muted/30 border-border"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Configuración del agente */}
+                  <div className="border-t border-border pt-4 space-y-4">
+                    <h4 className="font-medium flex items-center gap-2">
+                      <Target className="h-4 w-4 text-primary" />
+                      Comportamiento del agente
+                    </h4>
+
+                    <div className="space-y-2">
+                      <Label>Acción objetivo del servicio</Label>
+                      <Select
+                        value={serviceForm.actionObjective}
+                        onValueChange={(v) => setServiceForm({ ...serviceForm, actionObjective: v as ServiceActionType })}
+                      >
+                        <SelectTrigger className="bg-muted/30 border-border">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(actionObjectiveLabels) as ServiceActionType[]).map((key) => (
+                            <SelectItem key={key} value={key}>{actionObjectiveLabels[key]}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        ¿Qué debe lograr el agente cuando el cliente pregunta por este servicio?
+                      </p>
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label className="flex items-center gap-2">
+                        <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                        Datos mínimos requeridos
+                      </Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(Object.keys(requiredDataLabels) as RequiredDataType[]).map((key) => (
+                          <div key={key} className="flex items-center gap-2">
+                            <Checkbox
+                              id={`data-${key}`}
+                              checked={serviceForm.requiredData.includes(key)}
+                              onCheckedChange={(checked) => handleRequiredDataChange(key, checked as boolean)}
+                            />
+                            <Label htmlFor={`data-${key}`} className="font-normal cursor-pointer">
+                              {requiredDataLabels[key]}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Campo de texto condicional para "Otros" */}
+                      {serviceForm.requiredData.includes("otros") && (
+                        <div className="mt-2">
+                          <Input
+                            placeholder="Especifica qué otros datos necesitas (ej: RUT, dirección, tipo de mascota...)"
+                            value={serviceForm.otherRequiredData || ""}
+                            onChange={(e) => setServiceForm({ ...serviceForm, otherRequiredData: e.target.value })}
+                            className="bg-muted/30 border-border"
+                          />
+                        </div>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        El agente no avanzará hasta tener estos datos
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-warning" />
+                        Cuando NO hay disponibilidad
+                      </Label>
+                      <Select
+                        value={serviceForm.noAvailabilityAction}
+                        onValueChange={(v) => setServiceForm({ ...serviceForm, noAvailabilityAction: v as NoAvailabilityActionType })}
+                      >
+                        <SelectTrigger className="bg-muted/30 border-border">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(noAvailabilityLabels) as NoAvailabilityActionType[]).map((key) => (
+                            <SelectItem key={key} value={key}>{noAvailabilityLabels[key]}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </div>
@@ -356,55 +483,101 @@ export function ServicesSection({ settings, onChange }: ServicesSectionProps) {
               <p className="text-sm">Agrega tu primer servicio</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="border-border hover:bg-transparent">
-                  <TableHead>Servicio</TableHead>
-                  <TableHead>Descripción</TableHead>
-                  <TableHead className="text-center">Duración</TableHead>
-                  <TableHead className="text-right">Precio</TableHead>
-                  <TableHead className="w-[100px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {settings.services.map((service) => (
-                  <TableRow key={service.id} className="border-border">
-                    <TableCell className="font-medium">{service.name}</TableCell>
-                    <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
-                      {service.description}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant="outline" className="bg-muted/30">
-                        {service.duration} min
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-medium text-primary">
-                      {formatPrice(service.price, service.currency)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openEditServiceDialog(service)}
-                          className="h-8 w-8 p-0"
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteService(service.id)}
-                          className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+            <div className="space-y-4">
+              {settings.services.map((service) => (
+                <div 
+                  key={service.id} 
+                  className="border border-border rounded-lg p-4 bg-muted/10 hover:border-primary/30 transition-colors"
+                >
+                  {/* Header del servicio */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-1">
+                        <h4 className="font-semibold text-foreground">{service.name}</h4>
+                        <Badge variant="secondary" className="bg-primary/10 text-primary">
+                          {actionObjectiveLabels[service.actionObjective]}
+                        </Badge>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      <p className="text-sm text-muted-foreground">{service.description}</p>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEditServiceDialog(service)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteService(service.id)}
+                        className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Info principal en cards */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                    <div className="bg-background rounded-lg p-3 border border-border">
+                      <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                        <Clock className="h-3.5 w-3.5" />
+                        <span className="text-xs">Duración</span>
+                      </div>
+                      <p className="font-semibold text-foreground">{service.duration} min</p>
+                    </div>
+                    <div className="bg-background rounded-lg p-3 border border-border">
+                      <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                        <DollarSign className="h-3.5 w-3.5" />
+                        <span className="text-xs">Precio</span>
+                      </div>
+                      <p className="font-semibold text-primary">{formatPrice(service.price, service.currency)}</p>
+                    </div>
+                    <div className="bg-background rounded-lg p-3 border border-border">
+                      <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                        <Users className="h-3.5 w-3.5" />
+                        <span className="text-xs">Capacidad/hora</span>
+                      </div>
+                      <p className="font-semibold text-foreground">
+                        {service.capacityPerSlot ? `${service.capacityPerSlot} personas` : "Sin límite"}
+                      </p>
+                    </div>
+                    <div className="bg-background rounded-lg p-3 border border-border">
+                      <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                        <AlertCircle className="h-3.5 w-3.5" />
+                        <span className="text-xs">Sin disponibilidad</span>
+                      </div>
+                      <p className="font-medium text-foreground text-sm">
+                        {noAvailabilityLabels[service.noAvailabilityAction].replace("Ofrecer ", "").replace("Solicitar ", "")}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Datos requeridos para agendar */}
+                  <div className="bg-primary/5 rounded-lg p-3 border border-primary/20">
+                    <div className="flex items-center gap-2 mb-2">
+                      <ClipboardList className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-medium text-foreground">Datos requeridos para agendar</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {service.requiredData.map((data) => (
+                        <Badge key={data} variant="outline" className="bg-background text-foreground">
+                          {data === "otros" && service.otherRequiredData 
+                            ? `Otros: ${service.otherRequiredData}` 
+                            : requiredDataLabels[data]}
+                        </Badge>
+                      ))}
+                      {service.requiredData.length === 0 && (
+                        <span className="text-sm text-muted-foreground">Sin requisitos específicos</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>

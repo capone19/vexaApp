@@ -1,0 +1,9 @@
+<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="32" height="32" rx="6" fill="#2563EB"/>
+  <!-- Geometric X -->
+  <path d="M7 7L14 16L7 25H11L16 18.5L21 25H25L18 16L25 7H21L16 13.5L11 7H7Z" fill="white"/>
+  <!-- Center accent -->
+  <circle cx="16" cy="16" r="2" fill="#2563EB"/>
+</svg>
+

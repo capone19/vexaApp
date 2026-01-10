@@ -1,5 +1,5 @@
 // ============================================
-// Growth Partners - Mock Data
+// VEXA - Mock Data
 // ============================================
 
 import type {
@@ -414,6 +414,9 @@ export const mockAgentSettings: AgentSettings = {
     empathy: 'alta',
     humor: 'sutil',
     emojis: 'ocasional',
+    primaryObjective: 'agendar',
+    actionPriority: 'agendar_informar',
+    closingPreference: 'proponer_agendamiento',
     lastModified: daysAgo(5),
   },
   business: {
@@ -437,6 +440,10 @@ export const mockAgentSettings: AgentSettings = {
       },
     ],
     phoneNumbers: ['+56912345678', '+56998765432'],
+    serviceCoverage: ['presencial_local'],
+    coverageZones: '',
+    idealClientTypes: ['personas_naturales', 'premium'],
+    valueProposition: 'Experiencia premium en belleza con atención personalizada y resultados garantizados.',
     lastModified: daysAgo(10),
   },
   policies: {
@@ -461,11 +468,11 @@ export const mockAgentSettings: AgentSettings = {
       'Uñas sin esmalte para manicure',
     ],
     services: [
-      { id: 'svc-001', name: 'Corte de cabello', description: 'Corte profesional con lavado incluido', duration: 45, price: 15000, currency: 'CLP' },
-      { id: 'svc-002', name: 'Tinte completo', description: 'Aplicación de tinte + tratamiento', duration: 120, price: 45000, currency: 'CLP' },
-      { id: 'svc-003', name: 'Manicure', description: 'Manicure tradicional o semi-permanente', duration: 60, price: 12000, currency: 'CLP' },
-      { id: 'svc-004', name: 'Pedicure', description: 'Pedicure spa con masaje', duration: 75, price: 18000, currency: 'CLP' },
-      { id: 'svc-005', name: 'Tratamiento capilar', description: 'Hidratación profunda + masaje', duration: 60, price: 35000, currency: 'CLP' },
+      { id: 'svc-001', name: 'Corte de cabello', description: 'Corte profesional con lavado incluido', duration: 45, price: 15000, currency: 'CLP', actionObjective: 'agendar', requiredData: ['nombre', 'telefono', 'email', 'fecha_preferida'], capacityPerSlot: 3, noAvailabilityAction: 'sugerir_horario' },
+      { id: 'svc-002', name: 'Tinte completo', description: 'Aplicación de tinte + tratamiento', duration: 120, price: 45000, currency: 'CLP', actionObjective: 'agendar', requiredData: ['nombre', 'telefono', 'email', 'fecha_preferida', 'observaciones'], capacityPerSlot: 2, noAvailabilityAction: 'lista_espera' },
+      { id: 'svc-003', name: 'Manicure', description: 'Manicure tradicional o semi-permanente', duration: 60, price: 12000, currency: 'CLP', actionObjective: 'agendar', requiredData: ['nombre', 'telefono', 'fecha_preferida'], capacityPerSlot: 4, noAvailabilityAction: 'sugerir_horario' },
+      { id: 'svc-004', name: 'Pedicure', description: 'Pedicure spa con masaje', duration: 75, price: 18000, currency: 'CLP', actionObjective: 'agendar', requiredData: ['nombre', 'telefono', 'fecha_preferida', 'otros'], otherRequiredData: 'Tipo de esmaltado preferido', capacityPerSlot: 2, noAvailabilityAction: 'sugerir_horario' },
+      { id: 'svc-005', name: 'Tratamiento capilar', description: 'Hidratación profunda + masaje', duration: 60, price: 35000, currency: 'CLP', actionObjective: 'cotizar', requiredData: ['nombre', 'telefono', 'email', 'observaciones'], noAvailabilityAction: 'derivar_humano' },
     ],
     pricingType: 'fijo',
     lastModified: daysAgo(7),
@@ -492,6 +499,8 @@ export const mockAgentSettings: AgentSettings = {
     ],
     restrictions: [],
     instructions: 'Se requiere un abono del 30% para confirmar citas de más de 1 hora.',
+    requiresDeposit: true,
+    depositPercentage: 30,
     lastModified: daysAgo(12),
   },
   intervention: {
@@ -503,6 +512,7 @@ export const mockAgentSettings: AgentSettings = {
       { id: 'cond-004', label: 'Cliente identificado como prioritario', enabled: false },
     ],
     customRules: 'Escalar si el cliente menciona "problema", "queja" o "gerente".',
+    unqualifiedLeadHandling: 'ofrecer_alternativa',
     lastModified: daysAgo(8),
   },
   faq: {
@@ -522,6 +532,7 @@ export const mockAgentSettings: AgentSettings = {
       description: 'No revelar información personal de otros clientes ni datos financieros del negocio.',
     },
     avoidedLanguage: ['jerga', 'groserías', 'diminutivos excesivos'],
+    prohibitedTopicAction: 'redirigir',
     lastModified: daysAgo(6),
   },
 };
