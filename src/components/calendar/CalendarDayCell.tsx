@@ -1,5 +1,4 @@
-import { format, isSameDay } from 'date-fns';
-import { Ban } from 'lucide-react';
+import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useBlockingMode } from './BlockingModeContext';
 import type { Appointment } from '@/lib/types';
@@ -27,6 +26,7 @@ export const CalendarDayCell = ({
     isDateSelected,
     toggleBlockDay,
     startDrag,
+    updateDragSelection,
     endDrag,
     isDragging,
   } = useBlockingMode();
@@ -53,29 +53,28 @@ export const CalendarDayCell = ({
 
   const handleMouseEnter = () => {
     if (isBlockingMode && isDragging && !blocked) {
-      endDrag(day);
+      updateDragSelection(day);
     }
   };
 
   const handleMouseUp = () => {
     if (isBlockingMode && isDragging) {
-      endDrag(day);
+      endDrag();
     }
   };
 
   // Base classes
-  const baseClasses = "aspect-square p-1 rounded-lg text-sm transition-all duration-200 relative select-none";
+  const baseClasses = "aspect-square p-1 rounded-lg text-sm transition-all duration-200 relative select-none overflow-hidden";
   
   // Determine the visual state
   let stateClasses = "";
   
   if (blocked) {
-    // Blocked day - gray, striped pattern
+    // Blocked day - with diagonal stripes pattern
     stateClasses = cn(
       "bg-slate-100 dark:bg-slate-800",
       "text-slate-400 dark:text-slate-500",
-      "cursor-default",
-      !isBlockingMode && "hover:bg-slate-200 dark:hover:bg-slate-700"
+      "cursor-default"
     );
   } else if (isBlockingMode && selectedForBlock) {
     // Selected for blocking - slate/blue-gray with opacity
@@ -114,18 +113,29 @@ export const CalendarDayCell = ({
       className={cn(baseClasses, stateClasses)}
       disabled={blocked && !isBlockingMode}
     >
-      <span className="block">{format(day, 'd')}</span>
-      
-      {/* Blocked indicator */}
+      {/* Diagonal stripes pattern for blocked days */}
       {blocked && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <Ban className="h-6 w-6 text-slate-300 dark:text-slate-600 opacity-50" />
-        </div>
+        <div 
+          className="absolute inset-0 pointer-events-none opacity-30"
+          style={{
+            background: `repeating-linear-gradient(
+              -45deg,
+              transparent,
+              transparent 4px,
+              hsl(var(--muted-foreground) / 0.3) 4px,
+              hsl(var(--muted-foreground) / 0.3) 6px
+            )`
+          }}
+        />
       )}
+      
+      <span className={cn("block relative z-10", blocked && "opacity-60")}>
+        {format(day, 'd')}
+      </span>
       
       {/* Appointment dots - hidden when blocked */}
       {!blocked && appointments.length > 0 && (
-        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5">
+        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5 z-10">
           {appointments.slice(0, 3).map((apt, i) => (
             <div
               key={i}

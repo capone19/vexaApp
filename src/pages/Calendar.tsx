@@ -39,7 +39,26 @@ const CalendarContent = () => {
     setIsBlockingMode, 
     exitBlockingMode,
     isDateBlocked,
+    isDragging,
+    endDrag,
   } = useBlockingMode();
+
+  // Global mouseup listener to end drag when releasing mouse anywhere
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      if (isDragging) {
+        endDrag();
+      }
+    };
+
+    if (isBlockingMode) {
+      window.addEventListener('mouseup', handleGlobalMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [isBlockingMode, isDragging, endDrag]);
 
   useEffect(() => {
     const loadData = async () => {

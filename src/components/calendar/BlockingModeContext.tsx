@@ -19,7 +19,8 @@ interface BlockingModeContextType {
   toggleBlockDay: (date: Date) => void;
   selectRangeTo: (endDate: Date) => void;
   startDrag: (date: Date) => void;
-  endDrag: (date: Date) => void;
+  updateDragSelection: (date: Date) => void;
+  endDrag: () => void;
   clearSelection: () => void;
   confirmBlock: () => void;
   unblockDay: (date: Date) => void;
@@ -87,7 +88,8 @@ export const BlockingModeProvider = ({ children }: BlockingModeProviderProps) =>
     setSelectedBlockDays([date]);
   }, []);
 
-  const endDrag = useCallback((date: Date) => {
+  // Update selection while dragging (called on mouseEnter)
+  const updateDragSelection = useCallback((date: Date) => {
     if (!isDragging || !dragStartDate) return;
     
     const [start, end] = isBefore(dragStartDate, date)
@@ -96,9 +98,14 @@ export const BlockingModeProvider = ({ children }: BlockingModeProviderProps) =>
     
     const range = eachDayOfInterval({ start, end });
     setSelectedBlockDays(range);
+  }, [isDragging, dragStartDate]);
+
+  // End drag (called on mouseUp)
+  const endDrag = useCallback(() => {
+    if (!isDragging) return;
     setIsDragging(false);
     setDragStartDate(null);
-  }, [isDragging, dragStartDate]);
+  }, [isDragging]);
 
   const clearSelection = useCallback(() => {
     setSelectedBlockDays([]);
@@ -181,6 +188,7 @@ export const BlockingModeProvider = ({ children }: BlockingModeProviderProps) =>
         toggleBlockDay,
         selectRangeTo,
         startDrag,
+        updateDragSelection,
         endDrag,
         clearSelection,
         confirmBlock,
