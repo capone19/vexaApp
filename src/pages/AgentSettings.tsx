@@ -15,7 +15,10 @@ import { LimitsSection } from "@/components/agent-settings/sections/LimitsSectio
 import { mockAgentSettings } from "@/lib/mock/data";
 import type { AgentSettings as AgentSettingsType } from "@/lib/types";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
+import { saveAgentSection } from "@/lib/api/save-agent-section";
+import { useToast } from "@/hooks/use-toast";
 
 export type AgentSettingsSectionId = 
   | "personality"
@@ -52,7 +55,10 @@ export default function AgentSettings() {
   const activeSection = (searchParams.get("section") as AgentSettingsSectionId) || "personality";
   const [settings, setSettings] = useState<AgentSettingsType>(mockAgentSettings);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const isMobile = useIsMobile();
+  const { user } = useAuth();
+  const { toast } = useToast();
 
   const handleSectionChange = (sectionId: AgentSettingsSectionId) => {
     setSearchParams({ section: sectionId });
@@ -85,10 +91,70 @@ export default function AgentSettings() {
     setHasUnsavedChanges(true);
   };
 
-  const handleSave = () => {
-    // Mock save - in real app would call API
-    console.log("Saving settings:", settings);
-    setHasUnsavedChanges(false);
+  // Obtener la data de la sección activa
+  const getSectionData = (sectionId: AgentSettingsSectionId): Record<string, unknown> => {
+    switch (sectionId) {
+      case "personality": return settings.personality as unknown as Record<string, unknown>;
+      case "business": return settings.business as unknown as Record<string, unknown>;
+      case "policies": return settings.policies as unknown as Record<string, unknown>;
+      case "services": return settings.services as unknown as Record<string, unknown>;
+      case "rescheduling": return settings.rescheduling as unknown as Record<string, unknown>;
+      case "payments": return settings.payments as unknown as Record<string, unknown>;
+      case "intervention": return settings.intervention as unknown as Record<string, unknown>;
+      case "faq": return settings.faq as unknown as Record<string, unknown>;
+      case "limits": return settings.limits as unknown as Record<string, unknown>;
+      default: return {};
+    }
+  };
+
+  const handleSave = async () => {
+    if (isSaving) return;
+    
+    setIsSaving(true);
+    
+    try {
+      const sectionData = getSectionData(activeSection);
+      
+      // REGLA: 1 botón = 1 evento = 1 sección
+      // Envía DATA RAW COMPLETA de la sección activa
+      const result = await saveAgentSection(
+        activeSection,
+        sectionData,
+        user?.tenantId || "demo-tenant",
+        user?.id || null
+      );
+
+      if (result.success) {
+        toast({
+          title: "Cambios guardados",
+          description: "Cambios guardados y enviados para procesamiento.",
+        });
+        setHasUnsavedChanges(false);
+      } else if (result.cloudSaved && !result.webhookSent) {
+        // Guardado local pero webhook falló
+        toast({
+          title: "Guardado parcial",
+          description: "Cambios guardados localmente. El procesamiento se reintentará.",
+          variant: "default",
+        });
+        setHasUnsavedChanges(false);
+      } else {
+        toast({
+          title: "Error",
+          description: "No se pudo enviar la información. Reintenta.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("[AgentSettings] Error al guardar:", error);
+      toast({
+        title: "Error",
+        description: "No se pudo enviar la información. Reintenta.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const renderSection = () => {
@@ -195,6 +261,7 @@ export default function AgentSettings() {
               currentSection={currentSection}
               onSave={handleSave}
               hasUnsavedChanges={hasUnsavedChanges}
+              isSaving={isSaving}
             />
 
             {/* Contenido de la sección */}
