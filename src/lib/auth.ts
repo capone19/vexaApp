@@ -1,10 +1,14 @@
-// Sistema de autenticación simple con localStorage
+// Sistema de autenticación con Supabase
+
+import { supabase } from "@/integrations/supabase/client";
+import type { User as SupabaseUser, Session } from "@supabase/supabase-js";
 
 export interface User {
+  id: string;
   email: string;
   name: string;
   role: string;
-  companyName: string;
+  tenantId: string | null;
 }
 
 export interface AuthCredentials {
@@ -12,122 +16,118 @@ export interface AuthCredentials {
   password: string;
 }
 
-// Usuario demo predefinido
-const DEMO_USER: User & { password: string } = {
-  email: "contacto@growthpartnersai.cl",
-  password: "Growthpartners2025",
-  name: "Growth Partners",
-  role: "admin",
-  companyName: "Growthpartners",
-};
+// Convertir usuario de Supabase a nuestro formato
+const mapSupabaseUser = async (supabaseUser: SupabaseUser): Promise<User> => {
+  // Obtener el tenant_id del usuario
+  const { data: userRole } = await supabase
+    .from('user_roles')
+    .select('tenant_id, role')
+    .eq('user_id', supabaseUser.id)
+    .single();
 
-// Datos de perfil inicial para el usuario demo
-const DEMO_PROFILE = {
-  companyName: "Growthpartners",
-  email: "contacto@growthpartnersai.cl",
-  phone: "+591 7123 4567",
-  industry: "Tecnología",
-  logo: null,
+  return {
+    id: supabaseUser.id,
+    email: supabaseUser.email || '',
+    name: supabaseUser.user_metadata?.full_name || supabaseUser.email?.split('@')[0] || 'Usuario',
+    role: userRole?.role || 'viewer',
+    tenantId: userRole?.tenant_id || null,
+  };
 };
 
 // Verificar si hay sesión activa
 export const isAuthenticated = (): boolean => {
-  const session = localStorage.getItem("auth_session");
-  return session !== null;
+  // Esta función es síncrona para compatibilidad, pero la sesión real se verifica async
+  // Se usa principalmente para el estado inicial
+  return false; // La verificación real se hace con getSession()
 };
 
-// Obtener usuario actual
-export const getCurrentUser = (): User | null => {
-  const session = localStorage.getItem("auth_session");
-  if (!session) return null;
-  
-  try {
-    return JSON.parse(session);
-  } catch {
-    return null;
-  }
+// Obtener sesión actual (async)
+export const getSession = async (): Promise<Session | null> => {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session;
+};
+
+// Obtener usuario actual (async)
+export const getCurrentUser = async (): Promise<User | null> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  return mapSupabaseUser(user);
 };
 
 // Iniciar sesión
-export const login = (credentials: AuthCredentials): { success: boolean; error?: string } => {
-  // Verificar credenciales contra el usuario demo
-  if (
-    credentials.email.toLowerCase() === DEMO_USER.email.toLowerCase() &&
-    credentials.password === DEMO_USER.password
-  ) {
-    // Guardar sesión
-    const user: User = {
-      email: DEMO_USER.email,
-      name: DEMO_USER.name,
-      role: DEMO_USER.role,
-      companyName: DEMO_USER.companyName,
-    };
-    
-    localStorage.setItem("auth_session", JSON.stringify(user));
-    
-    // Si no existe perfil guardado, crear el perfil demo
-    if (!localStorage.getItem("company_profile")) {
-      localStorage.setItem("company_profile", JSON.stringify(DEMO_PROFILE));
-    }
-    
-    return { success: true };
+export const login = async (credentials: AuthCredentials): Promise<{ success: boolean; error?: string }> => {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: credentials.email,
+    password: credentials.password,
+  });
+
+  if (error) {
+    return { success: false, error: error.message };
   }
-  
-  return { success: false, error: "Credenciales incorrectas" };
+
+  return { success: true };
 };
 
-// Registrar nuevo usuario (en demo, solo funciona con el usuario predefinido)
-export const register = (
+// Registrar nuevo usuario
+export const register = async (
   name: string,
   email: string,
   password: string
-): { success: boolean; error?: string } => {
-  // En modo demo, solo permitimos registro si coincide con las credenciales demo
-  // En producción, esto se conectaría a un backend real
-  
-  if (email.toLowerCase() === DEMO_USER.email.toLowerCase()) {
-    if (password === DEMO_USER.password) {
-      // Crear sesión
-      const user: User = {
-        email: email,
-        name: name || DEMO_USER.name,
-        role: "admin",
-        companyName: name || DEMO_USER.companyName,
-      };
-      
-      localStorage.setItem("auth_session", JSON.stringify(user));
-      
-      // Crear perfil
-      const profile = {
-        ...DEMO_PROFILE,
-        companyName: name || DEMO_PROFILE.companyName,
-        email: email,
-      };
-      localStorage.setItem("company_profile", JSON.stringify(profile));
-      
-      return { success: true };
-    }
-    return { success: false, error: "Contraseña incorrecta" };
+): Promise<{ success: boolean; error?: string }> => {
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        full_name: name,
+      },
+      emailRedirectTo: window.location.origin,
+    },
+  });
+
+  if (error) {
+    return { success: false, error: error.message };
   }
-  
-  return { success: false, error: "Email no autorizado para el demo" };
+
+  return { success: true };
 };
 
 // Cerrar sesión
-export const logout = (): void => {
-  localStorage.removeItem("auth_session");
-  // No eliminamos company_profile ni otros datos para que persistan
+export const logout = async (): Promise<void> => {
+  await supabase.auth.signOut();
 };
 
-// Obtener datos del perfil de empresa
-export const getCompanyProfile = () => {
-  try {
-    const stored = localStorage.getItem("company_profile");
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch (e) {
-    console.error("Error loading profile:", e);
+// Autenticación con Google
+export const signInWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin,
+    },
+  });
+
+  if (error) {
+    return { success: false, error: error.message };
   }
-  return DEMO_PROFILE;
+
+  return { success: true };
+};
+
+// Escuchar cambios de autenticación
+export const onAuthStateChange = (callback: (user: User | null) => void) => {
+  return supabase.auth.onAuthStateChange(async (event, session) => {
+    if (session?.user) {
+      const user = await mapSupabaseUser(session.user);
+      callback(user);
+    } else {
+      callback(null);
+    }
+  });
+};
+
+// Obtener el tenant ID del usuario actual
+export const getUserTenantId = async (): Promise<string | null> => {
+  const { data, error } = await supabase.rpc('get_user_tenant_id');
+  if (error) return null;
+  return data;
 };

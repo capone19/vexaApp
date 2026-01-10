@@ -31,7 +31,8 @@ import { mockUser } from "@/lib/mock/data";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
-import { logout, getCurrentUser } from "@/lib/auth";
+import { logout } from "@/lib/auth";
+import { useAuth } from "@/hooks/use-auth";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 // Función para obtener el perfil del usuario desde localStorage
@@ -228,10 +229,10 @@ export function TopBar() {
   const unreadCount = notifications.filter(n => !n.read).length;
   
   // Obtener usuario autenticado
-  const authUser = getCurrentUser();
+  const { user: authUser } = useAuth();
   
   // Usar el nombre del perfil guardado, usuario autenticado, o el mock por defecto
-  const displayName = userProfile?.companyName || authUser?.companyName || mockUser.name;
+  const displayName = userProfile?.companyName || authUser?.name || mockUser.name;
   const displayLogo = userProfile?.logo || null;
   const displayRole = authUser?.role || mockUser.role;
   
@@ -429,8 +430,8 @@ export function TopBar() {
               <DropdownMenuSeparator />
               <DropdownMenuItem 
                 className="cursor-pointer text-destructive focus:text-destructive"
-                onClick={() => {
-                  logout();
+                onClick={async () => {
+                  await logout();
                   navigate('/auth');
                 }}
               >
