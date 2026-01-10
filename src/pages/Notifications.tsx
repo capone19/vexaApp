@@ -4,28 +4,51 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import {
   Bell,
   CalendarCheck,
-  MessageSquare,
   AlertTriangle,
   CheckCircle,
   Clock,
   User,
   XCircle,
   Info,
-  Settings,
   Trash2,
   Check,
-  Filter,
+  Eye,
+  Calendar,
+  MapPin,
+  DollarSign,
+  Scissors,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 type NotificationType = 'appointment' | 'message' | 'alert' | 'system' | 'success';
+
+type AppointmentStatus = 'scheduled' | 'confirmed' | 'cancelled' | 'no-show' | 'completed' | 'pending-reschedule';
+
+interface NotificationMetadata {
+  clientName?: string;
+  clientPhone?: string;
+  service?: string;
+  date?: Date;
+  time?: string;
+  location?: string;
+  ticketValue?: number;
+  appointmentStatus?: AppointmentStatus;
+  notes?: string;
+}
 
 interface Notification {
   id: string;
@@ -35,147 +58,165 @@ interface Notification {
   timestamp: Date;
   read: boolean;
   actionUrl?: string;
-  metadata?: {
-    clientName?: string;
-    service?: string;
-    time?: string;
-  };
+  metadata?: NotificationMetadata;
 }
 
-// Mock notifications data
+// Mock notifications data con información expandida
 const mockNotifications: Notification[] = [
   {
     id: 'notif-001',
     type: 'appointment',
     title: 'Nueva cita agendada',
     description: 'María González agendó Corte de cabello para hoy a las 15:00',
-    timestamp: new Date(Date.now() - 1000 * 60 * 5), // 5 min ago
+    timestamp: new Date(Date.now() - 1000 * 60 * 5),
     read: false,
     actionUrl: '/calendario',
     metadata: {
       clientName: 'María González',
+      clientPhone: '+56 9 1234 5678',
       service: 'Corte de cabello',
+      date: new Date(),
       time: '15:00',
+      location: 'Sede Principal - Santiago Centro',
+      ticketValue: 25000,
+      appointmentStatus: 'scheduled',
     },
   },
   {
     id: 'notif-002',
-    type: 'message',
-    title: 'Nuevo mensaje de Carlos Mendoza',
-    description: '"Hola, quería consultar si tienen disponibilidad para mañana..."',
-    timestamp: new Date(Date.now() - 1000 * 60 * 12), // 12 min ago
+    type: 'appointment',
+    title: 'Recordatorio: Cita en 1 hora',
+    description: 'Ana Rodríguez tiene cita de Manicure + Pedicure a las 16:00',
+    timestamp: new Date(Date.now() - 1000 * 60 * 30),
     read: false,
-    actionUrl: '/chats',
     metadata: {
-      clientName: 'Carlos Mendoza',
+      clientName: 'Ana Rodríguez',
+      clientPhone: '+56 9 8765 4321',
+      service: 'Manicure + Pedicure',
+      date: new Date(),
+      time: '16:00',
+      location: 'Sede Principal - Santiago Centro',
+      ticketValue: 35000,
+      appointmentStatus: 'confirmed',
     },
   },
   {
     id: 'notif-003',
-    type: 'appointment',
-    title: 'Recordatorio: Cita en 1 hora',
-    description: 'Ana Rodríguez tiene cita de Manicure + Pedicure a las 16:00',
-    timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 min ago
-    read: false,
+    type: 'alert',
+    title: 'Cita cancelada',
+    description: 'Pedro Silva canceló su cita de Tratamiento capilar programada para mañana',
+    timestamp: new Date(Date.now() - 1000 * 60 * 45),
+    read: true,
     metadata: {
-      clientName: 'Ana Rodríguez',
-      service: 'Manicure + Pedicure',
-      time: '16:00',
+      clientName: 'Pedro Silva',
+      clientPhone: '+56 9 5555 1234',
+      service: 'Tratamiento capilar',
+      date: new Date(Date.now() + 1000 * 60 * 60 * 24),
+      time: '10:00',
+      location: 'Sede Providencia',
+      ticketValue: 45000,
+      appointmentStatus: 'cancelled',
+      notes: 'Cliente indicó motivos personales',
     },
   },
   {
     id: 'notif-004',
-    type: 'alert',
-    title: 'Cita cancelada',
-    description: 'Pedro Silva canceló su cita de Tratamiento capilar programada para mañana',
-    timestamp: new Date(Date.now() - 1000 * 60 * 45), // 45 min ago
+    type: 'success',
+    title: 'Cita confirmada',
+    description: 'Valentina Torres confirmó su asistencia para Tinte completo',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60),
     read: true,
     metadata: {
-      clientName: 'Pedro Silva',
-      service: 'Tratamiento capilar',
+      clientName: 'Valentina Torres',
+      clientPhone: '+56 9 4444 5678',
+      service: 'Tinte completo',
+      date: new Date(Date.now() + 1000 * 60 * 60 * 48),
+      time: '11:30',
+      location: 'Sede Principal - Santiago Centro',
+      ticketValue: 65000,
+      appointmentStatus: 'confirmed',
     },
   },
   {
     id: 'notif-005',
-    type: 'success',
-    title: 'Cita confirmada',
-    description: 'Valentina Torres confirmó su asistencia para Tinte completo',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60), // 1 hour ago
-    read: true,
-    metadata: {
-      clientName: 'Valentina Torres',
-      service: 'Tinte completo',
-    },
-  },
-  {
-    id: 'notif-006',
-    type: 'message',
-    title: '3 mensajes sin responder',
-    description: 'Tienes conversaciones pendientes que requieren atención',
-    timestamp: new Date(Date.now() - 1000 * 60 * 90), // 1.5 hours ago
-    read: true,
-    actionUrl: '/chats',
-  },
-  {
-    id: 'notif-007',
     type: 'appointment',
     title: 'Reagendamiento solicitado',
     description: 'Camila Reyes solicita reagendar su cita de Alisado permanente',
-    timestamp: new Date(Date.now() - 1000 * 60 * 120), // 2 hours ago
+    timestamp: new Date(Date.now() - 1000 * 60 * 120),
     read: true,
     actionUrl: '/calendario',
     metadata: {
       clientName: 'Camila Reyes',
+      clientPhone: '+56 9 3333 9876',
       service: 'Alisado permanente',
+      date: new Date(Date.now() + 1000 * 60 * 60 * 72),
+      time: '14:00',
+      location: 'Sede Las Condes',
+      ticketValue: 120000,
+      appointmentStatus: 'pending-reschedule',
+      notes: 'Solicita cambiar a la próxima semana',
     },
   },
   {
-    id: 'notif-008',
+    id: 'notif-006',
     type: 'system',
     title: 'Actualización del sistema',
     description: 'Se han aplicado mejoras de rendimiento a tu cuenta',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 3), // 3 hours ago
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 3),
     read: true,
   },
   {
-    id: 'notif-009',
+    id: 'notif-007',
     type: 'success',
     title: 'Meta alcanzada',
     description: '¡Felicidades! Has completado 50 citas este mes',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5), // 5 hours ago
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5),
     read: true,
   },
   {
-    id: 'notif-010',
+    id: 'notif-008',
     type: 'appointment',
     title: 'Nueva cita agendada',
     description: 'Diego Fuentes agendó Corte + Barba para el viernes a las 11:00',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 6), // 6 hours ago
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 6),
     read: true,
     actionUrl: '/calendario',
     metadata: {
       clientName: 'Diego Fuentes',
+      clientPhone: '+56 9 2222 3456',
       service: 'Corte + Barba',
+      date: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3),
       time: '11:00',
+      location: 'Sede Principal - Santiago Centro',
+      ticketValue: 28000,
+      appointmentStatus: 'scheduled',
     },
   },
   {
-    id: 'notif-011',
+    id: 'notif-009',
     type: 'alert',
     title: 'Cliente no se presentó',
     description: 'Roberto Muñoz no asistió a su cita programada',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24),
     read: true,
     metadata: {
       clientName: 'Roberto Muñoz',
+      clientPhone: '+56 9 1111 7890',
+      service: 'Corte de cabello',
+      date: new Date(Date.now() - 1000 * 60 * 60 * 24),
+      time: '09:30',
+      location: 'Sede Providencia',
+      ticketValue: 25000,
+      appointmentStatus: 'no-show',
+      notes: 'No respondió llamadas de confirmación',
     },
   },
   {
-    id: 'notif-012',
+    id: 'notif-010',
     type: 'system',
     title: 'Factura disponible',
     description: 'Tu factura del mes de diciembre está lista para descargar',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48), // 2 days ago
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48),
     read: true,
     actionUrl: '/facturacion',
   },
@@ -185,8 +226,6 @@ const getNotificationIcon = (type: NotificationType) => {
   switch (type) {
     case 'appointment':
       return CalendarCheck;
-    case 'message':
-      return MessageSquare;
     case 'alert':
       return AlertTriangle;
     case 'success':
@@ -202,8 +241,6 @@ const getNotificationColor = (type: NotificationType) => {
   switch (type) {
     case 'appointment':
       return 'text-primary bg-primary/10';
-    case 'message':
-      return 'text-info bg-info/10';
     case 'alert':
       return 'text-warning bg-warning/10';
     case 'success':
@@ -215,9 +252,193 @@ const getNotificationColor = (type: NotificationType) => {
   }
 };
 
+const getStatusBadge = (status?: AppointmentStatus) => {
+  switch (status) {
+    case 'scheduled':
+      return { label: 'Agendada', className: 'bg-blue-100 text-blue-700 border-blue-200' };
+    case 'confirmed':
+      return { label: 'Confirmada', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+    case 'cancelled':
+      return { label: 'Cancelada', className: 'bg-red-100 text-red-700 border-red-200' };
+    case 'no-show':
+      return { label: 'No asistió', className: 'bg-orange-100 text-orange-700 border-orange-200' };
+    case 'completed':
+      return { label: 'Completada', className: 'bg-green-100 text-green-700 border-green-200' };
+    case 'pending-reschedule':
+      return { label: 'Reagendamiento pendiente', className: 'bg-amber-100 text-amber-700 border-amber-200' };
+    default:
+      return null;
+  }
+};
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('es-CL', {
+    style: 'currency',
+    currency: 'CLP',
+    maximumFractionDigits: 0,
+  }).format(value);
+
+// Componente para el detalle de la notificación según su tipo
+function NotificationDetailContent({ notification }: { notification: Notification }) {
+  const { type, metadata } = notification;
+  const Icon = getNotificationIcon(type);
+  const colorClass = getNotificationColor(type);
+  const statusBadge = getStatusBadge(metadata?.appointmentStatus);
+
+  // Para notificaciones de tipo cita (appointment, alert relacionado con citas, success de confirmación)
+  if (metadata?.clientName && (type === 'appointment' || type === 'alert' || type === 'success')) {
+    return (
+      <div className="space-y-6">
+        {/* Header con estado */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={cn("p-2.5 rounded-xl", colorClass)}>
+              <Icon className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="font-semibold text-foreground">{notification.title}</h4>
+              <p className="text-sm text-muted-foreground">
+                {formatDistanceToNow(notification.timestamp, { addSuffix: true, locale: es })}
+              </p>
+            </div>
+          </div>
+          {statusBadge && (
+            <Badge variant="outline" className={cn("text-xs font-medium", statusBadge.className)}>
+              {statusBadge.label}
+            </Badge>
+          )}
+        </div>
+
+        <Separator />
+
+        {/* Información del cliente */}
+        <div className="space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-secondary">
+              <User className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div className="flex-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Cliente</p>
+              <p className="font-medium text-foreground">{metadata.clientName}</p>
+              {metadata.clientPhone && (
+                <p className="text-sm text-muted-foreground">{metadata.clientPhone}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Servicio */}
+          {metadata.service && (
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-secondary">
+                <Scissors className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Servicio</p>
+                <p className="font-medium text-foreground">{metadata.service}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Fecha y hora */}
+          {metadata.date && (
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-secondary">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Fecha y hora</p>
+                <p className="font-medium text-foreground">
+                  {format(metadata.date, "EEEE d 'de' MMMM, yyyy", { locale: es })}
+                </p>
+                {metadata.time && (
+                  <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
+                    <Clock className="h-3 w-3" />
+                    {metadata.time} hrs
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Sede */}
+          {metadata.location && (
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-secondary">
+                <MapPin className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Sede</p>
+                <p className="font-medium text-foreground">{metadata.location}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Valor del ticket */}
+          {metadata.ticketValue && (
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-secondary">
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Valor del servicio</p>
+                <p className="font-semibold text-foreground text-lg">{formatCurrency(metadata.ticketValue)}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Notas adicionales */}
+          {metadata.notes && (
+            <>
+              <Separator />
+              <div className="bg-secondary/50 rounded-lg p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Notas</p>
+                <p className="text-sm text-foreground">{metadata.notes}</p>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Para notificaciones de sistema u otras
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
+        <div className={cn("p-2.5 rounded-xl", colorClass)}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <div>
+          <h4 className="font-semibold text-foreground">{notification.title}</h4>
+          <p className="text-sm text-muted-foreground">
+            {formatDistanceToNow(notification.timestamp, { addSuffix: true, locale: es })}
+          </p>
+        </div>
+      </div>
+
+      <Separator />
+
+      <div className="bg-secondary/50 rounded-lg p-4">
+        <p className="text-foreground">{notification.description}</p>
+      </div>
+
+      {notification.actionUrl && (
+        <p className="text-sm text-muted-foreground">
+          Esta notificación está relacionada con la sección de{' '}
+          <span className="font-medium text-primary">
+            {notification.actionUrl === '/facturacion' ? 'Facturación' : 'Configuración'}
+          </span>
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function Notifications() {
   const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
   const [activeTab, setActiveTab] = useState<'all' | 'unread'>('all');
+  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -241,6 +462,12 @@ export default function Notifications() {
 
   const clearAll = () => {
     setNotifications([]);
+  };
+
+  const openDetail = (notification: Notification) => {
+    setSelectedNotification(notification);
+    setIsDetailOpen(true);
+    markAsRead(notification.id);
   };
 
   return (
@@ -312,13 +539,13 @@ export default function Notifications() {
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-warning/10">
-                  <MessageSquare className="h-5 w-5 text-warning" />
+                  <AlertTriangle className="h-5 w-5 text-warning" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-foreground">
-                    {notifications.filter(n => n.type === 'message').length}
+                    {notifications.filter(n => n.type === 'alert').length}
                   </p>
-                  <p className="text-sm text-muted-foreground">Mensajes</p>
+                  <p className="text-sm text-muted-foreground">Alertas</p>
                 </div>
               </div>
             </CardContent>
@@ -357,15 +584,15 @@ export default function Notifications() {
                   {filteredNotifications.map((notification) => {
                     const Icon = getNotificationIcon(notification.type);
                     const colorClass = getNotificationColor(notification.type);
+                    const hasDetail = notification.metadata?.clientName || notification.type === 'system';
 
                     return (
                       <div
                         key={notification.id}
                         className={cn(
-                          "flex items-start gap-4 p-4 hover:bg-secondary/50 transition-colors cursor-pointer",
+                          "flex items-start gap-4 p-4 hover:bg-secondary/50 transition-colors",
                           !notification.read && "bg-primary/5"
                         )}
-                        onClick={() => markAsRead(notification.id)}
                       >
                         <div className={cn("p-2 rounded-lg shrink-0", colorClass)}>
                           <Icon className="h-4 w-4" />
@@ -397,13 +624,26 @@ export default function Notifications() {
                                 {notification.metadata.clientName}
                               </span>
                             )}
-                            {notification.actionUrl && (
-                              <Badge variant="outline" className="text-xs">
-                                Ver detalles
-                              </Badge>
-                            )}
                           </div>
                         </div>
+                        
+                        {/* Botón Ver detalles */}
+                        {hasDetail && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="shrink-0 gap-1.5 text-xs h-8 hover:bg-primary/5 hover:text-primary hover:border-primary/30"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openDetail(notification);
+                            }}
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            Ver detalles
+                          </Button>
+                        )}
+                        
+                        {/* Botón eliminar */}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -424,7 +664,20 @@ export default function Notifications() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Modal de detalle */}
+      <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+        <DialogContent className="sm:max-w-md bg-white border border-border/50 shadow-xl rounded-xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold">Detalle de notificación</DialogTitle>
+          </DialogHeader>
+          <div className="pt-2">
+            {selectedNotification && (
+              <NotificationDetailContent notification={selectedNotification} />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }
-

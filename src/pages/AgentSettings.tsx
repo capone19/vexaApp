@@ -86,12 +86,7 @@ export default function AgentSettings() {
     // Mock save - in real app would call API
     console.log("Saving settings:", settings);
     setHasUnsavedChanges(false);
-  };
-
-  const handlePublish = () => {
-    // Mock publish
-    console.log("Publishing settings");
-    setHasUnsavedChanges(false);
+    // Aquí se actualizaría la fecha de última modificación de la sección actual
   };
 
   const renderSection = () => {
@@ -178,7 +173,7 @@ export default function AgentSettings() {
         <div className="flex-1 flex flex-col overflow-hidden">
           <AgentSettingsHeader
             currentSection={currentSection}
-            onPublish={handlePublish}
+            onSave={handleSave}
             hasUnsavedChanges={hasUnsavedChanges}
           />
 
@@ -186,18 +181,6 @@ export default function AgentSettings() {
           <div className="flex-1 overflow-y-auto p-6 bg-background">
             {renderSection()}
           </div>
-
-          {/* Botón flotante guardar */}
-          {hasUnsavedChanges && (
-            <div className="sticky bottom-0 border-t border-border bg-background p-4 flex justify-end">
-              <button
-                onClick={handleSave}
-                className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
-              >
-                Guardar cambios
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </MainLayout>

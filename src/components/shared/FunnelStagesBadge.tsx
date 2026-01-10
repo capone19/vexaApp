@@ -15,15 +15,15 @@ const stageConfig: Record<
     className: "bg-secondary text-muted-foreground",
   },
   warm: {
-    label: "Warm",
+    label: "En progreso",
     className: "bg-info/10 text-info",
   },
   hot: {
-    label: "Hot",
+    label: "Alta intención",
     className: "bg-warning/10 text-warning",
   },
   converted: {
-    label: "Convertido",
+    label: "Conversión",
     className: "bg-success/10 text-success",
   },
 };

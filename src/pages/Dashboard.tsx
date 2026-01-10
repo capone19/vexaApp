@@ -105,7 +105,7 @@ export default function Dashboard() {
             {[
               { 
                 label: "TOFU", 
-                sublabel: "Meta Ads", 
+                sublabel: "Conversaciones iniciales", 
                 value: metrics.funnel.tofu || "--", 
                 icon: Radio,
                 bgColor: "bg-slate-100 border-slate-200",
@@ -163,9 +163,9 @@ export default function Dashboard() {
           {/* Rates Bar */}
           <div className="flex items-center gap-6 pt-4 border-t border-border">
             {[
-              { label: "Dead Rate", value: metrics.funnel.deadRate, color: "bg-slate-400", icon: Snowflake, iconColor: "text-slate-500" },
-              { label: "Warm Rate", value: metrics.funnel.warmRate, color: "bg-sky-400", icon: Thermometer, iconColor: "text-sky-500" },
-              { label: "Hot Rate", value: metrics.funnel.hotRate, color: "bg-amber-400", icon: Zap, iconColor: "text-amber-500" },
+              { label: "Sin respuesta", value: metrics.funnel.deadRate, color: "bg-slate-400", icon: Snowflake, iconColor: "text-slate-500" },
+              { label: "En progreso", value: metrics.funnel.warmRate, color: "bg-sky-400", icon: Thermometer, iconColor: "text-sky-500" },
+              { label: "Alta intención", value: metrics.funnel.hotRate, color: "bg-amber-400", icon: Zap, iconColor: "text-amber-500" },
               { label: "Conversión", value: metrics.funnel.conversionRate, color: "bg-emerald-500", icon: Target, iconColor: "text-emerald-500" },
             ].map((rate, idx, arr) => (
               <div key={rate.label} className="flex-1">
@@ -173,9 +173,9 @@ export default function Dashboard() {
                   <rate.icon className={`h-3.5 w-3.5 ${rate.iconColor}`} />
                   <span className="text-xs text-muted-foreground">{rate.label}</span>
                   <span className={`text-sm font-semibold ml-auto ${
-                    rate.label === "Dead Rate" ? "text-slate-600" :
-                    rate.label === "Warm Rate" ? "text-sky-600" :
-                    rate.label === "Hot Rate" ? "text-amber-600" :
+                    rate.label === "Sin respuesta" ? "text-slate-600" :
+                    rate.label === "En progreso" ? "text-sky-600" :
+                    rate.label === "Alta intención" ? "text-amber-600" :
                     "text-emerald-600"
                   }`}>{rate.value}%</span>
                 </div>
@@ -196,7 +196,7 @@ export default function Dashboard() {
             <div className="rounded-lg bg-primary/10 p-2">
               <DollarSign className="h-5 w-5 text-primary" />
             </div>
-            <span className="text-sm font-medium text-muted-foreground">Revenue Total</span>
+            <span className="text-sm font-medium text-muted-foreground">Ingresos totales</span>
           </div>
           <p className="text-2xl font-semibold text-foreground">{formatCurrency(metrics.revenue)}</p>
         </div>

@@ -13,13 +13,13 @@ import type { AgentSettingsSectionInfo } from "@/pages/AgentSettings";
 
 interface AgentSettingsHeaderProps {
   currentSection: AgentSettingsSectionInfo;
-  onPublish: () => void;
+  onSave: () => void;
   hasUnsavedChanges: boolean;
 }
 
 export function AgentSettingsHeader({
   currentSection,
-  onPublish,
+  onSave,
   hasUnsavedChanges,
 }: AgentSettingsHeaderProps) {
   return (
@@ -56,7 +56,7 @@ export function AgentSettingsHeader({
         </div>
 
         <div className="flex items-center gap-3">
-          <Button size="sm" className="gap-2" onClick={onPublish}>
+          <Button size="sm" className="gap-2" onClick={onSave}>
             <Upload className="h-4 w-4" />
             Guardar cambios
           </Button>

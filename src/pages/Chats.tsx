@@ -69,13 +69,13 @@ export default function Chats() {
             </SelectContent>
           </Select>
           <Select value={filters.stage} onValueChange={(v) => setFilters({ ...filters, stage: v as typeof filters.stage })}>
-            <SelectTrigger className="w-32 bg-background border-border"><SelectValue placeholder="Etapa" /></SelectTrigger>
+            <SelectTrigger className="w-36 bg-background border-border"><SelectValue placeholder="Etapa" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas</SelectItem>
-              <SelectItem value="dead">Dead</SelectItem>
-              <SelectItem value="warm">Warm</SelectItem>
-              <SelectItem value="hot">Hot</SelectItem>
-              <SelectItem value="converted">Convertido</SelectItem>
+              <SelectItem value="dead">Sin respuesta</SelectItem>
+              <SelectItem value="warm">En progreso</SelectItem>
+              <SelectItem value="hot">Alta intención</SelectItem>
+              <SelectItem value="converted">Conversión</SelectItem>
             </SelectContent>
           </Select>
         </div>
