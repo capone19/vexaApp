@@ -318,7 +318,7 @@ export interface BillingRecord {
 }
 
 // Date Range Filter
-export type DateRangePreset = 'today' | '7d' | '30d' | 'custom';
+export type DateRangePreset = 'today' | '7d' | '30d' | '90d' | 'ytd' | 'all' | 'custom';
 
 export interface DateRange {
   preset: DateRangePreset;
