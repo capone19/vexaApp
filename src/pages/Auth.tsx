@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
-import { login, register, isAuthenticated } from "@/lib/auth";
+import { login, register, signInWithGoogle } from "@/lib/auth";
+import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/shared/Logo";
 
 type AuthMode = "login" | "register";
@@ -29,9 +30,25 @@ export default function Auth() {
 
   // Verificar si ya está autenticado
   useEffect(() => {
-    if (isAuthenticated()) {
-      navigate("/");
-    }
+    // Set up listener first
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (session) {
+          navigate("/");
+        }
+      }
+    );
+
+    // Then check current session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        navigate("/");
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [navigate]);
 
   const handleInputChange = (field: string, value: string) => {
@@ -42,37 +59,42 @@ export default function Auth() {
     e.preventDefault();
     setIsLoading(true);
 
-    // Pequeño delay para UX
-    await new Promise(resolve => setTimeout(resolve, 800));
-
-    if (mode === "login") {
-      const result = login({ email: formData.email, password: formData.password });
-      
-      if (result.success) {
-        toast.success("¡Bienvenido de vuelta!");
-        navigate("/");
+    try {
+      if (mode === "login") {
+        const result = await login({ email: formData.email, password: formData.password });
+        
+        if (result.success) {
+          toast.success("¡Bienvenido de vuelta!");
+          // Navigation will happen via onAuthStateChange
+        } else {
+          toast.error(result.error || "Error al iniciar sesión");
+          setIsLoading(false);
+        }
       } else {
-        toast.error(result.error || "Error al iniciar sesión");
-        setIsLoading(false);
+        const result = await register(formData.name, formData.email, formData.password);
+        
+        if (result.success) {
+          toast.success("¡Cuenta creada exitosamente!");
+          // Navigation will happen via onAuthStateChange
+        } else {
+          toast.error(result.error || "Error al crear cuenta");
+          setIsLoading(false);
+        }
       }
-    } else {
-      const result = register(formData.name, formData.email, formData.password);
-      
-      if (result.success) {
-        toast.success("¡Cuenta creada exitosamente!");
-        navigate("/");
-      } else {
-        toast.error(result.error || "Error al crear cuenta");
-        setIsLoading(false);
-      }
+    } catch (error) {
+      toast.error("Ha ocurrido un error inesperado");
+      setIsLoading(false);
     }
   };
 
   const handleGoogleAuth = async () => {
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    toast.info("Autenticación con Google disponible próximamente");
-    setIsLoading(false);
+    const result = await signInWithGoogle();
+    if (!result.success) {
+      toast.error(result.error || "Error al iniciar sesión con Google");
+      setIsLoading(false);
+    }
+    // On success, the user will be redirected by OAuth flow
   };
 
   return (

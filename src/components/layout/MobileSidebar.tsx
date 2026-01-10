@@ -1,4 +1,4 @@
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/shared/Logo";
 import {
@@ -26,7 +26,8 @@ import {
   LogOut,
   ChevronRight,
 } from "lucide-react";
-import { logout, getCurrentUser } from "@/lib/auth";
+import { logout } from "@/lib/auth";
+import { useAuth } from "@/hooks/use-auth";
 import { mockUser } from "@/lib/mock/data";
 
 interface NavItem {
@@ -93,9 +94,9 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const userProfile = getUserProfile();
-  const authUser = getCurrentUser();
+  const { user: authUser } = useAuth();
 
-  const displayName = userProfile?.companyName || authUser?.companyName || mockUser.name;
+  const displayName = userProfile?.companyName || authUser?.name || mockUser.name;
   const displayLogo = userProfile?.logo || null;
   const displayRole = authUser?.role || mockUser.role;
 
@@ -116,8 +117,8 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
     onOpenChange(false);
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/auth');
     onOpenChange(false);
   };
