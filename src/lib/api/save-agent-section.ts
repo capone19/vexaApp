@@ -84,14 +84,13 @@ export async function saveAgentSection(
     dataKeys: Object.keys(cleanData),
   });
 
-  // 1) Guardar en agent_settings_ui con timeout de 8 segundos
+  // 1) Guardar en agent_settings_ui (sin devolver filas para evitar bloqueos)
   let cloudSaved = false;
-  const saveTimeout = 8000;
 
   try {
     console.log("[SaveSection] Intentando upsert en agent_settings_ui...");
-    
-    const { data, error: upsertError } = await (supabase as any)
+
+    const { error: upsertError } = await (supabase as any)
       .from("agent_settings_ui")
       .upsert(
         {
@@ -104,8 +103,7 @@ export async function saveAgentSection(
         {
           onConflict: "tenant_id,section_key",
         }
-      )
-      .select();
+      );
 
     if (upsertError) {
       console.error("[SaveSection] Error upsert:", upsertError);
@@ -113,17 +111,11 @@ export async function saveAgentSection(
     }
 
     cloudSaved = true;
-    console.log("[SaveSection] ✅ Guardado en agent_settings_ui:", sectionId, data);
+    console.log("[SaveSection] ✅ Guardado en agent_settings_ui:", sectionId);
   } catch (err) {
     console.error("[SaveSection] ❌ Error guardando en DB:", err);
     const errorMsg = err instanceof Error ? err.message : "Error guardando en base de datos";
-    
-    // Si es error de timeout o abort, reportar específicamente
-    if (errorMsg.includes('abort') || errorMsg.includes('timeout')) {
-      errors.push("Timeout: la conexión con la base de datos tardó demasiado");
-    } else {
-      errors.push(errorMsg);
-    }
+    errors.push(errorMsg);
   }
 
   // 2) Webhook a n8n: SIEMPRE se envía (independiente de Supabase)
