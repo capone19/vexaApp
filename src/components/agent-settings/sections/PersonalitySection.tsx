@@ -25,6 +25,7 @@ const emojiLabels = ["Nunca", "Ocasional", "Frecuente"];
 const emojiValues: PersonalitySettings["emojis"][] = ["nunca", "ocasional", "frecuente"];
 
 const responseLengthLabels = ["Corta", "Media", "Extensa"];
+const responseLengthDescriptions = ["1-2 párrafos", "3-4 párrafos", "4+ párrafos"];
 const responseLengthValues: PersonalitySettings["responseLength"][] = ["corta", "media", "extensa"];
 
 const objectiveLabels: Record<PersonalitySettings["primaryObjective"], string> = {
@@ -316,9 +317,8 @@ export function PersonalitySection({ settings, onChange }: PersonalitySectionPro
                 step={1}
                 className="w-full"
               />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>1-2 párrafos</span>
-                <span>4+ párrafos</span>
+              <div className="text-center text-xs text-muted-foreground">
+                <span>{responseLengthDescriptions[responseLengthValues.indexOf(settings.responseLength || 'media')]}</span>
               </div>
             </div>
           </CardContent>
