@@ -162,7 +162,7 @@ Recuerda que estoy aquí para lo que necesites 💬
 ¡Un abrazo!`,
     hasButton: true,
     buttonText: 'NECESITO AYUDA',
-    buttonUrl: 'https://wa.me/+56912345678',
+    buttonUrl: 'https://wa.me/+59171234567',
     category: 'seguimiento'
   },
 ];
@@ -276,7 +276,7 @@ const MarketingTemplates = () => {
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 rounded-full">
             <div className="w-2 h-2 rounded-full bg-green-500"></div>
-            <span className="text-sm text-green-700 font-medium">+56945978422</span>
+            <span className="text-sm text-green-700 font-medium">+59171234567</span>
           </div>
         </div>
 

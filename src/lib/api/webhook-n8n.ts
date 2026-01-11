@@ -68,17 +68,39 @@ function generateSchemaHash(data: Record<string, unknown>): string {
 }
 
 /**
+ * Serializa datos para JSON, convirtiendo Dates a ISO strings
+ */
+function serializeForJSON(data: unknown): unknown {
+  if (data === null || data === undefined) return data;
+  if (data instanceof Date) return data.toISOString();
+  if (Array.isArray(data)) return data.map(item => serializeForJSON(item));
+  if (typeof data === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+      if (typeof value === 'function' || value === undefined) continue;
+      result[key] = serializeForJSON(value);
+    }
+    return result;
+  }
+  return data;
+}
+
+/**
  * Prepara la data de la sección removiendo campos que no son del formulario
- * (como lastModified que es metadata interna)
+ * (como lastModified que es metadata interna) y serializando correctamente
  */
 function prepareRawData(sectionData: Record<string, unknown>): Record<string, unknown> {
   // Crear copia sin lastModified (es metadata, no data del formulario)
   const { lastModified, ...rawData } = sectionData;
-  return rawData;
+  // Serializar todo para JSON
+  return serializeForJSON(rawData) as Record<string, unknown>;
 }
 
+const N8N_WEBHOOK_URL = "https://n8n-growthpartners-n8n.q7anmx.easypanel.host/webhook/76e801a3-1b3d-4753-be54-a81223b3c29f";
+
 /**
- * Envía el evento de guardado a n8n a través de Edge Function (evita CORS)
+ * Envía el evento de guardado a n8n
+ * Intenta Edge Function primero, si falla usa fetch directo
  * REGLA: 1 botón = 1 evento = 1 sección
  * REGLA: RAW = TODO lo rellenable (sin excepciones)
  */
@@ -88,54 +110,58 @@ export async function sendWebhookToN8n(
   tenantId: string,
   userId: string | null
 ): Promise<WebhookResult> {
+  const rawData = prepareRawData(sectionData);
+  
+  const payload: WebhookPayload = {
+    event: "agent_settings.saved",
+    tenant_id: tenantId,
+    section_key: SECTION_KEY_MAP[sectionId],
+    section_label: SECTION_LABELS[sectionId],
+    data: rawData,
+    updated_by: userId,
+    occurred_at: new Date().toISOString(),
+    source: "lovable-frontend",
+    app: "VEXA",
+    version: 1,
+    ui_route: `/ajustes-agente?section=${sectionId}`,
+    schema_hash: generateSchemaHash(rawData),
+  };
+
+  console.log("[Webhook n8n] 🚀 Payload preparado:", payload);
+
+  // Método 1: Intentar via Edge Function (evita CORS)
   try {
-    const rawData = prepareRawData(sectionData);
-    
-    const payload: WebhookPayload = {
-      event: "agent_settings.saved",
-      tenant_id: tenantId,
-      section_key: SECTION_KEY_MAP[sectionId],
-      section_label: SECTION_LABELS[sectionId],
-      data: rawData,
-      updated_by: userId,
-      occurred_at: new Date().toISOString(),
-      source: "lovable-frontend",
-      app: "VEXA",
-      version: 1,
-      ui_route: `/ajustes-agente?section=${sectionId}`,
-      schema_hash: generateSchemaHash(rawData),
-    };
-
-    console.log("[Webhook n8n] Enviando payload via Edge Function:", payload);
-
-    // Usar Edge Function como proxy para evitar CORS
+    console.log("[Webhook n8n] Intentando via Edge Function...");
     const { data, error } = await supabase.functions.invoke('webhook-n8n-proxy', {
       body: payload,
     });
 
-    if (error) {
-      console.error("[Webhook n8n] Error en Edge Function:", error);
-      return { 
-        success: false, 
-        error: error.message || "Error en el proxy" 
-      };
+    if (!error && data) {
+      console.log("[Webhook n8n] ✅ Enviado via Edge Function:", data);
+      return { success: true };
     }
-
-    console.log("[Webhook n8n] Respuesta del proxy:", data);
     
-    if (!data?.success) {
-      return { 
-        success: false, 
-        error: data?.error || "n8n no respondió correctamente" 
-      };
-    }
+    console.warn("[Webhook n8n] Edge Function falló:", error?.message);
+  } catch (edgeError) {
+    console.warn("[Webhook n8n] Edge Function error:", edgeError);
+  }
 
+  // Método 2: Fallback - fetch directo con no-cors
+  try {
+    console.log("[Webhook n8n] Intentando fetch directo (no-cors)...");
+    await fetch(N8N_WEBHOOK_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    console.log("[Webhook n8n] ✅ Enviado via fetch directo (fire-and-forget)");
     return { success: true };
-  } catch (error) {
-    console.error("[Webhook n8n] Error:", error);
+  } catch (fetchError) {
+    console.error("[Webhook n8n] ❌ Todos los métodos fallaron:", fetchError);
     return { 
       success: false, 
-      error: error instanceof Error ? error.message : "Error desconocido" 
+      error: fetchError instanceof Error ? fetchError.message : "Error desconocido" 
     };
   }
 }

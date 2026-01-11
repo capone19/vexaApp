@@ -135,101 +135,170 @@ const Billing = () => {
 
   // Plan selection content - reused in both dialog and sheet
   const PlanSelector = () => (
-    <div className={cn(
-      "gap-4 py-4",
-      isMobile ? "space-y-4" : "grid grid-cols-1 md:grid-cols-3"
-    )}>
-      {isMobile ? (
-        <ScrollArea className="w-full">
-          <div className="flex gap-4 pb-4">
-            {plans.map((plan) => (
-              <div
-                key={plan.id}
-                onClick={() => setSelectedPlan(plan.id)}
-                className={cn(
-                  "relative p-4 rounded-xl border-2 cursor-pointer transition-all min-w-[280px] shrink-0",
-                  selectedPlan === plan.id
-                    ? "border-primary bg-primary/5"
-                    : "border-border active:border-primary/50",
-                  plan.popular && "ring-2 ring-primary/20"
-                )}
-              >
-                {plan.popular && (
-                  <Badge className="absolute -top-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground">
-                    Popular
-                  </Badge>
-                )}
-                <div className="text-center mb-4 pt-2">
-                  <h4 className="font-semibold mb-1 text-foreground">{plan.name}</h4>
-                  <p className="text-2xl font-semibold text-foreground">
-                    {formatCurrency(plan.price, plan.currency)}
-                    {plan.price !== null && <span className="text-sm font-normal text-muted-foreground">/mes</span>}
-                  </p>
+    <div className="space-y-4 py-4">
+      {/* Grid de planes */}
+      <div className={cn(
+        "gap-4",
+        isMobile ? "space-y-4" : "grid grid-cols-1 md:grid-cols-3"
+      )}>
+        {isMobile ? (
+          <ScrollArea className="w-full">
+            <div className="flex gap-4 pb-4">
+              {plans.map((plan) => (
+                <div
+                  key={plan.id}
+                  onClick={() => setSelectedPlan(plan.id)}
+                  className={cn(
+                    "relative rounded-xl border-2 cursor-pointer transition-all min-w-[280px] shrink-0 overflow-hidden",
+                    selectedPlan === plan.id
+                      ? "border-primary bg-card"
+                      : "border-border bg-card active:border-primary/50",
+                    plan.popular && "ring-2 ring-primary/20"
+                  )}
+                >
+                  {plan.popular && (
+                    <Badge className="absolute top-3 right-3 bg-primary text-primary-foreground text-[10px]">
+                      Popular
+                    </Badge>
+                  )}
+                  
+                  {/* Header del plan */}
+                  <div className="p-4 pb-3">
+                    <h4 className="font-bold text-lg text-foreground">{plan.name}</h4>
+                  </div>
+                  
+                  {/* Sección de precios */}
+                  <div className="px-4 py-3 bg-muted/30 border-y border-border space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground uppercase tracking-wide">Mes 1</span>
+                      <span className="font-semibold text-foreground">{formatCurrency(plan.onboarding, plan.currency)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-primary">
+                      <span className="text-xs uppercase tracking-wide font-medium">Mes 2 en adelante</span>
+                      <span className="font-bold text-lg">{formatCurrency(plan.price, plan.currency)}<span className="text-xs font-normal">/mes</span></span>
+                    </div>
+                  </div>
+                  
+                  {/* Features */}
+                  <div className="p-4">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">Incluye</p>
+                    <ul className="space-y-1.5">
+                      {plan.features.slice(0, 4).map((feature, index) => (
+                        <li key={index} className="flex items-start gap-2 text-xs">
+                          <CheckCircle className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+                          <span className="text-muted-foreground">{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  
+                  {mockClient.plan === plan.id && (
+                    <div className="px-4 pb-4">
+                      <Badge variant="outline" className="w-full justify-center">
+                        Plan Actual
+                      </Badge>
+                    </div>
+                  )}
                 </div>
+              ))}
+            </div>
+            <ScrollBar orientation="horizontal" />
+          </ScrollArea>
+        ) : (
+          plans.map((plan) => (
+            <div
+              key={plan.id}
+              onClick={() => setSelectedPlan(plan.id)}
+              className={cn(
+                "relative rounded-xl border-2 cursor-pointer transition-all overflow-hidden",
+                selectedPlan === plan.id
+                  ? "border-primary bg-card shadow-lg"
+                  : "border-border bg-card hover:border-primary/50 hover:shadow-md",
+                plan.popular && "ring-2 ring-primary/20"
+              )}
+            >
+              {plan.popular && (
+                <Badge className="absolute top-3 right-3 bg-primary text-primary-foreground text-[10px]">
+                  Popular
+                </Badge>
+              )}
+              
+              {/* Header del plan */}
+              <div className="p-5 pb-3">
+                <h4 className="font-bold text-xl text-foreground">{plan.name}</h4>
+              </div>
+              
+              {/* Sección de precios - Estilo similar a la imagen */}
+              <div className="mx-4 mb-4 rounded-lg bg-muted/40 border border-border overflow-hidden">
+                <div className="p-3 border-b border-border flex justify-between items-center">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Mes 1</p>
+                    <p className="text-[10px] text-muted-foreground">Implementación</p>
+                  </div>
+                  <p className="font-bold text-foreground">{formatCurrency(plan.onboarding, plan.currency)}</p>
+                </div>
+                <div className="p-3 bg-primary/5 flex justify-between items-center">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-primary font-semibold">Mes 2 en adelante</p>
+                    <p className="text-[10px] text-muted-foreground">Precio regular</p>
+                  </div>
+                  <p className="font-bold text-xl text-primary">{formatCurrency(plan.price, plan.currency)}<span className="text-xs font-normal text-muted-foreground">/mes</span></p>
+                </div>
+              </div>
+              
+              {/* Features */}
+              <div className="px-5 pb-4">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">Funciones incluidas</p>
                 <ul className="space-y-2">
-                  {plan.features.slice(0, 4).map((feature, index) => (
+                  {plan.features.map((feature, index) => (
                     <li key={index} className="flex items-start gap-2 text-sm">
                       <CheckCircle className="h-4 w-4 text-primary shrink-0 mt-0.5" />
                       <span className="text-foreground">{feature}</span>
                     </li>
                   ))}
                 </ul>
-                {mockClient.plan === plan.id && (
-                  <Badge variant="outline" className="w-full mt-4 justify-center">
+              </div>
+              
+              {mockClient.plan === plan.id && (
+                <div className="px-5 pb-5">
+                  <Badge variant="outline" className="w-full justify-center py-2">
                     Plan Actual
                   </Badge>
-                )}
-              </div>
-            ))}
-          </div>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
-      ) : (
-        plans.map((plan) => (
-          <div
-            key={plan.id}
-            onClick={() => setSelectedPlan(plan.id)}
-            className={cn(
-              "relative p-4 rounded-lg border-2 cursor-pointer transition-all",
-              selectedPlan === plan.id
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-primary/50",
-              plan.popular && "ring-2 ring-primary/20"
-            )}
-          >
-            {plan.popular && (
-              <Badge className="absolute -top-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground">
-                Popular
-              </Badge>
-            )}
-            <div className="text-center mb-4">
-              <h4 className="font-semibold mb-1 text-foreground">{plan.name}</h4>
-              <p className="text-2xl font-semibold text-foreground">
-                {formatCurrency(plan.price, plan.currency)}
-                {plan.price !== null && <span className="text-sm font-normal text-muted-foreground">/mes</span>}
-              </p>
-              {plan.onboarding !== null && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Onboarding: {formatCurrency(plan.onboarding, plan.currency)}
-                </p>
+                </div>
               )}
             </div>
-            <ul className="space-y-2">
-              {plan.features.map((feature, index) => (
-                <li key={index} className="flex items-start gap-2 text-sm">
-                  <CheckCircle className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                  <span className="text-foreground">{feature}</span>
-                </li>
-              ))}
-            </ul>
-            {mockClient.plan === plan.id && (
-              <Badge variant="outline" className="w-full mt-4 justify-center">
-                Plan Actual
-              </Badge>
-            )}
+          ))
+        )}
+      </div>
+      
+      {/* Nota explicativa sobre el onboarding - Expandida */}
+      <div className={cn(
+        "rounded-xl bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 border border-primary/20 p-4",
+        isMobile ? "" : "col-span-3"
+      )}>
+        <div className="flex items-start gap-3">
+          <div className="h-8 w-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
+            <span className="text-lg">💡</span>
           </div>
-        ))
-      )}
+          <div className="flex-1">
+            <p className="font-medium text-foreground text-sm mb-2">¿Cómo funciona el pago?</p>
+            <ul className="space-y-1.5 text-xs text-muted-foreground">
+              <li className="flex items-start gap-2">
+                <span className="font-semibold text-foreground min-w-[100px]">Mes 1:</span>
+                <span>Pagas solo la implementación (incluye configuración, entrenamiento del agente y soporte inicial).</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="font-semibold text-foreground min-w-[100px]">Mes 2 en adelante:</span>
+                <span>Se cobra únicamente la cuota mensual regular.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="font-semibold text-foreground min-w-[100px]">Upgrades:</span>
+                <span>Si cambias a un plan superior, no pagas implementación adicional.</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </div>
   );
 
@@ -240,6 +309,52 @@ const Billing = () => {
           title="Facturación"
           subtitle={isMobile ? undefined : "Gestiona tu plan y métodos de pago"}
         />
+
+        {/* Usage Summary - Primero para visibilidad */}
+        <Card className="border-border">
+          <CardHeader className={cn(isMobile && "pb-3")}>
+            <CardTitle className="text-sm md:text-base flex items-center gap-2 text-foreground">
+              <BarChart3 className="h-4 w-4" />
+              Uso del Período Actual
+            </CardTitle>
+            <CardDescription className="text-xs md:text-sm">
+              Período: {format(new Date(), 'MMMM yyyy', { locale: es })}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+              <div className={cn("rounded-lg bg-secondary", isMobile ? "p-3" : "p-4")}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs md:text-sm text-muted-foreground">Conversaciones</span>
+                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>684</p>
+                <div className="mt-2">
+                  <div className="h-1.5 bg-border rounded-full overflow-hidden">
+                    <div className="h-full bg-primary rounded-full" style={{ width: '68%' }} />
+                  </div>
+                  <p className="text-[10px] md:text-xs text-muted-foreground mt-1">68% de 1,000</p>
+                </div>
+              </div>
+              <div className={cn("rounded-lg bg-secondary", isMobile ? "p-3" : "p-4")}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs md:text-sm text-muted-foreground">WhatsApp</span>
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>2</p>
+                <p className="text-[10px] md:text-xs text-muted-foreground mt-2">de 3 disponibles</p>
+              </div>
+              <div className={cn("rounded-lg bg-secondary", isMobile ? "p-3" : "p-4")}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs md:text-sm text-muted-foreground">Campañas</span>
+                  <Receipt className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>4</p>
+                <p className="text-[10px] md:text-xs text-muted-foreground mt-2">Incluido en Pro</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Current Plan Card */}
         <Card className="border-primary/20 bg-primary/5">
@@ -422,52 +537,6 @@ const Billing = () => {
                   </div>
                 </div>
               ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Usage Summary */}
-        <Card className="border-border">
-          <CardHeader className={cn(isMobile && "pb-3")}>
-            <CardTitle className="text-sm md:text-base flex items-center gap-2 text-foreground">
-              <BarChart3 className="h-4 w-4" />
-              Uso del Período Actual
-            </CardTitle>
-            <CardDescription className="text-xs md:text-sm">
-              Período: {format(new Date(), 'MMMM yyyy', { locale: es })}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
-              <div className={cn("rounded-lg bg-secondary", isMobile ? "p-3" : "p-4")}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs md:text-sm text-muted-foreground">Conversaciones</span>
-                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>684</p>
-                <div className="mt-2">
-                  <div className="h-1.5 bg-border rounded-full overflow-hidden">
-                    <div className="h-full bg-primary rounded-full" style={{ width: '68%' }} />
-                  </div>
-                  <p className="text-[10px] md:text-xs text-muted-foreground mt-1">68% de 1,000</p>
-                </div>
-              </div>
-              <div className={cn("rounded-lg bg-secondary", isMobile ? "p-3" : "p-4")}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs md:text-sm text-muted-foreground">WhatsApp</span>
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>2</p>
-                <p className="text-[10px] md:text-xs text-muted-foreground mt-2">de 3 disponibles</p>
-              </div>
-              <div className={cn("rounded-lg bg-secondary", isMobile ? "p-3" : "p-4")}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs md:text-sm text-muted-foreground">Campañas</span>
-                  <Receipt className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>4</p>
-                <p className="text-[10px] md:text-xs text-muted-foreground mt-2">Incluido en Pro</p>
-              </div>
             </div>
           </CardContent>
         </Card>

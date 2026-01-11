@@ -116,7 +116,7 @@ export const mockChats: Chat[] = [
     id: 'chat-001',
     sessionId: 'sess_a1b2c3',
     userName: 'María González',
-    userPhone: '+56912345678',
+    userPhone: '+59171234567',
     channel: 'whatsapp',
     status: 'active',
     funnelStage: 'hot',
@@ -130,7 +130,7 @@ export const mockChats: Chat[] = [
     id: 'chat-002',
     sessionId: 'sess_d4e5f6',
     userName: 'Carlos Mendoza',
-    userPhone: '+56987654321',
+    userPhone: '+59172345678',
     channel: 'whatsapp',
     status: 'active',
     funnelStage: 'warm',
@@ -144,7 +144,7 @@ export const mockChats: Chat[] = [
     id: 'chat-003',
     sessionId: 'sess_g7h8i9',
     userName: 'Ana Rodríguez',
-    userPhone: '+56955555555',
+    userPhone: '+59173456789',
     channel: 'whatsapp',
     status: 'closed',
     funnelStage: 'converted',
@@ -159,7 +159,7 @@ export const mockChats: Chat[] = [
     id: 'chat-004',
     sessionId: 'sess_j1k2l3',
     userName: 'Pedro Silva',
-    userPhone: '+56944444444',
+    userPhone: '+59174567890',
     channel: 'whatsapp',
     status: 'active',
     funnelStage: 'dead',
@@ -175,7 +175,7 @@ export const mockChats: Chat[] = [
     id: 'chat-005',
     sessionId: 'sess_m4n5o6',
     userName: 'Valentina Torres',
-    userPhone: '+56933333333',
+    userPhone: '+59175678901',
     channel: 'whatsapp',
     status: 'active',
     funnelStage: 'hot',
@@ -189,7 +189,7 @@ export const mockChats: Chat[] = [
     id: 'chat-006',
     sessionId: 'sess_p7q8r9',
     userName: 'Diego Fuentes',
-    userPhone: '+56922222222',
+    userPhone: '+59176789012',
     channel: 'whatsapp',
     status: 'closed',
     funnelStage: 'converted',
@@ -203,7 +203,7 @@ export const mockChats: Chat[] = [
     id: 'chat-007',
     sessionId: 'sess_s1t2u3',
     userName: 'Camila Reyes',
-    userPhone: '+56911111111',
+    userPhone: '+59177890123',
     channel: 'whatsapp',
     status: 'active',
     funnelStage: 'warm',
@@ -217,7 +217,7 @@ export const mockChats: Chat[] = [
     id: 'chat-008',
     sessionId: 'sess_v4w5x6',
     userName: 'Roberto Muñoz',
-    userPhone: '+56900000000',
+    userPhone: '+59178901234',
     channel: 'whatsapp',
     status: 'closed',
     funnelStage: 'dead',
@@ -237,7 +237,7 @@ export const mockAppointments: Appointment[] = [
     id: 'apt-001',
     datetime: new Date(new Date().setHours(10, 0, 0, 0)),
     clientName: 'María González',
-    clientPhone: '+56912345678',
+    clientPhone: '+59171234567',
     service: 'Corte de cabello',
     source: 'chat',
     status: 'confirmed',
@@ -248,7 +248,7 @@ export const mockAppointments: Appointment[] = [
     id: 'apt-002',
     datetime: new Date(new Date().setHours(11, 30, 0, 0)),
     clientName: 'Laura Pérez',
-    clientPhone: '+56998765432',
+    clientPhone: '+59179012345',
     service: 'Manicure + Pedicure',
     source: 'campaign',
     status: 'confirmed',
@@ -258,7 +258,7 @@ export const mockAppointments: Appointment[] = [
     id: 'apt-003',
     datetime: new Date(new Date().setHours(14, 0, 0, 0)),
     clientName: 'Sofía Martínez',
-    clientPhone: '+56977777777',
+    clientPhone: '+59170123456',
     service: 'Tratamiento capilar',
     source: 'chat',
     status: 'pending',
@@ -268,7 +268,7 @@ export const mockAppointments: Appointment[] = [
     id: 'apt-004',
     datetime: new Date(new Date().setHours(15, 30, 0, 0)),
     clientName: 'Javiera López',
-    clientPhone: '+56966666666',
+    clientPhone: '+59160123456',
     service: 'Tinte + Corte',
     source: 'direct',
     status: 'confirmed',
@@ -278,7 +278,7 @@ export const mockAppointments: Appointment[] = [
     id: 'apt-005',
     datetime: new Date(new Date().setHours(17, 0, 0, 0)),
     clientName: 'Fernanda Castro',
-    clientPhone: '+56955555555',
+    clientPhone: '+59173456789',
     service: 'Alisado permanente',
     source: 'referral',
     status: 'pending',
@@ -288,7 +288,7 @@ export const mockAppointments: Appointment[] = [
     id: 'apt-006',
     datetime: (() => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d; })(),
     clientName: 'Catalina Vargas',
-    clientPhone: '+56944444444',
+    clientPhone: '+59174567890',
     service: 'Corte de cabello',
     source: 'chat',
     status: 'confirmed',
@@ -298,7 +298,7 @@ export const mockAppointments: Appointment[] = [
     id: 'apt-007',
     datetime: (() => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(11, 0, 0, 0); return d; })(),
     clientName: 'Isidora Núñez',
-    clientPhone: '+56933333333',
+    clientPhone: '+59175678901',
     service: 'Maquillaje evento',
     source: 'campaign',
     status: 'confirmed',
@@ -308,7 +308,7 @@ export const mockAppointments: Appointment[] = [
     id: 'apt-008',
     datetime: (() => { const d = new Date(); d.setDate(d.getDate() - 1); d.setHours(16, 0, 0, 0); return d; })(),
     clientName: 'Antonia Soto',
-    clientPhone: '+56922222222',
+    clientPhone: '+59176789012',
     service: 'Depilación',
     source: 'chat',
     status: 'canceled',
@@ -439,7 +439,7 @@ export const mockAgentSettings: AgentSettings = {
         ],
       },
     ],
-    phoneNumbers: ['+56912345678', '+56998765432'],
+    phoneNumbers: ['+59171234567', '+59172345678'],
     socialLinks: {
       instagram: 'https://instagram.com/beautysalonpro',
       facebook: 'https://facebook.com/beautysalonpro',
@@ -550,9 +550,14 @@ export const mockAgentSettings: AgentSettings = {
 // API Placeholder Functions
 // ============================================
 
-export async function fetchDashboardData(): Promise<DashboardMetrics> {
+export async function fetchDashboardData(dateRange?: string): Promise<DashboardMetrics> {
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 500));
+  
+  // En producción, aquí se filtrarían los datos según dateRange
+  // Por ahora retornamos los datos mock, pero la estructura está lista
+  console.log("[fetchDashboardData] Filtrando por:", dateRange || "30d");
+  
   return mockDashboardMetrics;
 }
 

@@ -13,7 +13,6 @@ import { es } from "date-fns/locale";
 import {
   MessageSquare,
   TrendingUp,
-  Bot,
   CalendarCheck,
   ArrowRight,
   DollarSign,
@@ -48,12 +47,38 @@ export default function Dashboard() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const data = await fetchDashboardData();
+      const data = await fetchDashboardData(dateRange);
       setMetrics(data);
       setLoading(false);
     };
     load();
   }, [dateRange]);
+
+  // Función para obtener la fecha límite según el rango seleccionado
+  const getDateRangeLimit = (): Date => {
+    const now = new Date();
+    switch (dateRange) {
+      case "today":
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      case "7d":
+        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      case "30d":
+        return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      case "90d":
+        return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      case "ytd":
+        return new Date(now.getFullYear(), 0, 1);
+      case "all":
+      default:
+        return new Date(0); // Desde el inicio
+    }
+  };
+
+  // Filtrar appointments según el rango de fechas
+  const filteredAppointments = mockAppointments.filter(apt => {
+    const aptDate = new Date(apt.datetime);
+    return aptDate >= getDateRangeLimit();
+  });
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("es-CL", {
@@ -258,9 +283,9 @@ export default function Dashboard() {
             variant="primary"
           />
           <KPICard
-            title="Tasa respuesta bot"
-            value={`${metrics.botResponseRate}%`}
-            icon={Bot}
+            title="Tasa de conversión"
+            value={`${metrics.funnel.conversionRate}%`}
+            icon={TrendingUp}
             variant="success"
           />
           <KPICard
@@ -285,7 +310,7 @@ export default function Dashboard() {
           {isMobile ? (
             // Mobile: Card list
             <div className="divide-y divide-border">
-              {mockAppointments.slice(0, 5).map((apt) => (
+              {filteredAppointments.slice(0, 5).map((apt) => (
                 <div key={apt.id} className="p-4 hover:bg-secondary/30 active:bg-secondary/50 transition-colors">
                   <div className="flex items-start justify-between mb-2">
                     <div>
@@ -294,9 +319,8 @@ export default function Dashboard() {
                     </div>
                     <StatusBadge status={apt.status} />
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <div className="flex items-center text-xs text-muted-foreground">
                     <span>{format(apt.datetime, "dd MMM, HH:mm", { locale: es })}</span>
-                    <span className="capitalize">• {apt.source}</span>
                   </div>
                 </div>
               ))}
@@ -309,19 +333,17 @@ export default function Dashboard() {
                   <TableHead className="text-muted-foreground font-medium">Fecha/Hora</TableHead>
                   <TableHead className="text-muted-foreground font-medium">Cliente</TableHead>
                   <TableHead className="text-muted-foreground font-medium">Servicio</TableHead>
-                  <TableHead className="text-muted-foreground font-medium">Origen</TableHead>
                   <TableHead className="text-muted-foreground font-medium">Estado</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {mockAppointments.slice(0, 8).map((apt) => (
+                {filteredAppointments.slice(0, 8).map((apt) => (
                   <TableRow key={apt.id} className="border-border hover:bg-secondary/50">
                     <TableCell className="font-medium text-foreground">
                       {format(apt.datetime, "dd MMM, HH:mm", { locale: es })}
                     </TableCell>
                     <TableCell className="text-foreground">{apt.clientName}</TableCell>
                     <TableCell className="text-muted-foreground">{apt.service}</TableCell>
-                    <TableCell className="text-muted-foreground capitalize">{apt.source}</TableCell>
                     <TableCell>
                       <StatusBadge status={apt.status} />
                     </TableCell>

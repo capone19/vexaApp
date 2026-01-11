@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { saveAgentSection, loadAgentSection } from "@/lib/api/save-agent-section";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { DEV_CLIENT_ID } from "@/lib/constants";
 
 export type AgentSettingsSectionId = 
   | "personality"
@@ -168,21 +169,43 @@ export default function AgentSettings() {
     
     setIsSaving(true);
     
+    // Timeout de seguridad: nunca dejar el botón bloqueado más de 10 segundos
+    const safetyTimeout = setTimeout(() => {
+      console.warn("[AgentSettings] Safety timeout reached - resetting save state");
+      setIsSaving(false);
+      toast({
+        title: "Tiempo agotado",
+        description: "El guardado tardó demasiado. Los cambios pueden haberse guardado parcialmente.",
+        variant: "destructive",
+      });
+    }, 10000);
+    
     try {
       const sectionData = getSectionData(activeSection);
+      
+      console.log("[AgentSettings] Iniciando guardado de sección:", activeSection);
+      
+      // Usar tenantId del usuario o el cliente de prueba real
+      const tenantId = user?.tenantId || DEV_CLIENT_ID;
+      
+      if (!user?.tenantId) {
+        console.log("[AgentSettings] Usando cliente de prueba:", tenantId);
+      }
       
       // REGLA: 1 botón = 1 evento = 1 sección
       // Envía DATA RAW COMPLETA de la sección activa
       const result = await saveAgentSection(
         activeSection,
         sectionData,
-        user?.tenantId || "demo-tenant",
+        tenantId,
         user?.id || null
       );
 
+      clearTimeout(safetyTimeout);
+
       if (result.success) {
         toast({
-          title: "Cambios guardados",
+          title: "✅ Cambios guardados",
           description: "Cambios guardados y enviados para procesamiento.",
         });
         setHasUnsavedChanges(false);
@@ -197,18 +220,20 @@ export default function AgentSettings() {
       } else {
         toast({
           title: "Error",
-          description: "No se pudo enviar la información. Reintenta.",
+          description: result.error || "No se pudo guardar. Reintenta.",
           variant: "destructive",
         });
       }
     } catch (error) {
+      clearTimeout(safetyTimeout);
       console.error("[AgentSettings] Error al guardar:", error);
       toast({
         title: "Error",
-        description: "No se pudo enviar la información. Reintenta.",
+        description: error instanceof Error ? error.message : "No se pudo guardar. Reintenta.",
         variant: "destructive",
       });
     } finally {
+      clearTimeout(safetyTimeout);
       setIsSaving(false);
     }
   };
@@ -255,6 +280,7 @@ export default function AgentSettings() {
           <PaymentsSection
             settings={settings.payments}
             onChange={(payments) => handleSettingsChange({ payments })}
+            services={settings.services.services}
           />
         );
       case "intervention":
@@ -318,6 +344,7 @@ export default function AgentSettings() {
               onSave={handleSave}
               hasUnsavedChanges={hasUnsavedChanges}
               isSaving={isSaving}
+              tenantId={user?.tenantId}
             />
 
             {/* Contenido de la sección */}

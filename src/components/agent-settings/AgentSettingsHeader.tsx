@@ -9,6 +9,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Badge } from "@/components/ui/badge";
+import { PlaygroundChat } from "./PlaygroundChat";
 import type { AgentSettingsSectionInfo } from "@/pages/AgentSettings";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
@@ -18,6 +19,7 @@ interface AgentSettingsHeaderProps {
   onSave: () => void;
   hasUnsavedChanges: boolean;
   isSaving?: boolean;
+  tenantId?: string;
 }
 
 export function AgentSettingsHeader({
@@ -25,6 +27,7 @@ export function AgentSettingsHeader({
   onSave,
   hasUnsavedChanges,
   isSaving = false,
+  tenantId,
 }: AgentSettingsHeaderProps) {
   const isMobile = useIsMobile();
 
@@ -80,6 +83,10 @@ export function AgentSettingsHeader({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {/* Botón Playground */}
+          <PlaygroundChat tenantId={tenantId} />
+          
+          {/* Botón Guardar */}
           <Button 
             size={isMobile ? "sm" : "sm"} 
             className={cn("gap-2", isMobile && "px-3")} 

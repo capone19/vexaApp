@@ -8,12 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { fetchChats } from "@/lib/mock/data";
 import type { Chat, FunnelStage, ChatStatus } from "@/lib/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { Search, User, Send, Bot, ArrowLeft, Filter, X } from "lucide-react";
+import { Search, User, Send, Bot, ArrowLeft, Filter, X, Info } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -225,24 +226,36 @@ export default function Chats() {
                 <FunnelStageBadge stage={selectedChat.funnelStage} />
               </>
             )}
-            <div className={cn(
-              "flex items-center gap-2 px-2 md:px-3 py-1.5 rounded-lg border border-border bg-secondary/50",
-              isMobile && "px-2"
-            )}>
-              <Bot className="h-4 w-4 text-muted-foreground" />
-              {!isMobile && (
-                <Label htmlFor="bot-toggle" className="text-sm font-medium cursor-pointer">
-                  Bot
-                </Label>
-              )}
-              <Switch
-                id="bot-toggle"
-                checked={botEnabled[selectedChat.id] !== false}
-                onCheckedChange={(checked) => {
-                  setBotEnabled(prev => ({ ...prev, [selectedChat.id]: checked }));
-                }}
-              />
-            </div>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className={cn(
+                    "flex items-center gap-2 px-2 md:px-3 py-1.5 rounded-lg border border-border bg-secondary/50 cursor-help",
+                    isMobile && "px-2"
+                  )}>
+                    <Bot className="h-4 w-4 text-muted-foreground" />
+                    {!isMobile && (
+                      <Label htmlFor="bot-toggle" className="text-sm font-medium cursor-pointer">
+                        Bot
+                      </Label>
+                    )}
+                    <Switch
+                      id="bot-toggle"
+                      checked={botEnabled[selectedChat.id] !== false}
+                      onCheckedChange={(checked) => {
+                        setBotEnabled(prev => ({ ...prev, [selectedChat.id]: checked }));
+                      }}
+                    />
+                    <Info className="h-3.5 w-3.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[220px] text-center">
+                  <p className="text-xs">
+                    Activa o desactiva el bot <strong>solo para este chat</strong>. Los demás chats no se verán afectados.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
 

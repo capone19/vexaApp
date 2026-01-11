@@ -73,7 +73,7 @@ const mockNotifications: Notification[] = [
     actionUrl: '/calendario',
     metadata: {
       clientName: 'María González',
-      clientPhone: '+56 9 1234 5678',
+      clientPhone: '+591 7 1234567',
       service: 'Corte de cabello',
       date: new Date(),
       time: '15:00',
@@ -91,7 +91,7 @@ const mockNotifications: Notification[] = [
     read: false,
     metadata: {
       clientName: 'Ana Rodríguez',
-      clientPhone: '+56 9 8765 4321',
+      clientPhone: '+591 7 2345678',
       service: 'Manicure + Pedicure',
       date: new Date(),
       time: '16:00',
@@ -109,7 +109,7 @@ const mockNotifications: Notification[] = [
     read: true,
     metadata: {
       clientName: 'Pedro Silva',
-      clientPhone: '+56 9 5555 1234',
+      clientPhone: '+591 7 3456789',
       service: 'Tratamiento capilar',
       date: new Date(Date.now() + 1000 * 60 * 60 * 24),
       time: '10:00',
@@ -128,7 +128,7 @@ const mockNotifications: Notification[] = [
     read: true,
     metadata: {
       clientName: 'Valentina Torres',
-      clientPhone: '+56 9 4444 5678',
+      clientPhone: '+591 7 4567890',
       service: 'Tinte completo',
       date: new Date(Date.now() + 1000 * 60 * 60 * 48),
       time: '11:30',
@@ -147,7 +147,7 @@ const mockNotifications: Notification[] = [
     actionUrl: '/calendario',
     metadata: {
       clientName: 'Camila Reyes',
-      clientPhone: '+56 9 3333 9876',
+      clientPhone: '+591 7 5678901',
       service: 'Alisado permanente',
       date: new Date(Date.now() + 1000 * 60 * 60 * 72),
       time: '14:00',
@@ -183,7 +183,7 @@ const mockNotifications: Notification[] = [
     actionUrl: '/calendario',
     metadata: {
       clientName: 'Diego Fuentes',
-      clientPhone: '+56 9 2222 3456',
+      clientPhone: '+591 7 6789012',
       service: 'Corte + Barba',
       date: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3),
       time: '11:00',
@@ -201,7 +201,7 @@ const mockNotifications: Notification[] = [
     read: true,
     metadata: {
       clientName: 'Roberto Muñoz',
-      clientPhone: '+56 9 1111 7890',
+      clientPhone: '+591 7 7890123',
       service: 'Corte de cabello',
       date: new Date(Date.now() - 1000 * 60 * 60 * 24),
       time: '09:30',

@@ -14,11 +14,12 @@ import {
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CreditCard, QrCode, Banknote, Link as LinkIcon, Wallet } from "lucide-react";
-import type { PaymentSettings, PaymentMethod } from "@/lib/types";
+import type { PaymentSettings, PaymentMethod, Service } from "@/lib/types";
 
 interface PaymentsSectionProps {
   settings: PaymentSettings;
   onChange: (settings: PaymentSettings) => void;
+  services?: Service[]; // Servicios reales desde la configuración
 }
 
 const paymentMethodConfig: Record<
@@ -42,16 +43,7 @@ const defaultMethods: PaymentMethod[] = [
   { type: "otro", enabled: false },
 ];
 
-// Mock services for restrictions
-const mockServices = [
-  { id: "svc-001", name: "Corte de cabello" },
-  { id: "svc-002", name: "Tinte completo" },
-  { id: "svc-003", name: "Manicure" },
-  { id: "svc-004", name: "Pedicure" },
-  { id: "svc-005", name: "Tratamiento capilar" },
-];
-
-export function PaymentsSection({ settings, onChange }: PaymentsSectionProps) {
+export function PaymentsSection({ settings, onChange, services = [] }: PaymentsSectionProps) {
   // Initialize methods if empty
   const methods = settings.methods.length > 0 ? settings.methods : defaultMethods;
 
@@ -178,7 +170,7 @@ export function PaymentsSection({ settings, onChange }: PaymentsSectionProps) {
       </Card>
 
       {/* Restricciones por servicio */}
-      {enabledMethods.length > 1 && (
+      {enabledMethods.length > 1 && services.length > 0 && (
         <Card className="bg-card border-border">
           <CardHeader>
             <CardTitle>Restricciones por servicio</CardTitle>
@@ -199,7 +191,7 @@ export function PaymentsSection({ settings, onChange }: PaymentsSectionProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {mockServices.map((service) => (
+                {services.map((service) => (
                   <TableRow key={service.id} className="border-border">
                     <TableCell className="font-medium">{service.name}</TableCell>
                     {enabledMethods.map((method) => (
@@ -219,6 +211,24 @@ export function PaymentsSection({ settings, onChange }: PaymentsSectionProps) {
             <p className="text-xs text-muted-foreground mt-3">
               Deja todos marcados si no hay restricciones
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Mensaje si no hay servicios configurados */}
+      {enabledMethods.length > 1 && services.length === 0 && (
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <CardTitle>Restricciones por servicio</CardTitle>
+            <CardDescription>
+              Define qué métodos de pago están disponibles para cada servicio
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center py-6 text-muted-foreground">
+              <p>No hay servicios configurados todavía.</p>
+              <p className="text-sm">Configura tus servicios primero en la sección "Servicios".</p>
+            </div>
           </CardContent>
         </Card>
       )}

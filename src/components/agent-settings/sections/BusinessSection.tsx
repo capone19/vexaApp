@@ -574,7 +574,7 @@ export function BusinessSection({ settings, onChange }: BusinessSectionProps) {
             <Input
               value={newPhone}
               onChange={(e) => setNewPhone(e.target.value)}
-              placeholder="+56 9 1234 5678"
+              placeholder="+591 7 1234567"
               className="bg-muted/30 border-border"
             />
             <Button onClick={handleAddPhone} variant="outline">
