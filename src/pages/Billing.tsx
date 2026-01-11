@@ -60,10 +60,7 @@ const getStoredBillingInfo = (): BillingInfoData => {
   } catch (e) {
     console.error('Error loading billing info:', e);
   }
-  return defaultBillingInfo;
 };
-
-type PlanId = 'basic' | 'pro' | 'enterprise';
 
 const plans: Array<{
   id: PlanId;
