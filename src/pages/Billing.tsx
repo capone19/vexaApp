@@ -101,7 +101,15 @@ const plans: Array<{
 const Billing = () => {
   const [isChangePlanOpen, setIsChangePlanOpen] = useState(false);
   const [isPaymentMethodOpen, setIsPaymentMethodOpen] = useState(false);
+  const [isBillingInfoOpen, setIsBillingInfoOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(mockClient.plan);
+  const [billingInfo, setBillingInfo] = useState({
+    companyName: 'Beauty Salon Pro SpA',
+    taxId: '76.543.210-K',
+    address: 'Av. Providencia 1234, Santiago',
+    billingEmail: 'facturas@beautysalonpro.cl',
+  });
+  const [editingBillingInfo, setEditingBillingInfo] = useState(billingInfo);
   const isMobile = useIsMobile();
 
   const currentPlan = plans.find(p => p.id === mockClient.plan) || plans[1];
@@ -457,22 +465,29 @@ const Billing = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Razón Social</p>
-                  <p className="text-sm font-medium text-foreground">Beauty Salon Pro SpA</p>
+                  <p className="text-sm font-medium text-foreground">{billingInfo.companyName}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">RUT</p>
-                  <p className="text-sm font-medium text-foreground">76.543.210-K</p>
+                  <p className="text-sm font-medium text-foreground">{billingInfo.taxId}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Dirección</p>
-                  <p className="text-sm font-medium text-foreground">Av. Providencia 1234, Santiago</p>
+                  <p className="text-sm font-medium text-foreground">{billingInfo.address}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Email de Facturación</p>
-                  <p className="text-sm font-medium text-foreground truncate">facturas@beautysalonpro.cl</p>
+                  <p className="text-sm font-medium text-foreground truncate">{billingInfo.billingEmail}</p>
                 </div>
               </div>
-              <Button variant="link" className="mt-3 md:mt-4 p-0 h-auto text-primary text-sm">
+              <Button 
+                variant="link" 
+                className="mt-3 md:mt-4 p-0 h-auto text-primary text-sm"
+                onClick={() => {
+                  setEditingBillingInfo(billingInfo);
+                  setIsBillingInfoOpen(true);
+                }}
+              >
                 Editar información <ChevronRight className="h-3.5 w-3.5 ml-1" />
               </Button>
             </CardContent>
@@ -709,6 +724,120 @@ const Billing = () => {
               </Button>
               <Button onClick={() => setIsPaymentMethodOpen(false)}>
                 Guardar Método
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Edit Billing Info Modal */}
+      {isMobile ? (
+        <Sheet open={isBillingInfoOpen} onOpenChange={setIsBillingInfoOpen}>
+          <SheetContent side="bottom" className="h-auto rounded-t-2xl">
+            <SheetHeader className="text-left mb-4">
+              <SheetTitle>Editar Información de Facturación</SheetTitle>
+            </SheetHeader>
+            <div className="space-y-4 pb-4">
+              <div className="space-y-2">
+                <Label>Razón Social</Label>
+                <Input 
+                  value={editingBillingInfo.companyName}
+                  onChange={(e) => setEditingBillingInfo({...editingBillingInfo, companyName: e.target.value})}
+                  placeholder="Nombre de la empresa"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>RUT / NIT</Label>
+                <Input 
+                  value={editingBillingInfo.taxId}
+                  onChange={(e) => setEditingBillingInfo({...editingBillingInfo, taxId: e.target.value})}
+                  placeholder="12.345.678-9"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Dirección</Label>
+                <Input 
+                  value={editingBillingInfo.address}
+                  onChange={(e) => setEditingBillingInfo({...editingBillingInfo, address: e.target.value})}
+                  placeholder="Dirección completa"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Email de Facturación</Label>
+                <Input 
+                  type="email"
+                  value={editingBillingInfo.billingEmail}
+                  onChange={(e) => setEditingBillingInfo({...editingBillingInfo, billingEmail: e.target.value})}
+                  placeholder="facturas@empresa.com"
+                />
+              </div>
+            </div>
+            <SheetFooter className="flex-row gap-3 pt-4 border-t border-border">
+              <Button variant="outline" className="flex-1 h-12" onClick={() => setIsBillingInfoOpen(false)}>
+                Cancelar
+              </Button>
+              <Button 
+                className="flex-1 h-12"
+                onClick={() => {
+                  setBillingInfo(editingBillingInfo);
+                  setIsBillingInfoOpen(false);
+                }}
+              >
+                Guardar
+              </Button>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
+      ) : (
+        <Dialog open={isBillingInfoOpen} onOpenChange={setIsBillingInfoOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Editar Información de Facturación</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Razón Social</Label>
+                <Input 
+                  value={editingBillingInfo.companyName}
+                  onChange={(e) => setEditingBillingInfo({...editingBillingInfo, companyName: e.target.value})}
+                  placeholder="Nombre de la empresa"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>RUT / NIT</Label>
+                <Input 
+                  value={editingBillingInfo.taxId}
+                  onChange={(e) => setEditingBillingInfo({...editingBillingInfo, taxId: e.target.value})}
+                  placeholder="12.345.678-9"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Dirección</Label>
+                <Input 
+                  value={editingBillingInfo.address}
+                  onChange={(e) => setEditingBillingInfo({...editingBillingInfo, address: e.target.value})}
+                  placeholder="Dirección completa"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Email de Facturación</Label>
+                <Input 
+                  type="email"
+                  value={editingBillingInfo.billingEmail}
+                  onChange={(e) => setEditingBillingInfo({...editingBillingInfo, billingEmail: e.target.value})}
+                  placeholder="facturas@empresa.com"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsBillingInfoOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={() => {
+                setBillingInfo(editingBillingInfo);
+                setIsBillingInfoOpen(false);
+              }}>
+                Guardar Cambios
               </Button>
             </DialogFooter>
           </DialogContent>

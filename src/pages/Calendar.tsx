@@ -14,7 +14,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { SkeletonCard } from '@/components/shared/SkeletonCard';
-import { fetchAppointments } from '@/lib/mock/data';
+import { fetchAppointments, getAvailableServices } from '@/lib/mock/data';
 import type { Appointment, AppointmentSource } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { BlockingModeProvider, useBlockingMode } from '@/components/calendar/BlockingModeContext';
@@ -88,7 +88,11 @@ const CalendarContent = () => {
   };
 
   const selectedDateAppointments = getAppointmentsForDate(selectedDate);
-  const services = [...new Set(appointments.map(a => a.service))];
+  // Servicios sincronizados con Ajustes del Agente
+  const configuredServices = getAvailableServices();
+  const appointmentServices = [...new Set(appointments.map(a => a.service))];
+  // Combinar servicios configurados + servicios de citas existentes (sin duplicados)
+  const services = [...new Set([...configuredServices, ...appointmentServices])];
   const hasActiveFilters = filterStatus !== 'all' || filterService !== 'all' || filterSource !== 'all';
 
   const navigatePrevious = () => {

@@ -479,10 +479,12 @@ export const mockAgentSettings: AgentSettings = {
     ],
     services: [
       { id: 'svc-001', name: 'Corte de cabello', description: 'Corte profesional con lavado incluido', duration: 45, price: 15000, currency: 'CLP', actionObjective: 'agendar', requiredData: ['nombre', 'telefono', 'email', 'fecha_preferida'], capacityPerSlot: 3, noAvailabilityAction: 'sugerir_horario' },
-      { id: 'svc-002', name: 'Tinte completo', description: 'Aplicación de tinte + tratamiento', duration: 120, price: 45000, currency: 'CLP', actionObjective: 'agendar', requiredData: ['nombre', 'telefono', 'email', 'fecha_preferida', 'observaciones'], capacityPerSlot: 2, noAvailabilityAction: 'lista_espera' },
-      { id: 'svc-003', name: 'Manicure', description: 'Manicure tradicional o semi-permanente', duration: 60, price: 12000, currency: 'CLP', actionObjective: 'agendar', requiredData: ['nombre', 'telefono', 'fecha_preferida'], capacityPerSlot: 4, noAvailabilityAction: 'sugerir_horario' },
-      { id: 'svc-004', name: 'Pedicure', description: 'Pedicure spa con masaje', duration: 75, price: 18000, currency: 'CLP', actionObjective: 'agendar', requiredData: ['nombre', 'telefono', 'fecha_preferida', 'otros'], otherRequiredData: 'Tipo de esmaltado preferido', capacityPerSlot: 2, noAvailabilityAction: 'sugerir_horario' },
-      { id: 'svc-005', name: 'Tratamiento capilar', description: 'Hidratación profunda + masaje', duration: 60, price: 35000, currency: 'CLP', actionObjective: 'cotizar', requiredData: ['nombre', 'telefono', 'email', 'observaciones'], noAvailabilityAction: 'derivar_humano' },
+      { id: 'svc-002', name: 'Tinte + Corte', description: 'Tinte completo + corte profesional', duration: 150, price: 55000, currency: 'CLP', actionObjective: 'agendar', requiredData: ['nombre', 'telefono', 'email', 'fecha_preferida', 'observaciones'], capacityPerSlot: 2, noAvailabilityAction: 'lista_espera' },
+      { id: 'svc-003', name: 'Manicure + Pedicure', description: 'Combo manicure y pedicure completo', duration: 120, price: 28000, currency: 'CLP', actionObjective: 'agendar', requiredData: ['nombre', 'telefono', 'fecha_preferida'], capacityPerSlot: 3, noAvailabilityAction: 'sugerir_horario' },
+      { id: 'svc-004', name: 'Tratamiento capilar', description: 'Hidratación profunda + masaje', duration: 60, price: 35000, currency: 'CLP', actionObjective: 'agendar', requiredData: ['nombre', 'telefono', 'email', 'observaciones'], capacityPerSlot: 2, noAvailabilityAction: 'derivar_humano' },
+      { id: 'svc-005', name: 'Alisado permanente', description: 'Alisado keratina o brasileño', duration: 180, price: 85000, currency: 'CLP', actionObjective: 'agendar', requiredData: ['nombre', 'telefono', 'email', 'fecha_preferida', 'observaciones'], capacityPerSlot: 1, noAvailabilityAction: 'lista_espera' },
+      { id: 'svc-006', name: 'Maquillaje evento', description: 'Maquillaje profesional para eventos', duration: 90, price: 45000, currency: 'CLP', actionObjective: 'agendar', requiredData: ['nombre', 'telefono', 'fecha_preferida', 'observaciones'], capacityPerSlot: 2, noAvailabilityAction: 'sugerir_horario' },
+      { id: 'svc-007', name: 'Depilación', description: 'Depilación con cera o láser', duration: 45, price: 25000, currency: 'CLP', actionObjective: 'agendar', requiredData: ['nombre', 'telefono', 'fecha_preferida'], capacityPerSlot: 3, noAvailabilityAction: 'sugerir_horario' },
     ],
     pricingType: 'fijo',
     lastModified: daysAgo(7),
@@ -590,6 +592,19 @@ export async function fetchBillingInfo(): Promise<BillingInfo> {
 export async function fetchAgentSettings(): Promise<AgentSettings> {
   await new Promise(resolve => setTimeout(resolve, 300));
   return mockAgentSettings;
+}
+
+/**
+ * Obtiene los nombres de los servicios configurados en AgentSettings
+ * Sincronizado con la sección de Servicios
+ */
+export function getAvailableServices(): string[] {
+  return mockAgentSettings.services.services.map(s => s.name);
+}
+
+export async function fetchAvailableServices(): Promise<string[]> {
+  await new Promise(resolve => setTimeout(resolve, 100));
+  return getAvailableServices();
 }
 
 export async function updateAgentSettingsSection<K extends keyof AgentSettings>(

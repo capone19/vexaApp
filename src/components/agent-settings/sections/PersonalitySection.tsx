@@ -307,7 +307,7 @@ export function PersonalitySection({ settings, onChange }: PersonalitySectionPro
               <div className="flex justify-between">
                 <Label className="text-sm font-medium">Extensión de respuesta</Label>
                 <span className="text-sm text-primary font-medium">
-                  {responseLengthLabels[responseLengthValues.indexOf(settings.responseLength || 'media')]}
+                  {responseLengthDescriptions[responseLengthValues.indexOf(settings.responseLength || 'media')]}
                 </span>
               </div>
               <Slider
@@ -317,8 +317,9 @@ export function PersonalitySection({ settings, onChange }: PersonalitySectionPro
                 step={1}
                 className="w-full"
               />
-              <div className="text-center text-xs text-muted-foreground">
-                <span>{responseLengthDescriptions[responseLengthValues.indexOf(settings.responseLength || 'media')]}</span>
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Corta</span>
+                <span>Extensa</span>
               </div>
             </div>
           </CardContent>
