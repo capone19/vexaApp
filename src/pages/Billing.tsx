@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,35 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+
+interface BillingInfoData {
+  companyName: string;
+  taxId: string;
+  address: string;
+  billingEmail: string;
+}
+
+const BILLING_INFO_STORAGE_KEY = 'vexa_billing_info';
+
+const defaultBillingInfo: BillingInfoData = {
+  companyName: 'Beauty Salon Pro SpA',
+  taxId: '76.543.210-K',
+  address: 'Av. Providencia 1234, Santiago',
+  billingEmail: 'facturas@beautysalonpro.cl',
+};
+
+const getStoredBillingInfo = (): BillingInfoData => {
+  try {
+    const stored = localStorage.getItem(BILLING_INFO_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('Error loading billing info:', e);
+  }
+  return defaultBillingInfo;
+};
 
 type PlanId = 'basic' | 'pro' | 'enterprise';
 
@@ -103,14 +132,21 @@ const Billing = () => {
   const [isPaymentMethodOpen, setIsPaymentMethodOpen] = useState(false);
   const [isBillingInfoOpen, setIsBillingInfoOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(mockClient.plan);
-  const [billingInfo, setBillingInfo] = useState({
-    companyName: 'Beauty Salon Pro SpA',
-    taxId: '76.543.210-K',
-    address: 'Av. Providencia 1234, Santiago',
-    billingEmail: 'facturas@beautysalonpro.cl',
-  });
-  const [editingBillingInfo, setEditingBillingInfo] = useState(billingInfo);
+  const [billingInfo, setBillingInfo] = useState<BillingInfoData>(getStoredBillingInfo);
+  const [editingBillingInfo, setEditingBillingInfo] = useState<BillingInfoData>(billingInfo);
   const isMobile = useIsMobile();
+
+  const handleSaveBillingInfo = () => {
+    try {
+      localStorage.setItem(BILLING_INFO_STORAGE_KEY, JSON.stringify(editingBillingInfo));
+      setBillingInfo(editingBillingInfo);
+      setIsBillingInfoOpen(false);
+      toast.success('Información de facturación guardada');
+    } catch (e) {
+      console.error('Error saving billing info:', e);
+      toast.error('Error al guardar la información');
+    }
+  };
 
   const currentPlan = plans.find(p => p.id === mockClient.plan) || plans[1];
 
@@ -778,10 +814,7 @@ const Billing = () => {
               </Button>
               <Button 
                 className="flex-1 h-12"
-                onClick={() => {
-                  setBillingInfo(editingBillingInfo);
-                  setIsBillingInfoOpen(false);
-                }}
+                onClick={handleSaveBillingInfo}
               >
                 Guardar
               </Button>
@@ -833,10 +866,7 @@ const Billing = () => {
               <Button variant="outline" onClick={() => setIsBillingInfoOpen(false)}>
                 Cancelar
               </Button>
-              <Button onClick={() => {
-                setBillingInfo(editingBillingInfo);
-                setIsBillingInfoOpen(false);
-              }}>
+              <Button onClick={handleSaveBillingInfo}>
                 Guardar Cambios
               </Button>
             </DialogFooter>
