@@ -169,69 +169,6 @@ export function PaymentsSection({ settings, onChange, services = [] }: PaymentsS
         </CardContent>
       </Card>
 
-      {/* Restricciones por servicio */}
-      {enabledMethods.length > 1 && services.length > 0 && (
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle>Restricciones por servicio</CardTitle>
-            <CardDescription>
-              Define qué métodos de pago están disponibles para cada servicio
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow className="border-border hover:bg-transparent">
-                  <TableHead>Servicio</TableHead>
-                  {enabledMethods.map((method) => (
-                    <TableHead key={method.type} className="text-center">
-                      {paymentMethodConfig[method.type].label}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {services.map((service) => (
-                  <TableRow key={service.id} className="border-border">
-                    <TableCell className="font-medium">{service.name}</TableCell>
-                    {enabledMethods.map((method) => (
-                      <TableCell key={method.type} className="text-center">
-                        <Checkbox
-                          checked={isMethodAllowedForService(service.id, method.type)}
-                          onCheckedChange={(checked) =>
-                            handleRestrictionChange(service.id, method.type, checked as boolean)
-                          }
-                        />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            <p className="text-xs text-muted-foreground mt-3">
-              Deja todos marcados si no hay restricciones
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Mensaje si no hay servicios configurados */}
-      {enabledMethods.length > 1 && services.length === 0 && (
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle>Restricciones por servicio</CardTitle>
-            <CardDescription>
-              Define qué métodos de pago están disponibles para cada servicio
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-6 text-muted-foreground">
-              <p>No hay servicios configurados todavía.</p>
-              <p className="text-sm">Configura tus servicios primero en la sección "Servicios".</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Abono requerido */}
       <Card className="bg-card border-border">
