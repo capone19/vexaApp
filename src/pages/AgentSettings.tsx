@@ -20,7 +20,6 @@ import { cn } from "@/lib/utils";
 import { saveAgentSection, loadAgentSection } from "@/lib/api/save-agent-section";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { DEV_CLIENT_ID } from "@/lib/constants";
 
 export type AgentSettingsSectionId = 
   | "personality"
@@ -166,9 +165,19 @@ export default function AgentSettings() {
 
   const handleSave = async () => {
     if (isSaving) return;
-    
+
+    // No permitir guardar si aún no tenemos tenantId (evita usar DEV_CLIENT_ID y que falle RLS)
+    if (!user?.tenantId) {
+      toast({
+        title: "No se pudo guardar",
+        description: "Tu sesión aún no terminó de cargar (tenant). Espera 1-2 segundos y reintenta.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSaving(true);
-    
+
     // Timeout de seguridad: nunca dejar el botón bloqueado más de 10 segundos
     const safetyTimeout = setTimeout(() => {
       console.warn("[AgentSettings] Safety timeout reached - resetting save state");
@@ -179,19 +188,14 @@ export default function AgentSettings() {
         variant: "destructive",
       });
     }, 10000);
-    
+
     try {
       const sectionData = getSectionData(activeSection);
-      
+
       console.log("[AgentSettings] Iniciando guardado de sección:", activeSection);
-      
-      // Usar tenantId del usuario o el cliente de prueba real
-      const tenantId = user?.tenantId || DEV_CLIENT_ID;
-      
-      if (!user?.tenantId) {
-        console.log("[AgentSettings] Usando cliente de prueba:", tenantId);
-      }
-      
+
+      const tenantId = user.tenantId;
+
       // REGLA: 1 botón = 1 evento = 1 sección
       // Envía DATA RAW COMPLETA de la sección activa
       const result = await saveAgentSection(
