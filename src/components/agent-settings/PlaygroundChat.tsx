@@ -249,7 +249,7 @@ export function PlaygroundChat({ tenantId }: PlaygroundChatProps) {
               <div className="mt-4 px-4 py-2.5 rounded-lg bg-warning/10 border border-warning/30 max-w-[300px]">
                 <p className="text-xs text-warning font-medium flex items-center justify-center gap-1.5">
                   <span>💡</span>
-                  Recuerda guardar los cambios antes de probar para ver las actualizaciones
+                  Recuerda guardar los cambios y esperar 15 segundos antes de probar para ver las actualizaciones
                 </p>
               </div>
               
