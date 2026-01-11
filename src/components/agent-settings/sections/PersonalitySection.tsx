@@ -24,6 +24,12 @@ const humorValues: PersonalitySettings["humor"][] = ["ausente", "sutil", "modera
 const emojiLabels = ["Nunca", "Ocasional", "Frecuente"];
 const emojiValues: PersonalitySettings["emojis"][] = ["nunca", "ocasional", "frecuente"];
 
+const responseLengthLabels: Record<PersonalitySettings["responseLength"], string> = {
+  corta: "Corta (1-2 párrafos)",
+  media: "Media (3-4 párrafos)",
+  extensa: "Extensa (4+ párrafos)",
+};
+
 const objectiveLabels: Record<PersonalitySettings["primaryObjective"], string> = {
   agendar: "Agendar citas",
   vender: "Vender servicios",
@@ -121,6 +127,10 @@ export function PersonalitySection({ settings, onChange }: PersonalitySectionPro
 
   const handleClosingChange = (value: PersonalitySettings["closingPreference"]) => {
     onChange({ ...settings, closingPreference: value, lastModified: new Date() });
+  };
+
+  const handleResponseLengthChange = (value: PersonalitySettings["responseLength"]) => {
+    onChange({ ...settings, responseLength: value, lastModified: new Date() });
   };
 
   return (
@@ -292,6 +302,28 @@ export function PersonalitySection({ settings, onChange }: PersonalitySectionPro
                 <span>Sin emojis</span>
                 <span>Expresivo</span>
               </div>
+            </div>
+
+            {/* Extensión de respuesta */}
+            <div className="space-y-3 pt-2 border-t border-border">
+              <Label className="text-sm font-medium">Extensión de respuesta</Label>
+              <RadioGroup
+                value={settings.responseLength || 'media'}
+                onValueChange={handleResponseLengthChange}
+                className="space-y-2"
+              >
+                {(Object.keys(responseLengthLabels) as PersonalitySettings["responseLength"][]).map((key) => (
+                  <div key={key} className="flex items-center space-x-2">
+                    <RadioGroupItem value={key} id={`resp-len-${key}`} />
+                    <Label htmlFor={`resp-len-${key}`} className="font-normal cursor-pointer">
+                      {responseLengthLabels[key]}
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
+              <p className="text-xs text-muted-foreground">
+                Qué tan largas serán las respuestas del agente
+              </p>
             </div>
           </CardContent>
         </Card>

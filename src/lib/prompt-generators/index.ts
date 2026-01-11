@@ -18,6 +18,7 @@ export interface PersonalityData {
   empathy: number; // 0-10
   humor: number; // 0-10
   emojiUsage: number; // 0-10
+  responseLength: 'corta' | 'media' | 'extensa';
 }
 
 export function generatePersonalityPrompt(data: PersonalityData): string {
@@ -40,6 +41,12 @@ export function generatePersonalityPrompt(data: PersonalityData): string {
     consultive: 'Actúa como consultor, haciendo preguntas para entender mejor antes de proponer.'
   };
 
+  const responseLengthMap = {
+    corta: 'Responde de forma concisa y directa, usando 1-2 párrafos cortos máximo. Ve al punto rápidamente.',
+    media: 'Usa respuestas de extensión moderada, entre 3-4 párrafos. Balancea información con brevedad.',
+    extensa: 'Proporciona respuestas completas y detalladas, 4 o más párrafos cuando sea necesario. Explica con profundidad.'
+  };
+
   return `## Personalidad del Agente
 
 Tu objetivo principal es ${objectiveMap[data.objective]}.
@@ -52,7 +59,10 @@ ${closingMap[data.closingStyle]}
 - Formalidad: ${data.formality}/10 ${data.formality >= 7 ? '(mantén un tono profesional y formal)' : data.formality >= 4 ? '(tono balanceado, ni muy formal ni muy casual)' : '(tono casual y cercano)'}
 - Empatía: ${data.empathy}/10 ${data.empathy >= 7 ? '(muestra comprensión genuina por las necesidades del cliente)' : ''}
 - Humor: ${data.humor}/10 ${data.humor >= 5 ? '(puedes usar humor ligero cuando sea apropiado)' : '(mantén un tono serio y profesional)'}
-- Uso de emojis: ${data.emojiUsage}/10 ${data.emojiUsage >= 5 ? '(usa emojis para hacer la conversación más amigable)' : '(usa emojis con moderación o evítalos)'}`;
+- Uso de emojis: ${data.emojiUsage}/10 ${data.emojiUsage >= 5 ? '(usa emojis para hacer la conversación más amigable)' : '(usa emojis con moderación o evítalos)'}
+
+### Extensión de respuestas:
+${responseLengthMap[data.responseLength || 'media']}`;
 }
 
 // ============================================
