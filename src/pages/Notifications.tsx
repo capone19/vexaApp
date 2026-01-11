@@ -12,8 +12,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
 import {
   Bell,
   CalendarCheck,
@@ -439,6 +446,7 @@ export default function Notifications() {
   const [activeTab, setActiveTab] = useState<'all' | 'unread'>('all');
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -472,80 +480,80 @@ export default function Notifications() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6">
         <PageHeader
           title="Notificaciones"
-          subtitle="Mantente al día con tus citas y mensajes"
+          subtitle={isMobile ? undefined : "Mantente al día con tus citas y mensajes"}
           actions={
             <div className="flex items-center gap-2">
               {unreadCount > 0 && (
-                <Button variant="outline" size="sm" onClick={markAllAsRead} className="gap-2">
+                <Button variant="outline" size="sm" onClick={markAllAsRead} className={cn("gap-2", isMobile && "h-9")}>
                   <Check className="h-4 w-4" />
-                  Marcar todo como leído
+                  {!isMobile && "Marcar todo como leído"}
                 </Button>
               )}
-              <Button variant="outline" size="sm" onClick={clearAll} className="gap-2 text-muted-foreground">
+              <Button variant="outline" size="sm" onClick={clearAll} className={cn("gap-2 text-muted-foreground", isMobile && "h-9")}>
                 <Trash2 className="h-4 w-4" />
-                Limpiar
+                {!isMobile && "Limpiar"}
               </Button>
             </div>
           }
         />
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
           <Card className="border-border">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <Bell className="h-5 w-5 text-primary" />
+            <CardContent className={cn("p-3 md:p-4")}>
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className={cn("rounded-lg bg-primary/10", isMobile ? "p-1.5" : "p-2")}>
+                  <Bell className={cn("text-primary", isMobile ? "h-4 w-4" : "h-5 w-5")} />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">{notifications.length}</p>
-                  <p className="text-sm text-muted-foreground">Total</p>
+                  <p className={cn("font-bold text-foreground", isMobile ? "text-xl" : "text-2xl")}>{notifications.length}</p>
+                  <p className={cn("text-muted-foreground", isMobile ? "text-xs" : "text-sm")}>Total</p>
                 </div>
               </div>
             </CardContent>
           </Card>
           <Card className="border-border">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-info/10">
-                  <Clock className="h-5 w-5 text-info" />
+            <CardContent className={cn("p-3 md:p-4")}>
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className={cn("rounded-lg bg-info/10", isMobile ? "p-1.5" : "p-2")}>
+                  <Clock className={cn("text-info", isMobile ? "h-4 w-4" : "h-5 w-5")} />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">{unreadCount}</p>
-                  <p className="text-sm text-muted-foreground">Sin leer</p>
+                  <p className={cn("font-bold text-foreground", isMobile ? "text-xl" : "text-2xl")}>{unreadCount}</p>
+                  <p className={cn("text-muted-foreground", isMobile ? "text-xs" : "text-sm")}>Sin leer</p>
                 </div>
               </div>
             </CardContent>
           </Card>
           <Card className="border-border">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-success/10">
-                  <CalendarCheck className="h-5 w-5 text-success" />
+            <CardContent className={cn("p-3 md:p-4")}>
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className={cn("rounded-lg bg-success/10", isMobile ? "p-1.5" : "p-2")}>
+                  <CalendarCheck className={cn("text-success", isMobile ? "h-4 w-4" : "h-5 w-5")} />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">
+                  <p className={cn("font-bold text-foreground", isMobile ? "text-xl" : "text-2xl")}>
                     {notifications.filter(n => n.type === 'appointment').length}
                   </p>
-                  <p className="text-sm text-muted-foreground">Citas</p>
+                  <p className={cn("text-muted-foreground", isMobile ? "text-xs" : "text-sm")}>Citas</p>
                 </div>
               </div>
             </CardContent>
           </Card>
           <Card className="border-border">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-warning/10">
-                  <AlertTriangle className="h-5 w-5 text-warning" />
+            <CardContent className={cn("p-3 md:p-4")}>
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className={cn("rounded-lg bg-warning/10", isMobile ? "p-1.5" : "p-2")}>
+                  <AlertTriangle className={cn("text-warning", isMobile ? "h-4 w-4" : "h-5 w-5")} />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">
+                  <p className={cn("font-bold text-foreground", isMobile ? "text-xl" : "text-2xl")}>
                     {notifications.filter(n => n.type === 'alert').length}
                   </p>
-                  <p className="text-sm text-muted-foreground">Alertas</p>
+                  <p className={cn("text-muted-foreground", isMobile ? "text-xs" : "text-sm")}>Alertas</p>
                 </div>
               </div>
             </CardContent>
@@ -554,18 +562,18 @@ export default function Notifications() {
 
         {/* Notifications List */}
         <Card className="border-border">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
+          <CardHeader className={cn("pb-3", isMobile && "px-3")}>
+            <div className={cn("flex items-center justify-between", isMobile && "flex-col gap-3 items-start")}>
+              <CardTitle className="text-sm md:text-base flex items-center gap-2">
                 <Bell className="h-4 w-4" />
-                Todas las notificaciones
+                {isMobile ? "Notificaciones" : "Todas las notificaciones"}
               </CardTitle>
               <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'all' | 'unread')}>
-                <TabsList className="bg-secondary">
-                  <TabsTrigger value="all" className="text-xs">
+                <TabsList className={cn("bg-secondary", isMobile && "h-9")}>
+                  <TabsTrigger value="all" className={cn("text-xs", isMobile && "px-3")}>
                     Todas
                   </TabsTrigger>
-                  <TabsTrigger value="unread" className="text-xs">
+                  <TabsTrigger value="unread" className={cn("text-xs", isMobile && "px-3")}>
                     Sin leer {unreadCount > 0 && `(${unreadCount})`}
                   </TabsTrigger>
                 </TabsList>
@@ -573,7 +581,7 @@ export default function Notifications() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <ScrollArea className="h-[500px]">
+            <ScrollArea className={cn(isMobile ? "h-[calc(100vh-420px)] min-h-[300px]" : "h-[500px]")}>
               {filteredNotifications.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <Bell className="h-12 w-12 mb-4 opacity-20" />
@@ -590,23 +598,27 @@ export default function Notifications() {
                       <div
                         key={notification.id}
                         className={cn(
-                          "flex items-start gap-4 p-4 hover:bg-secondary/50 transition-colors",
+                          "flex items-start gap-3 md:gap-4 p-3 md:p-4 hover:bg-secondary/50 active:bg-secondary transition-colors",
                           !notification.read && "bg-primary/5"
                         )}
+                        onClick={() => isMobile && hasDetail && openDetail(notification)}
                       >
-                        <div className={cn("p-2 rounded-lg shrink-0", colorClass)}>
-                          <Icon className="h-4 w-4" />
+                        <div className={cn("p-1.5 md:p-2 rounded-lg shrink-0", colorClass)}>
+                          <Icon className={cn(isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
-                            <div>
+                            <div className="min-w-0">
                               <p className={cn(
                                 "text-sm",
                                 !notification.read ? "font-semibold text-foreground" : "font-medium text-foreground"
                               )}>
                                 {notification.title}
                               </p>
-                              <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">
+                              <p className={cn(
+                                "text-muted-foreground mt-0.5",
+                                isMobile ? "text-xs line-clamp-1" : "text-sm line-clamp-2"
+                              )}>
                                 {notification.description}
                               </p>
                             </div>
@@ -618,7 +630,7 @@ export default function Notifications() {
                             <span className="text-xs text-muted-foreground">
                               {formatDistanceToNow(notification.timestamp, { addSuffix: true, locale: es })}
                             </span>
-                            {notification.metadata?.clientName && (
+                            {notification.metadata?.clientName && !isMobile && (
                               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <User className="h-3 w-3" />
                                 {notification.metadata.clientName}
@@ -627,8 +639,8 @@ export default function Notifications() {
                           </div>
                         </div>
                         
-                        {/* Botón Ver detalles */}
-                        {hasDetail && (
+                        {/* Botón Ver detalles - Solo en desktop */}
+                        {hasDetail && !isMobile && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -647,7 +659,7 @@ export default function Notifications() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                          className={cn("shrink-0 text-muted-foreground hover:text-destructive", isMobile ? "h-9 w-9" : "h-8 w-8")}
                           onClick={(e) => {
                             e.stopPropagation();
                             deleteNotification(notification.id);
@@ -665,19 +677,36 @@ export default function Notifications() {
         </Card>
       </div>
 
-      {/* Modal de detalle */}
-      <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="sm:max-w-md bg-white border border-border/50 shadow-xl rounded-xl">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-semibold">Detalle de notificación</DialogTitle>
-          </DialogHeader>
-          <div className="pt-2">
-            {selectedNotification && (
-              <NotificationDetailContent notification={selectedNotification} />
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Modal de detalle - Sheet en móvil, Dialog en desktop */}
+      {isMobile ? (
+        <Sheet open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+          <SheetContent side="bottom" className="h-[85vh] rounded-t-2xl">
+            <SheetHeader className="text-left mb-4">
+              <SheetTitle className="text-lg font-semibold">Detalle de notificación</SheetTitle>
+            </SheetHeader>
+            <ScrollArea className="h-[calc(100%-80px)]">
+              <div className="pb-6">
+                {selectedNotification && (
+                  <NotificationDetailContent notification={selectedNotification} />
+                )}
+              </div>
+            </ScrollArea>
+          </SheetContent>
+        </Sheet>
+      ) : (
+        <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+          <DialogContent className="sm:max-w-md bg-white border border-border/50 shadow-xl rounded-xl">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-semibold">Detalle de notificación</DialogTitle>
+            </DialogHeader>
+            <div className="pt-2">
+              {selectedNotification && (
+                <NotificationDetailContent notification={selectedNotification} />
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </MainLayout>
   );
 }

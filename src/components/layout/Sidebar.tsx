@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Logo, LogoMark } from "@/components/shared/Logo";
@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Lock,
 } from "lucide-react";
+import { isPremiumPlan, onPlanChange } from "@/lib/plan";
 
 interface NavItem {
   title: string;
@@ -69,6 +70,15 @@ interface SidebarProps {
 export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
   const location = useLocation();
   const [expandedItems, setExpandedItems] = useState<string[]>(["Resultados", "Marketing"]);
+  const [hasPremium, setHasPremium] = useState(isPremiumPlan());
+
+  // Listen for plan changes
+  useEffect(() => {
+    const unsubscribe = onPlanChange(() => {
+      setHasPremium(isPremiumPlan());
+    });
+    return unsubscribe;
+  }, []);
 
   const toggleExpanded = (title: string) => {
     setExpandedItems((prev) =>
@@ -135,7 +145,7 @@ export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
                       )}>
                         {item.title}
                       </span>
-                      {item.isUpgrade && isExpanded && (
+                      {item.isUpgrade && isExpanded && !hasPremium && (
                         <Lock className="h-3.5 w-3.5 text-warning" />
                       )}
                     </div>
@@ -191,7 +201,7 @@ export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
                   )}>
                     {item.title}
                   </span>
-                  {item.isUpgrade && isExpanded && (
+                  {item.isUpgrade && isExpanded && !hasPremium && (
                     <Lock className="h-3.5 w-3.5 text-warning" />
                   )}
                 </NavLink>

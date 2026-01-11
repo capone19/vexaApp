@@ -16,6 +16,13 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetFooter,
+} from '@/components/ui/sheet';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -23,6 +30,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
 import {
   Headphones,
   MessageSquare,
@@ -289,6 +297,7 @@ export default function Support() {
     priority: 'medium' as TicketPriority,
   });
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const isMobile = useIsMobile();
 
   // Métricas
   const openTickets = tickets.filter(t => t.status === 'open').length;
@@ -396,13 +405,13 @@ export default function Support() {
 
     return (
       <MainLayout>
-        <div className="space-y-6">
+        <div className="space-y-4 md:space-y-6">
           {/* Header con botón volver */}
           <div className="flex items-center gap-3">
             <Button
               variant="ghost"
               size="sm"
-              className="gap-2"
+              className={cn("gap-2", isMobile && "h-9 -ml-2")}
               onClick={() => setSelectedTicket(null)}
             >
               <ArrowLeft className="h-4 w-4" />
@@ -412,11 +421,11 @@ export default function Support() {
 
           {/* Información del ticket */}
           <Card className="border-border">
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h2 className="text-xl font-semibold text-foreground">{selectedTicket.title}</h2>
-                  <div className="flex items-center gap-2 mt-2">
+            <CardContent className={cn("p-4 md:p-6")}>
+              <div className={cn("flex", isMobile ? "flex-col gap-4" : "items-start justify-between")}>
+                <div className="flex-1 min-w-0">
+                  <h2 className={cn("font-semibold text-foreground", isMobile ? "text-lg" : "text-xl")}>{selectedTicket.title}</h2>
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <Badge 
                       variant="outline" 
                       className={cn("text-xs font-medium gap-1", statusConfig.className)}
@@ -431,16 +440,19 @@ export default function Support() {
                       {priorityConfig.label}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground mt-2">
+                  <p className="text-xs md:text-sm text-muted-foreground mt-2">
                     Creado el {format(selectedTicket.createdAt, "dd/MM/yyyy HH:mm", { locale: es })}
                   </p>
                 </div>
 
                 {/* Estado visual (solo lectura) */}
-                <div className="flex items-center gap-2 px-4 py-2 bg-secondary rounded-lg">
-                  <span className="text-sm text-muted-foreground">Estado:</span>
+                <div className={cn(
+                  "flex items-center gap-2 px-3 md:px-4 py-2 bg-secondary rounded-lg",
+                  isMobile && "self-start"
+                )}>
+                  <span className="text-xs md:text-sm text-muted-foreground">Estado:</span>
                   <span className={cn(
-                    "text-sm font-medium",
+                    "text-xs md:text-sm font-medium",
                     selectedTicket.status === 'open' && "text-blue-600",
                     selectedTicket.status === 'in-progress' && "text-amber-600",
                     selectedTicket.status === 'resolved' && "text-emerald-600",
@@ -451,74 +463,79 @@ export default function Support() {
               </div>
 
               {/* Descripción */}
-              <div className="mt-6">
+              <div className="mt-4 md:mt-6">
                 <h4 className="text-sm font-medium text-foreground mb-2">Descripción</h4>
-                <p className="text-sm text-muted-foreground">{selectedTicket.description}</p>
+                <p className="text-xs md:text-sm text-muted-foreground">{selectedTicket.description}</p>
               </div>
             </CardContent>
           </Card>
 
           {/* Conversación del ticket */}
           <Card className="border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
+            <CardHeader className={cn("pb-3", isMobile && "px-4")}>
+              <CardTitle className="text-sm md:text-base flex items-center gap-2">
                 <MessageSquare className="h-4 w-4" />
                 Mensajes
               </CardTitle>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs md:text-sm text-muted-foreground">
                 Conversación del ticket
               </p>
             </CardHeader>
             <CardContent className="p-0">
               {/* Lista de mensajes */}
-              <ScrollArea className="h-[350px] px-6">
+              <ScrollArea className={cn(isMobile ? "h-[calc(100vh-480px)] min-h-[200px]" : "h-[350px]", "px-4 md:px-6")}>
                 {selectedTicket.messages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                    <MessageSquare className="h-10 w-10 mb-3 opacity-20" />
-                    <p className="text-sm">No hay mensajes aún. Sé el primero en escribir.</p>
+                  <div className="flex flex-col items-center justify-center py-8 md:py-12 text-muted-foreground">
+                    <MessageSquare className={cn("mb-3 opacity-20", isMobile ? "h-8 w-8" : "h-10 w-10")} />
+                    <p className="text-xs md:text-sm text-center">No hay mensajes aún. Sé el primero en escribir.</p>
                   </div>
                 ) : (
-                  <div className="space-y-4 py-4">
+                  <div className="space-y-3 md:space-y-4 py-4">
                     {selectedTicket.messages.map((message) => (
                       <div
                         key={message.id}
                         className={cn(
-                          "flex gap-3",
+                          "flex gap-2 md:gap-3",
                           message.sender === 'user' && "flex-row-reverse"
                         )}
                       >
                         {/* Avatar */}
                         <div className={cn(
-                          "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
+                          "flex-shrink-0 rounded-full flex items-center justify-center",
+                          isMobile ? "w-7 h-7" : "w-8 h-8",
                           message.sender === 'support' 
                             ? "bg-primary/10" 
                             : "bg-secondary"
                         )}>
                           {message.sender === 'support' ? (
-                            <Headset className="h-4 w-4 text-primary" />
+                            <Headset className={cn("text-primary", isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
                           ) : (
-                            <User className="h-4 w-4 text-muted-foreground" />
+                            <User className={cn("text-muted-foreground", isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
                           )}
                         </div>
 
                         {/* Mensaje */}
                         <div className={cn(
-                          "flex-1 max-w-[80%]",
+                          "flex-1",
+                          isMobile ? "max-w-[85%]" : "max-w-[80%]",
                           message.sender === 'user' && "flex flex-col items-end"
                         )}>
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className={cn(
+                            "flex items-center gap-2 mb-1",
+                            isMobile && "flex-wrap"
+                          )}>
                             <span className={cn(
                               "text-xs font-medium",
                               message.sender === 'support' ? "text-primary" : "text-foreground"
                             )}>
-                              {message.senderName}
+                              {isMobile && message.sender === 'support' ? 'Soporte' : message.senderName}
                             </span>
-                            <span className="text-xs text-muted-foreground">
-                              {format(message.timestamp, "dd/MM/yyyy HH:mm", { locale: es })}
+                            <span className="text-[10px] md:text-xs text-muted-foreground">
+                              {format(message.timestamp, isMobile ? "dd/MM HH:mm" : "dd/MM/yyyy HH:mm", { locale: es })}
                             </span>
                           </div>
                           <div className={cn(
-                            "rounded-xl px-4 py-3 text-sm whitespace-pre-wrap",
+                            "rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm whitespace-pre-wrap",
                             message.sender === 'support' 
                               ? "bg-primary/5 text-foreground border border-primary/10" 
                               : "bg-secondary text-foreground"
@@ -533,18 +550,21 @@ export default function Support() {
               </ScrollArea>
 
               {/* Input para nuevo mensaje */}
-              <div className="p-4 border-t border-border">
-                <div className="flex items-end gap-3">
+              <div className={cn("p-3 md:p-4 border-t border-border")}>
+                <div className="flex items-end gap-2 md:gap-3">
                   <Textarea
                     placeholder="Escribe tu mensaje..."
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
                     onKeyDown={handleKeyPress}
-                    className="min-h-[60px] max-h-[120px] resize-none border-border"
+                    className={cn(
+                      "resize-none border-border",
+                      isMobile ? "min-h-[50px] max-h-[100px]" : "min-h-[60px] max-h-[120px]"
+                    )}
                   />
                   <Button
                     size="icon"
-                    className="h-10 w-10 shrink-0"
+                    className={cn("shrink-0", isMobile ? "h-10 w-10" : "h-10 w-10")}
                     onClick={handleSendMessage}
                     disabled={!newMessage.trim()}
                   >
@@ -562,54 +582,54 @@ export default function Support() {
   // Vista principal de lista de tickets
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6">
         <PageHeader
           title="Soporte"
-          subtitle="Solicitudes y tickets de soporte"
+          subtitle={isMobile ? undefined : "Solicitudes y tickets de soporte"}
         />
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-2 md:gap-4">
           <Card className="border-border">
-            <CardContent className="p-5">
+            <CardContent className={cn("p-3 md:p-5")}>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Tickets Abiertos</p>
-                  <p className="text-3xl font-bold text-foreground mt-1">{openTickets}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Requieren atención</p>
+                  <p className={cn("font-medium text-muted-foreground", isMobile ? "text-[10px]" : "text-sm")}>Abiertos</p>
+                  <p className={cn("font-bold text-foreground mt-1", isMobile ? "text-xl" : "text-3xl")}>{openTickets}</p>
+                  {!isMobile && <p className="text-xs text-muted-foreground mt-1">Requieren atención</p>}
                 </div>
-                <div className="p-2 rounded-lg bg-blue-50">
-                  <AlertCircle className="h-5 w-5 text-blue-500" />
+                <div className={cn("rounded-lg bg-blue-50", isMobile ? "p-1.5" : "p-2")}>
+                  <AlertCircle className={cn("text-blue-500", isMobile ? "h-4 w-4" : "h-5 w-5")} />
                 </div>
               </div>
             </CardContent>
           </Card>
 
           <Card className="border-border">
-            <CardContent className="p-5">
+            <CardContent className={cn("p-3 md:p-5")}>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">En Progreso</p>
-                  <p className="text-3xl font-bold text-foreground mt-1">{inProgressTickets}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Siendo atendidos</p>
+                  <p className={cn("font-medium text-muted-foreground", isMobile ? "text-[10px]" : "text-sm")}>En Progreso</p>
+                  <p className={cn("font-bold text-foreground mt-1", isMobile ? "text-xl" : "text-3xl")}>{inProgressTickets}</p>
+                  {!isMobile && <p className="text-xs text-muted-foreground mt-1">Siendo atendidos</p>}
                 </div>
-                <div className="p-2 rounded-lg bg-amber-50">
-                  <Clock className="h-5 w-5 text-amber-500" />
+                <div className={cn("rounded-lg bg-amber-50", isMobile ? "p-1.5" : "p-2")}>
+                  <Clock className={cn("text-amber-500", isMobile ? "h-4 w-4" : "h-5 w-5")} />
                 </div>
               </div>
             </CardContent>
           </Card>
 
           <Card className="border-border">
-            <CardContent className="p-5">
+            <CardContent className={cn("p-3 md:p-5")}>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Resueltos</p>
-                  <p className="text-3xl font-bold text-foreground mt-1">{resolvedTickets}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Esta semana</p>
+                  <p className={cn("font-medium text-muted-foreground", isMobile ? "text-[10px]" : "text-sm")}>Resueltos</p>
+                  <p className={cn("font-bold text-foreground mt-1", isMobile ? "text-xl" : "text-3xl")}>{resolvedTickets}</p>
+                  {!isMobile && <p className="text-xs text-muted-foreground mt-1">Esta semana</p>}
                 </div>
-                <div className="p-2 rounded-lg bg-emerald-50">
-                  <CheckCircle className="h-5 w-5 text-emerald-500" />
+                <div className={cn("rounded-lg bg-emerald-50", isMobile ? "p-1.5" : "p-2")}>
+                  <CheckCircle className={cn("text-emerald-500", isMobile ? "h-4 w-4" : "h-5 w-5")} />
                 </div>
               </div>
             </CardContent>
@@ -618,22 +638,22 @@ export default function Support() {
 
         {/* CTA - ¿Necesitas ayuda? */}
         <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-primary/10">
-                  <HelpCircle className="h-6 w-6 text-primary" />
+          <CardContent className={cn("p-4 md:p-6")}>
+            <div className={cn("flex", isMobile ? "flex-col gap-4" : "items-center justify-between")}>
+              <div className="flex items-center gap-3 md:gap-4">
+                <div className={cn("rounded-xl bg-primary/10", isMobile ? "p-2" : "p-3")}>
+                  <HelpCircle className={cn("text-primary", isMobile ? "h-5 w-5" : "h-6 w-6")} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-foreground">¿Necesitas ayuda?</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Crea un nuevo ticket y nuestro equipo te responderá lo antes posible
+                  <h3 className={cn("font-semibold text-foreground", isMobile ? "text-base" : "text-lg")}>¿Necesitas ayuda?</h3>
+                  <p className="text-xs md:text-sm text-muted-foreground">
+                    {isMobile ? "Crea un ticket de soporte" : "Crea un nuevo ticket y nuestro equipo te responderá lo antes posible"}
                   </p>
                 </div>
               </div>
               <Button 
                 onClick={() => setIsModalOpen(true)}
-                className="gap-2"
+                className={cn("gap-2", isMobile && "w-full h-11")}
               >
                 <MessageSquare className="h-4 w-4" />
                 Nuevo Ticket
@@ -644,23 +664,23 @@ export default function Support() {
 
         {/* Listado de Tickets */}
         <Card className="border-border">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base flex items-center gap-2">
+          <CardHeader className={cn("pb-4", isMobile && "px-4 pb-3")}>
+            <CardTitle className="text-sm md:text-base flex items-center gap-2">
               <Headphones className="h-4 w-4" />
               Mis Tickets
             </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Historial y estado de tus solicitudes
+            <p className="text-xs md:text-sm text-muted-foreground">
+              {isMobile ? "Tus solicitudes" : "Historial y estado de tus solicitudes"}
             </p>
           </CardHeader>
           <CardContent className="p-0">
             {tickets.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                <Headphones className="h-12 w-12 mb-4 opacity-20" />
-                <p className="text-sm">No tienes tickets creados</p>
+              <div className="flex flex-col items-center justify-center py-8 md:py-12 text-muted-foreground">
+                <Headphones className={cn("mb-4 opacity-20", isMobile ? "h-10 w-10" : "h-12 w-12")} />
+                <p className="text-xs md:text-sm">No tienes tickets creados</p>
                 <Button 
                   variant="link" 
-                  className="mt-2"
+                  className="mt-2 text-sm"
                   onClick={() => setIsModalOpen(true)}
                 >
                   Crear tu primer ticket
@@ -675,53 +695,63 @@ export default function Support() {
                   return (
                     <div
                       key={ticket.id}
-                      className="p-4 hover:bg-secondary/30 transition-colors cursor-pointer"
+                      className={cn(
+                        "hover:bg-secondary/30 active:bg-secondary transition-colors cursor-pointer",
+                        isMobile ? "p-3" : "p-4"
+                      )}
                       onClick={() => setSelectedTicket(ticket)}
                     >
                       {/* Badges */}
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-1.5 md:gap-2 mb-2 flex-wrap">
                         <Badge 
                           variant="outline" 
-                          className={cn("text-xs font-medium gap-1", statusConfig.className)}
+                          className={cn("text-[10px] md:text-xs font-medium gap-1", statusConfig.className)}
                         >
-                          <statusConfig.icon className="h-3 w-3" />
+                          <statusConfig.icon className="h-2.5 w-2.5 md:h-3 md:w-3" />
                           {statusConfig.label}
                         </Badge>
                         <Badge 
                           variant="outline" 
-                          className={cn("text-xs font-medium", priorityConfig.className)}
+                          className={cn("text-[10px] md:text-xs font-medium", priorityConfig.className)}
                         >
                           {priorityConfig.label}
                         </Badge>
                         {ticket.hasAttachments && (
-                          <Badge variant="outline" className="text-xs font-medium gap-1 bg-secondary">
-                            <Paperclip className="h-3 w-3" />
+                          <Badge variant="outline" className="text-[10px] md:text-xs font-medium gap-1 bg-secondary">
+                            <Paperclip className="h-2.5 w-2.5 md:h-3 md:w-3" />
                             {ticket.attachmentCount}
                           </Badge>
                         )}
                         {ticket.messages.length > 0 && (
-                          <Badge variant="outline" className="text-xs font-medium gap-1 bg-secondary">
-                            <MessageSquare className="h-3 w-3" />
+                          <Badge variant="outline" className="text-[10px] md:text-xs font-medium gap-1 bg-secondary">
+                            <MessageSquare className="h-2.5 w-2.5 md:h-3 md:w-3" />
                             {ticket.messages.length}
                           </Badge>
                         )}
                       </div>
 
                       {/* Título y descripción */}
-                      <h4 className="font-medium text-foreground">{ticket.title}</h4>
-                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                      <h4 className={cn("font-medium text-foreground", isMobile ? "text-sm" : "text-base")}>{ticket.title}</h4>
+                      <p className={cn("text-muted-foreground mt-1", isMobile ? "text-xs line-clamp-1" : "text-sm line-clamp-2")}>
                         {ticket.description}
                       </p>
 
                       {/* Fechas */}
-                      <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+                      <div className={cn(
+                        "flex items-center mt-2 md:mt-3 text-[10px] md:text-xs text-muted-foreground",
+                        isMobile ? "gap-2" : "gap-4"
+                      )}>
                         <span>
-                          Creado: {format(ticket.createdAt, "dd/MM/yyyy HH:mm", { locale: es })}
+                          {isMobile ? format(ticket.createdAt, "dd/MM/yy", { locale: es }) : `Creado: ${format(ticket.createdAt, "dd/MM/yyyy HH:mm", { locale: es })}`}
                         </span>
-                        <span>•</span>
-                        <span>
-                          Actualizado: {format(ticket.updatedAt, "dd/MM/yyyy HH:mm", { locale: es })}
-                        </span>
+                        {!isMobile && (
+                          <>
+                            <span>•</span>
+                            <span>
+                              Actualizado: {format(ticket.updatedAt, "dd/MM/yyyy HH:mm", { locale: es })}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   );
@@ -732,136 +762,261 @@ export default function Support() {
         </Card>
       </div>
 
-      {/* Modal - Crear Nuevo Ticket */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-lg bg-white">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-semibold">Crear Nuevo Ticket</DialogTitle>
-            <p className="text-sm text-muted-foreground">
-              Describe tu problema o consulta y nuestro equipo te responderá pronto
-            </p>
-          </DialogHeader>
+      {/* Modal - Crear Nuevo Ticket - Sheet en móvil, Dialog en desktop */}
+      {isMobile ? (
+        <Sheet open={isModalOpen} onOpenChange={setIsModalOpen}>
+          <SheetContent side="bottom" className="h-[90vh] rounded-t-2xl">
+            <SheetHeader className="text-left mb-4">
+              <SheetTitle className="text-lg font-semibold">Crear Nuevo Ticket</SheetTitle>
+              <p className="text-xs text-muted-foreground">
+                Describe tu problema y te responderemos pronto
+              </p>
+            </SheetHeader>
 
-          <div className="space-y-4 py-4">
-            {/* Título */}
-            <div className="space-y-2">
-              <Label htmlFor="title" className="text-sm font-medium">
-                Título <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="title"
-                placeholder="Resumen breve del problema"
-                value={newTicket.title}
-                onChange={(e) => setNewTicket(prev => ({ ...prev, title: e.target.value }))}
-                className="border-border focus:border-primary"
-              />
-            </div>
-
-            {/* Descripción */}
-            <div className="space-y-2">
-              <Label htmlFor="description" className="text-sm font-medium">
-                Descripción <span className="text-destructive">*</span>
-              </Label>
-              <Textarea
-                id="description"
-                placeholder="Describe detalladamente tu problema o consulta"
-                value={newTicket.description}
-                onChange={(e) => setNewTicket(prev => ({ ...prev, description: e.target.value }))}
-                className="min-h-[100px] border-border focus:border-primary resize-none"
-              />
-            </div>
-
-            {/* Prioridad */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Prioridad</Label>
-              <Select
-                value={newTicket.priority}
-                onValueChange={(value: TicketPriority) => 
-                  setNewTicket(prev => ({ ...prev, priority: value }))
-                }
-              >
-                <SelectTrigger className="border-border">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Baja</SelectItem>
-                  <SelectItem value="medium">Media</SelectItem>
-                  <SelectItem value="high">Alta</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Archivos adjuntos */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">
-                Archivos adjuntos <span className="text-muted-foreground">(opcional)</span>
-              </Label>
-              
-              <div className="space-y-3">
-                {/* Botón para adjuntar */}
-                <label className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-secondary/30 transition-colors">
-                  <Upload className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
-                    Adjuntar archivos ({attachedFiles.length}/5)
-                  </span>
-                  <input
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={handleFileAttach}
-                    accept="image/*,.pdf,.doc,.docx,.txt"
+            <ScrollArea className="h-[calc(100%-160px)]">
+              <div className="space-y-4 pb-4 pr-2">
+                {/* Título */}
+                <div className="space-y-2">
+                  <Label htmlFor="title-mobile" className="text-sm font-medium">
+                    Título <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="title-mobile"
+                    placeholder="Resumen breve del problema"
+                    value={newTicket.title}
+                    onChange={(e) => setNewTicket(prev => ({ ...prev, title: e.target.value }))}
+                    className="border-border focus:border-primary h-11"
                   />
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  Máximo 5 archivos, 10MB por archivo
-                </p>
+                </div>
 
-                {/* Lista de archivos adjuntos */}
-                {attachedFiles.length > 0 && (
-                  <div className="space-y-2">
-                    {attachedFiles.map((file) => (
-                      <div
-                        key={file.id}
-                        className="flex items-center justify-between p-2 bg-secondary/50 rounded-lg"
-                      >
-                        <div className="flex items-center gap-2">
-                          <FileText className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm text-foreground truncate max-w-[200px]">
-                            {file.name}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            ({formatFileSize(file.size)})
-                          </span>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                          onClick={() => removeFile(file.id)}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
+                {/* Descripción */}
+                <div className="space-y-2">
+                  <Label htmlFor="description-mobile" className="text-sm font-medium">
+                    Descripción <span className="text-destructive">*</span>
+                  </Label>
+                  <Textarea
+                    id="description-mobile"
+                    placeholder="Describe detalladamente tu problema"
+                    value={newTicket.description}
+                    onChange={(e) => setNewTicket(prev => ({ ...prev, description: e.target.value }))}
+                    className="min-h-[100px] border-border focus:border-primary resize-none"
+                  />
+                </div>
+
+                {/* Prioridad */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Prioridad</Label>
+                  <Select
+                    value={newTicket.priority}
+                    onValueChange={(value: TicketPriority) => 
+                      setNewTicket(prev => ({ ...prev, priority: value }))
+                    }
+                  >
+                    <SelectTrigger className="border-border h-11">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Baja</SelectItem>
+                      <SelectItem value="medium">Media</SelectItem>
+                      <SelectItem value="high">Alta</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Archivos adjuntos */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">
+                    Archivos <span className="text-muted-foreground">(opcional)</span>
+                  </Label>
+                  
+                  <div className="space-y-3">
+                    <label className="flex items-center justify-center gap-2 px-4 py-4 border-2 border-dashed border-border rounded-lg cursor-pointer active:bg-secondary/30 transition-colors">
+                      <Upload className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">
+                        Adjuntar ({attachedFiles.length}/5)
+                      </span>
+                      <input
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={handleFileAttach}
+                        accept="image/*,.pdf,.doc,.docx,.txt"
+                      />
+                    </label>
+
+                    {attachedFiles.length > 0 && (
+                      <div className="space-y-2">
+                        {attachedFiles.map((file) => (
+                          <div
+                            key={file.id}
+                            className="flex items-center justify-between p-2 bg-secondary/50 rounded-lg"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                              <span className="text-xs text-foreground truncate">
+                                {file.name}
+                              </span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                              onClick={() => removeFile(file.id)}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
+                </div>
+              </div>
+            </ScrollArea>
+
+            <SheetFooter className="flex-row gap-3 pt-4 border-t border-border mt-2">
+              <Button variant="outline" className="flex-1 h-12" onClick={closeModal}>
+                Cancelar
+              </Button>
+              <Button 
+                className="flex-1 h-12"
+                onClick={handleCreateTicket}
+                disabled={!newTicket.title.trim() || !newTicket.description.trim()}
+              >
+                Crear Ticket
+              </Button>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
+      ) : (
+        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+          <DialogContent className="sm:max-w-lg bg-white">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-semibold">Crear Nuevo Ticket</DialogTitle>
+              <p className="text-sm text-muted-foreground">
+                Describe tu problema o consulta y nuestro equipo te responderá pronto
+              </p>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              {/* Título */}
+              <div className="space-y-2">
+                <Label htmlFor="title" className="text-sm font-medium">
+                  Título <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="title"
+                  placeholder="Resumen breve del problema"
+                  value={newTicket.title}
+                  onChange={(e) => setNewTicket(prev => ({ ...prev, title: e.target.value }))}
+                  className="border-border focus:border-primary"
+                />
+              </div>
+
+              {/* Descripción */}
+              <div className="space-y-2">
+                <Label htmlFor="description" className="text-sm font-medium">
+                  Descripción <span className="text-destructive">*</span>
+                </Label>
+                <Textarea
+                  id="description"
+                  placeholder="Describe detalladamente tu problema o consulta"
+                  value={newTicket.description}
+                  onChange={(e) => setNewTicket(prev => ({ ...prev, description: e.target.value }))}
+                  className="min-h-[100px] border-border focus:border-primary resize-none"
+                />
+              </div>
+
+              {/* Prioridad */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Prioridad</Label>
+                <Select
+                  value={newTicket.priority}
+                  onValueChange={(value: TicketPriority) => 
+                    setNewTicket(prev => ({ ...prev, priority: value }))
+                  }
+                >
+                  <SelectTrigger className="border-border">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Baja</SelectItem>
+                    <SelectItem value="medium">Media</SelectItem>
+                    <SelectItem value="high">Alta</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Archivos adjuntos */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">
+                  Archivos adjuntos <span className="text-muted-foreground">(opcional)</span>
+                </Label>
+                
+                <div className="space-y-3">
+                  <label className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-secondary/30 transition-colors">
+                    <Upload className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">
+                      Adjuntar archivos ({attachedFiles.length}/5)
+                    </span>
+                    <input
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleFileAttach}
+                      accept="image/*,.pdf,.doc,.docx,.txt"
+                    />
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Máximo 5 archivos, 10MB por archivo
+                  </p>
+
+                  {attachedFiles.length > 0 && (
+                    <div className="space-y-2">
+                      {attachedFiles.map((file) => (
+                        <div
+                          key={file.id}
+                          className="flex items-center justify-between p-2 bg-secondary/50 rounded-lg"
+                        >
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm text-foreground truncate max-w-[200px]">
+                              {file.name}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              ({formatFileSize(file.size)})
+                            </span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                            onClick={() => removeFile(file.id)}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={closeModal}>
-              Cancelar
-            </Button>
-            <Button 
-              onClick={handleCreateTicket}
-              disabled={!newTicket.title.trim() || !newTicket.description.trim()}
-            >
-              Crear Ticket
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={closeModal}>
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handleCreateTicket}
+                disabled={!newTicket.title.trim() || !newTicket.description.trim()}
+              >
+                Crear Ticket
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </MainLayout>
   );
 }

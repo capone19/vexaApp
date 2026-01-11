@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/shared/Logo";
@@ -29,6 +30,7 @@ import {
 import { logout } from "@/lib/auth";
 import { useAuth } from "@/hooks/use-auth";
 import { mockUser } from "@/lib/mock/data";
+import { isPremiumPlan, onPlanChange } from "@/lib/plan";
 
 interface NavItem {
   title: string;
@@ -95,6 +97,15 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
   const navigate = useNavigate();
   const userProfile = getUserProfile();
   const { user: authUser } = useAuth();
+  const [hasPremium, setHasPremium] = useState(isPremiumPlan());
+
+  // Listen for plan changes
+  useEffect(() => {
+    const unsubscribe = onPlanChange(() => {
+      setHasPremium(isPremiumPlan());
+    });
+    return unsubscribe;
+  }, []);
 
   const displayName = userProfile?.companyName || authUser?.name || mockUser.name;
   const displayLogo = userProfile?.logo || null;
@@ -164,7 +175,7 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
                       )}>
                         <item.icon className="h-5 w-5 shrink-0" />
                         <span className="flex-1">{item.title}</span>
-                        {item.isUpgrade && <Lock className="h-4 w-4 text-warning" />}
+                        {item.isUpgrade && !hasPremium && <Lock className="h-4 w-4 text-warning" />}
                       </div>
                       <div className="ml-8 space-y-1">
                         {item.children.map((child) => (
@@ -196,7 +207,7 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
                     >
                       <item.icon className="h-5 w-5 shrink-0" />
                       <span className="flex-1">{item.title}</span>
-                      {item.isUpgrade && <Lock className="h-4 w-4 text-warning" />}
+                      {item.isUpgrade && !hasPremium && <Lock className="h-4 w-4 text-warning" />}
                     </button>
                   )}
                 </div>

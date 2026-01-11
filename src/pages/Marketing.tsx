@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -27,12 +28,16 @@ import {
   Users,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  Lock,
+  Crown,
+  Sparkles
 } from 'lucide-react';
 import { mockTemplates } from '@/lib/mock/data';
 import type { Template, TemplateCategory, TemplateStatus } from '@/lib/types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { isPremiumPlan, onPlanChange, getCurrentPlan, type PlanId } from '@/lib/plan';
 
 const categoryLabels: Record<TemplateCategory, string> = {
   followup: 'Seguimiento',
@@ -51,6 +56,9 @@ const categoryColors: Record<TemplateCategory, string> = {
 };
 
 const Marketing = () => {
+  const navigate = useNavigate();
+  const [hasPremium, setHasPremium] = useState(isPremiumPlan());
+  const [currentPlan, setCurrentPlanState] = useState<PlanId>(getCurrentPlan());
   const [templates, setTemplates] = useState<Template[]>(mockTemplates);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -58,6 +66,15 @@ const Marketing = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [viewingTemplate, setViewingTemplate] = useState<Template | null>(null);
+
+  // Listen for plan changes
+  useEffect(() => {
+    const unsubscribe = onPlanChange((plan) => {
+      setHasPremium(isPremiumPlan());
+      setCurrentPlanState(plan);
+    });
+    return unsubscribe;
+  }, []);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -171,6 +188,123 @@ const Marketing = () => {
       case 'rejected': return <XCircle className="h-4 w-4 text-destructive" />;
     }
   };
+
+  // If not premium, show locked state
+  if (!hasPremium) {
+    return (
+      <MainLayout>
+        <div className="space-y-6">
+          <PageHeader
+            title="Marketing"
+            subtitle="Gestiona tus plantillas de WhatsApp Business"
+          />
+
+          {/* Upgrade Banner */}
+          <Card className="bg-primary/5 border-primary/20">
+            <CardContent className="p-6">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="flex items-start gap-4">
+                  <div className="p-3 rounded-xl bg-primary/20">
+                    <Crown className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold mb-1">
+                      Desbloquea WhatsApp Marketing
+                    </h3>
+                    <p className="text-muted-foreground text-sm max-w-md">
+                      Crea campañas outbound, gestiona plantillas de WhatsApp Business 
+                      y automatiza seguimientos con tu audiencia.
+                    </p>
+                  </div>
+                </div>
+                <Button className="gap-2 shrink-0" onClick={() => navigate('/facturacion')}>
+                  <Sparkles className="h-4 w-4" />
+                  Actualizar a Pro
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Preview Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card className="border-border opacity-60">
+              <CardContent className="p-6 text-center">
+                <div className="w-12 h-12 rounded-lg bg-secondary flex items-center justify-center mx-auto mb-4">
+                  <MessageSquare className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <h3 className="font-medium mb-2">Plantillas WhatsApp</h3>
+                <p className="text-sm text-muted-foreground">Crea y gestiona plantillas aprobadas por WhatsApp Business</p>
+                <div className="mt-4">
+                  <Badge variant="outline" className="gap-1">
+                    <Lock className="h-3 w-3" />
+                    Pro
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border opacity-60">
+              <CardContent className="p-6 text-center">
+                <div className="w-12 h-12 rounded-lg bg-secondary flex items-center justify-center mx-auto mb-4">
+                  <Send className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <h3 className="font-medium mb-2">Campañas Outbound</h3>
+                <p className="text-sm text-muted-foreground">Envía campañas masivas a tus contactos segmentados</p>
+                <div className="mt-4">
+                  <Badge variant="outline" className="gap-1">
+                    <Lock className="h-3 w-3" />
+                    Pro
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border opacity-60">
+              <CardContent className="p-6 text-center">
+                <div className="w-12 h-12 rounded-lg bg-secondary flex items-center justify-center mx-auto mb-4">
+                  <BarChart3 className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <h3 className="font-medium mb-2">Métricas de Campañas</h3>
+                <p className="text-sm text-muted-foreground">Analiza el rendimiento de tus campañas en tiempo real</p>
+                <div className="mt-4">
+                  <Badge variant="outline" className="gap-1">
+                    <Lock className="h-3 w-3" />
+                    Pro
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Feature List */}
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="text-lg">Funcionalidades de Marketing</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-3">
+                {[
+                  'Crear y gestionar plantillas de WhatsApp Business',
+                  'Campañas de seguimiento automáticas',
+                  'Segmentación de audiencia por comportamiento',
+                  'Métricas de apertura y respuesta',
+                  'Automatización de reactivación de leads',
+                  'Integración con el funnel de ventas'
+                ].map((feature, index) => (
+                  <li key={index} className="flex items-center gap-3 text-muted-foreground">
+                    <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <CheckCircle className="h-3 w-3 text-primary" />
+                    </div>
+                    <span className="text-sm">{feature}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+      </MainLayout>
+    );
+  }
 
   return (
     <MainLayout>

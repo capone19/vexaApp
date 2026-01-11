@@ -77,8 +77,8 @@ export default function Chats() {
     setFilters((prev) => ({ ...prev, stage: value as Filters["stage"] }));
   }, []);
 
-  // Chat List Component
-  const ChatList = () => (
+  // Chat List content rendered inline to prevent Input focus loss
+  const chatListContent = (
     <div className={cn(
       "flex flex-col overflow-hidden",
       isMobile ? "h-full" : "w-80 flex-shrink-0 rounded-lg border border-border bg-card"
@@ -418,12 +418,12 @@ export default function Chats() {
           selectedChat ? (
             <ChatMessages />
           ) : (
-            <ChatList />
+            chatListContent
           )
         ) : (
           // Desktop: Side by side
           <div className="flex flex-1 gap-4 min-h-0">
-            <ChatList />
+            {chatListContent}
             <ChatMessages />
           </div>
         )}

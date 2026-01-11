@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -16,9 +18,10 @@ import {
   PieChart,
   ArrowRight,
   Sparkles,
-  Crown
+  Crown,
+  CheckCircle
 } from 'lucide-react';
-import { mockClient } from '@/lib/mock/data';
+import { isPremiumPlan, onPlanChange, getCurrentPlan, type PlanId } from '@/lib/plan';
 
 const reportTypes = [
   {
@@ -27,7 +30,7 @@ const reportTypes = [
     description: 'Análisis detallado de tiempos de respuesta, tasas de resolución y satisfacción.',
     icon: TrendingUp,
     frequency: 'Semanal',
-    locked: false,
+    requiresPremium: false, // Always available
   },
   {
     id: 'conversations',
@@ -35,7 +38,7 @@ const reportTypes = [
     description: 'Insights sobre patrones de conversación, preguntas frecuentes y puntos de fricción.',
     icon: MessageSquare,
     frequency: 'Semanal',
-    locked: true,
+    requiresPremium: true,
   },
   {
     id: 'funnel',
@@ -43,7 +46,7 @@ const reportTypes = [
     description: 'Análisis profundo del embudo de conversión con recomendaciones de mejora.',
     icon: BarChart3,
     frequency: 'Mensual',
-    locked: true,
+    requiresPremium: true,
   },
   {
     id: 'revenue',
@@ -51,7 +54,7 @@ const reportTypes = [
     description: 'ROI del agente, ingresos generados y proyecciones de crecimiento.',
     icon: DollarSign,
     frequency: 'Mensual',
-    locked: true,
+    requiresPremium: true,
   },
   {
     id: 'whatsapp',
@@ -59,7 +62,7 @@ const reportTypes = [
     description: 'Métricas detalladas de rendimiento del funnel de ventas por WhatsApp.',
     icon: PieChart,
     frequency: 'Semanal',
-    locked: true,
+    requiresPremium: true,
   },
   {
     id: 'customers',
@@ -67,7 +70,7 @@ const reportTypes = [
     description: 'Análisis de comportamiento, preferencias y valor de vida del cliente.',
     icon: Users,
     frequency: 'Mensual',
-    locked: true,
+    requiresPremium: true,
   },
 ];
 
@@ -77,20 +80,29 @@ const scheduledReports = [
 ];
 
 const Reports = () => {
-  const isBasicPlan = mockClient.plan === 'basic';
-  // For demo purposes, let's show the locked state
-  const showLockedState = true;
+  const navigate = useNavigate();
+  const [hasPremium, setHasPremium] = useState(isPremiumPlan());
+  const [currentPlan, setCurrentPlanState] = useState<PlanId>(getCurrentPlan());
 
-  if (showLockedState) {
-    return (
-      <MainLayout>
-        <div className="space-y-6">
-          <PageHeader
-            title="Reportes"
-            subtitle="Análisis avanzados e insights de tu agente"
-          />
+  // Listen for plan changes
+  useEffect(() => {
+    const unsubscribe = onPlanChange((plan) => {
+      setHasPremium(isPremiumPlan());
+      setCurrentPlanState(plan);
+    });
+    return unsubscribe;
+  }, []);
 
-          {/* Upgrade Banner */}
+  return (
+    <MainLayout>
+      <div className="space-y-6">
+        <PageHeader
+          title="Reportes"
+          subtitle="Análisis avanzados e insights de tu agente"
+        />
+
+        {/* Upgrade Banner - Only show if not premium */}
+        {!hasPremium && (
           <Card className="bg-primary/5 border-primary/20">
             <CardContent className="p-6">
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -108,149 +120,178 @@ const Reports = () => {
                     </p>
                   </div>
                 </div>
-                <Button className="gap-2 shrink-0">
+                <Button className="gap-2 shrink-0" onClick={() => navigate('/facturacion')}>
                   <Sparkles className="h-4 w-4" />
                   Actualizar a Pro
                 </Button>
               </div>
             </CardContent>
           </Card>
+        )}
 
-          {/* Report Types Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {reportTypes.map((report) => {
-              const Icon = report.icon;
-              const isLocked = report.locked;
-              
-              return (
-                <Card 
-                  key={report.id}
-                  className={`relative overflow-hidden transition-all ${
-                    isLocked 
-                      ? 'border-border opacity-75' 
-                      : 'border-border hover:border-primary/50'
-                  }`}
-                >
-                  {isLocked && (
-                    <div className="absolute top-3 right-3">
-                      <div className="p-1.5 rounded-full bg-secondary">
-                        <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </div>
-                    </div>
-                  )}
-                  <CardHeader className="pb-3">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${
-                      isLocked ? 'bg-secondary' : 'bg-primary/10'
-                    }`}>
-                      <Icon className={`h-5 w-5 ${isLocked ? 'text-muted-foreground' : 'text-primary'}`} />
-                    </div>
-                    <CardTitle className="text-base">{report.title}</CardTitle>
-                    <CardDescription className="text-sm">
-                      {report.description}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="flex items-center justify-between">
-                      <Badge variant="outline" className={isLocked ? 'opacity-50' : ''}>
-                        {report.frequency}
-                      </Badge>
-                      {isLocked ? (
-                        <Button variant="ghost" size="sm" className="text-primary gap-1" disabled>
-                          <Lock className="h-3.5 w-3.5" />
-                          Pro
-                        </Button>
-                      ) : (
-                        <Button variant="ghost" size="sm" className="text-primary gap-1">
-                          Ver
-                          <ArrowRight className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-
-          {/* Scheduled Reports Section (Locked) */}
-          <Card className="border-border">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-secondary">
-                    <Calendar className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      Reportes Programados
-                      <div className="p-1 rounded-full bg-secondary">
-                        <Lock className="h-3 w-3 text-muted-foreground" />
-                      </div>
-                    </CardTitle>
-                    <CardDescription>
-                      Recibe reportes automáticos en tu correo
-                    </CardDescription>
-                  </div>
+        {/* Premium Success Banner - Show when premium */}
+        {hasPremium && (
+          <Card className="bg-success/5 border-success/20">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-xl bg-success/20">
+                  <CheckCircle className="h-6 w-6 text-success" />
                 </div>
-                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
-                  Pro
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3 opacity-50">
-                {scheduledReports.map((report, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-secondary">
-                    <div className="flex items-center gap-3">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">{report.name}</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">{report.nextDate}</span>
-                  </div>
-                ))}
+                <div>
+                  <h3 className="text-lg font-semibold mb-1 text-success">
+                    Plan {currentPlan === 'pro' ? 'Pro' : 'Enterprise'} Activo
+                  </h3>
+                  <p className="text-muted-foreground text-sm">
+                    Tienes acceso a todos los reportes avanzados, exportación de datos y reportes programados.
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>
+        )}
 
-          {/* Export Section (Locked) */}
-          <Card className="border-border">
-            <CardHeader>
+        {/* Report Types Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {reportTypes.map((report) => {
+            const Icon = report.icon;
+            const isLocked = report.requiresPremium && !hasPremium;
+            
+            return (
+              <Card 
+                key={report.id}
+                className={`relative overflow-hidden transition-all ${
+                  isLocked 
+                    ? 'border-border opacity-75' 
+                    : 'border-border hover:border-primary/50 hover:shadow-md cursor-pointer'
+                }`}
+              >
+                {isLocked && (
+                  <div className="absolute top-3 right-3">
+                    <div className="p-1.5 rounded-full bg-secondary">
+                      <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
+                  </div>
+                )}
+                <CardHeader className="pb-3">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${
+                    isLocked ? 'bg-secondary' : 'bg-primary/10'
+                  }`}>
+                    <Icon className={`h-5 w-5 ${isLocked ? 'text-muted-foreground' : 'text-primary'}`} />
+                  </div>
+                  <CardTitle className="text-base">{report.title}</CardTitle>
+                  <CardDescription className="text-sm">
+                    {report.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className={isLocked ? 'opacity-50' : ''}>
+                      {report.frequency}
+                    </Badge>
+                    {isLocked ? (
+                      <Button variant="ghost" size="sm" className="text-primary gap-1" disabled>
+                        <Lock className="h-3.5 w-3.5" />
+                        Pro
+                      </Button>
+                    ) : (
+                      <Button variant="ghost" size="sm" className="text-primary gap-1">
+                        Ver
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Scheduled Reports Section */}
+        <Card className="border-border">
+          <CardHeader>
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-secondary">
-                  <Download className="h-5 w-5 text-muted-foreground" />
+                <div className={`p-2 rounded-lg ${hasPremium ? 'bg-primary/10' : 'bg-secondary'}`}>
+                  <Calendar className={`h-5 w-5 ${hasPremium ? 'text-primary' : 'text-muted-foreground'}`} />
                 </div>
                 <div>
                   <CardTitle className="text-base flex items-center gap-2">
-                    Exportación de Datos
-                    <div className="p-1 rounded-full bg-muted/50">
-                      <Lock className="h-3 w-3 text-muted-foreground" />
-                    </div>
+                    Reportes Programados
+                    {!hasPremium && (
+                      <div className="p-1 rounded-full bg-secondary">
+                        <Lock className="h-3 w-3 text-muted-foreground" />
+                      </div>
+                    )}
                   </CardTitle>
                   <CardDescription>
-                    Descarga tus datos en formatos CSV, Excel o PDF
+                    Recibe reportes automáticos en tu correo
                   </CardDescription>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2 opacity-50">
-                <Button variant="outline" size="sm" disabled>
-                  <FileText className="h-4 w-4 mr-2" />
-                  Exportar Chats
-                </Button>
-                <Button variant="outline" size="sm" disabled>
-                  <FileText className="h-4 w-4 mr-2" />
-                  Exportar Citas
-                </Button>
-                <Button variant="outline" size="sm" disabled>
-                  <FileText className="h-4 w-4 mr-2" />
-                  Exportar Métricas
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+              {!hasPremium && (
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                  Pro
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className={`space-y-3 ${!hasPremium ? 'opacity-50' : ''}`}>
+              {scheduledReports.map((report, index) => (
+                <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-secondary">
+                  <div className="flex items-center gap-3">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">{report.name}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{report.nextDate}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
-          {/* Feature Comparison */}
+        {/* Export Section */}
+        <Card className="border-border">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-lg ${hasPremium ? 'bg-primary/10' : 'bg-secondary'}`}>
+                <Download className={`h-5 w-5 ${hasPremium ? 'text-primary' : 'text-muted-foreground'}`} />
+              </div>
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  Exportación de Datos
+                  {!hasPremium && (
+                    <div className="p-1 rounded-full bg-muted/50">
+                      <Lock className="h-3 w-3 text-muted-foreground" />
+                    </div>
+                  )}
+                </CardTitle>
+                <CardDescription>
+                  Descarga tus datos en formatos CSV, Excel o PDF
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className={`flex flex-wrap gap-2 ${!hasPremium ? 'opacity-50' : ''}`}>
+              <Button variant="outline" size="sm" disabled={!hasPremium}>
+                <FileText className="h-4 w-4 mr-2" />
+                Exportar Chats
+              </Button>
+              <Button variant="outline" size="sm" disabled={!hasPremium}>
+                <FileText className="h-4 w-4 mr-2" />
+                Exportar Citas
+              </Button>
+              <Button variant="outline" size="sm" disabled={!hasPremium}>
+                <FileText className="h-4 w-4 mr-2" />
+                Exportar Métricas
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Feature Comparison - Only show if not premium */}
+        {!hasPremium && (
           <Card className="border-border">
             <CardHeader>
               <CardTitle className="text-lg">Compara Planes</CardTitle>
@@ -261,7 +302,9 @@ const Reports = () => {
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">Básico</Badge>
-                    <span className="text-sm text-muted-foreground">Tu plan actual</span>
+                    {currentPlan === 'basic' && (
+                      <span className="text-sm text-muted-foreground">Tu plan actual</span>
+                    )}
                   </div>
                   <ul className="space-y-2 text-sm">
                     <li className="flex items-center gap-2 text-muted-foreground">
@@ -332,13 +375,10 @@ const Reports = () => {
               </div>
             </CardContent>
           </Card>
-        </div>
-      </MainLayout>
-    );
-  }
-
-  // Unlocked state would go here
-  return null;
+        )}
+      </div>
+    </MainLayout>
+  );
 };
 
 export default Reports;

@@ -23,7 +23,7 @@ import type {
 export const mockClient: Client = {
   id: 'client-001',
   name: 'Beauty Salon Pro',
-  plan: 'pro',
+  plan: 'basic',
   timezone: 'America/Santiago',
   createdAt: new Date('2024-01-15'),
 };
@@ -394,16 +394,16 @@ export const mockTemplates: Template[] = [
 
 // Mock Billing
 export const mockBilling: BillingInfo = {
-  plan: 'pro',
+  plan: 'basic',
   status: 'active',
   nextBillingDate: (() => { const d = new Date(); d.setDate(d.getDate() + 15); return d; })(),
-  amount: 199,
+  amount: 99,
   currency: 'USD',
   history: [
-    { id: 'inv-001', date: daysAgo(15), amount: 199, status: 'paid', invoiceUrl: '#' },
-    { id: 'inv-002', date: daysAgo(45), amount: 199, status: 'paid', invoiceUrl: '#' },
-    { id: 'inv-003', date: daysAgo(75), amount: 199, status: 'paid', invoiceUrl: '#' },
-    { id: 'inv-004', date: daysAgo(105), amount: 99, status: 'paid', invoiceUrl: '#' },
+    { id: 'inv-001', date: daysAgo(15), amount: 99, status: 'paid', invoiceUrl: '#' },
+    { id: 'inv-002', date: daysAgo(45), amount: 99, status: 'paid', invoiceUrl: '#' },
+    { id: 'inv-003', date: daysAgo(75), amount: 99, status: 'paid', invoiceUrl: '#' },
+    { id: 'inv-004', date: daysAgo(105), amount: 150, status: 'paid', invoiceUrl: '#' },
   ],
 };
 

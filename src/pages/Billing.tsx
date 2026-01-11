@@ -27,12 +27,13 @@ import {
   BarChart3,
   ChevronRight,
 } from 'lucide-react';
-import { mockBilling, mockClient } from '@/lib/mock/data';
+import { mockBilling } from '@/lib/mock/data';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { getCurrentPlan, setCurrentPlan, type PlanId } from '@/lib/plan';
 
 interface BillingInfoData {
   companyName: string;
@@ -131,10 +132,18 @@ const Billing = () => {
   const [isChangePlanOpen, setIsChangePlanOpen] = useState(false);
   const [isPaymentMethodOpen, setIsPaymentMethodOpen] = useState(false);
   const [isBillingInfoOpen, setIsBillingInfoOpen] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState(mockClient.plan);
+  const [currentPlan, setCurrentPlanState] = useState<PlanId>(getCurrentPlan());
+  const [selectedPlan, setSelectedPlan] = useState<PlanId>(getCurrentPlan());
   const [billingInfo, setBillingInfo] = useState<BillingInfoData>(getStoredBillingInfo);
   const [editingBillingInfo, setEditingBillingInfo] = useState<BillingInfoData>(billingInfo);
   const isMobile = useIsMobile();
+
+  // Update selected plan when opening modal
+  useEffect(() => {
+    if (isChangePlanOpen) {
+      setSelectedPlan(currentPlan);
+    }
+  }, [isChangePlanOpen, currentPlan]);
 
   const handleSaveBillingInfo = () => {
     try {
@@ -148,7 +157,18 @@ const Billing = () => {
     }
   };
 
-  const currentPlan = plans.find(p => p.id === mockClient.plan) || plans[1];
+  const currentPlanData = plans.find(p => p.id === currentPlan) || plans[0];
+
+  // Handle plan change confirmation
+  const handleConfirmPlanChange = () => {
+    if (selectedPlan !== currentPlan) {
+      setCurrentPlan(selectedPlan);
+      setCurrentPlanState(selectedPlan);
+      const newPlanData = plans.find(p => p.id === selectedPlan);
+      toast.success(`Plan actualizado a ${newPlanData?.name || selectedPlan}`);
+    }
+    setIsChangePlanOpen(false);
+  };
 
   const formatCurrency = (amount: number | null, currency: string = 'USD') => {
     if (amount === null) return 'A medida';
@@ -236,7 +256,7 @@ const Billing = () => {
                     </ul>
                   </div>
                   
-                  {mockClient.plan === plan.id && (
+                  {currentPlan === plan.id && (
                     <div className="px-4 pb-4">
                       <Badge variant="outline" className="w-full justify-center">
                         Plan Actual
@@ -303,7 +323,7 @@ const Billing = () => {
                 </ul>
               </div>
               
-              {mockClient.plan === plan.id && (
+              {currentPlan === plan.id && (
                 <div className="px-5 pb-5">
                   <Badge variant="outline" className="w-full justify-center py-2">
                     Plan Actual
@@ -414,12 +434,12 @@ const Billing = () => {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <h3 className={cn("font-semibold text-foreground", isMobile ? "text-base" : "text-xl")}>
-                      Plan {currentPlan?.name}
+                      Plan {currentPlanData?.name}
                     </h3>
                     <Badge className="bg-success/10 text-success">Activo</Badge>
                   </div>
                   <p className="text-muted-foreground text-xs md:text-sm mb-2">
-                    {currentPlan?.description}
+                    {currentPlanData?.description}
                   </p>
                   <div className={cn(
                     "flex items-center gap-2 md:gap-4 text-sm",
@@ -430,7 +450,7 @@ const Billing = () => {
                       Próximo cobro: {format(mockBilling.nextBillingDate, 'dd MMM yyyy', { locale: es })}
                     </span>
                     <span className={cn("font-semibold text-primary", isMobile ? "text-xl" : "text-2xl")}>
-                      {formatCurrency(currentPlan?.price, currentPlan?.currency)}
+                      {formatCurrency(currentPlanData?.price, currentPlanData?.currency)}
                       <span className="text-sm font-normal text-muted-foreground">/mes</span>
                     </span>
                   </div>
@@ -609,10 +629,10 @@ const Billing = () => {
               </Button>
               <Button 
                 className="flex-1 h-12"
-                disabled={selectedPlan === mockClient.plan}
-                onClick={() => setIsChangePlanOpen(false)}
+                disabled={selectedPlan === currentPlan}
+                onClick={handleConfirmPlanChange}
               >
-                {selectedPlan === mockClient.plan ? 'Plan Actual' : 'Confirmar'}
+                {selectedPlan === currentPlan ? 'Plan Actual' : 'Confirmar'}
               </Button>
             </SheetFooter>
           </SheetContent>
@@ -629,10 +649,10 @@ const Billing = () => {
                 Cancelar
               </Button>
               <Button 
-                disabled={selectedPlan === mockClient.plan}
-                onClick={() => setIsChangePlanOpen(false)}
+                disabled={selectedPlan === currentPlan}
+                onClick={handleConfirmPlanChange}
               >
-                {selectedPlan === mockClient.plan ? 'Plan Actual' : 'Confirmar Cambio'}
+                {selectedPlan === currentPlan ? 'Plan Actual' : 'Confirmar Cambio'}
               </Button>
             </DialogFooter>
           </DialogContent>
