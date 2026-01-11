@@ -216,17 +216,6 @@ export function PlaygroundChat({ tenantId }: PlaygroundChatProps) {
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={resetChat}
-                title="Reiniciar conversación"
-              >
-                <RotateCcw className="h-4 w-4" />
-              </Button>
-            </div>
           </div>
         </SheetHeader>
 

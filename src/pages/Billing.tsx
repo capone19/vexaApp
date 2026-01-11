@@ -63,7 +63,7 @@ const getStoredBillingInfo = (): BillingInfoData => {
   return defaultBillingInfo;
 };
 
-type PlanId = 'basic' | 'pro' | 'enterprise';
+
 
 const plans: Array<{
   id: PlanId;
