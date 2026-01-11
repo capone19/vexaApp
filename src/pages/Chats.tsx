@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { FunnelStageBadge } from "@/components/shared/FunnelStagesBadge";
@@ -19,16 +19,22 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+interface Filters {
+  search: string;
+  status: "all" | ChatStatus;
+  stage: "all" | FunnelStage;
+}
+
 export default function Chats() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [botEnabled, setBotEnabled] = useState<Record<string, boolean>>({});
   const [showFilters, setShowFilters] = useState(false);
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<Filters>({
     search: "",
-    status: "all" as "all" | ChatStatus,
-    stage: "all" as "all" | FunnelStage,
+    status: "all",
+    stage: "all",
   });
   
   const isMobile = useIsMobile();
@@ -55,9 +61,21 @@ export default function Chats() {
 
   const hasActiveFilters = filters.status !== "all" || filters.stage !== "all";
 
-  const clearFilters = () => {
-    setFilters({ ...filters, status: "all", stage: "all" });
-  };
+  const clearFilters = useCallback(() => {
+    setFilters((prev) => ({ ...prev, status: "all", stage: "all" }));
+  }, []);
+
+  const handleSearchChange = useCallback((value: string) => {
+    setFilters((prev) => ({ ...prev, search: value }));
+  }, []);
+
+  const handleStatusChange = useCallback((value: string) => {
+    setFilters((prev) => ({ ...prev, status: value as Filters["status"] }));
+  }, []);
+
+  const handleStageChange = useCallback((value: string) => {
+    setFilters((prev) => ({ ...prev, stage: value as Filters["stage"] }));
+  }, []);
 
   // Chat List Component
   const ChatList = () => (
@@ -72,7 +90,7 @@ export default function Chats() {
           <Input
             placeholder="Buscar por nombre..."
             value={filters.search}
-            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9 bg-background border-border h-10"
           />
         </div>
@@ -108,7 +126,7 @@ export default function Chats() {
         ) : (
           // Desktop: Inline filters
           <div className="flex gap-2">
-            <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v as typeof filters.status })}>
+            <Select value={filters.status} onValueChange={handleStatusChange}>
               <SelectTrigger className="flex-1 bg-background border-border h-9">
                 <SelectValue placeholder="Estado" />
               </SelectTrigger>
@@ -118,7 +136,7 @@ export default function Chats() {
                 <SelectItem value="closed">Cerrado</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={filters.stage} onValueChange={(v) => setFilters({ ...filters, stage: v as typeof filters.stage })}>
+            <Select value={filters.stage} onValueChange={handleStageChange}>
               <SelectTrigger className="flex-1 bg-background border-border h-9">
                 <SelectValue placeholder="Etapa" />
               </SelectTrigger>
@@ -333,7 +351,7 @@ export default function Chats() {
             <Label className="text-sm font-medium">Estado</Label>
             <Select 
               value={filters.status} 
-              onValueChange={(v) => setFilters({ ...filters, status: v as typeof filters.status })}
+              onValueChange={handleStatusChange}
             >
               <SelectTrigger className="w-full bg-background border-border h-12">
                 <SelectValue placeholder="Estado" />
@@ -350,7 +368,7 @@ export default function Chats() {
             <Label className="text-sm font-medium">Etapa del funnel</Label>
             <Select 
               value={filters.stage} 
-              onValueChange={(v) => setFilters({ ...filters, stage: v as typeof filters.stage })}
+              onValueChange={handleStageChange}
             >
               <SelectTrigger className="w-full bg-background border-border h-12">
                 <SelectValue placeholder="Etapa" />
