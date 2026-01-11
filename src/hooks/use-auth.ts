@@ -7,49 +7,55 @@ export function useAuth() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    const resolveUser = async (session: { user: any } | null) => {
+      if (!session?.user) {
+        setUser(null);
+        setIsLoading(false);
+        return;
+      }
+
+      const supaUser = session.user;
+
+      // Prefer RPC (Security Definer) to avoid any RLS edge cases when fetching tenant_id
+      const [{ data: tenantIdRpc, error: tenantErr }, { data: userRole, error: roleErr }] = await Promise.all([
+        supabase.rpc('get_user_tenant_id'),
+        supabase
+          .from('user_roles')
+          .select('tenant_id, role')
+          .eq('user_id', supaUser.id)
+          .single(),
+      ]);
+
+      if (tenantErr) {
+        console.warn('[useAuth] get_user_tenant_id RPC error:', tenantErr);
+      }
+      if (roleErr) {
+        console.warn('[useAuth] user_roles fetch error:', roleErr);
+      }
+
+      const tenantId = (tenantIdRpc as string | null) ?? userRole?.tenant_id ?? null;
+
+      setUser({
+        id: supaUser.id,
+        email: supaUser.email || '',
+        name: supaUser.user_metadata?.full_name || supaUser.email?.split('@')[0] || 'Usuario',
+        role: userRole?.role || 'viewer',
+        tenantId,
+      });
+
+      setIsLoading(false);
+    };
+
     // Set up auth state listener BEFORE checking session
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (session?.user) {
-          // Fetch additional user data from user_roles
-          const { data: userRole } = await supabase
-            .from('user_roles')
-            .select('tenant_id, role')
-            .eq('user_id', session.user.id)
-            .single();
-
-          setUser({
-            id: session.user.id,
-            email: session.user.email || '',
-            name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Usuario',
-            role: userRole?.role || 'viewer',
-            tenantId: userRole?.tenant_id || null,
-          });
-        } else {
-          setUser(null);
-        }
-        setIsLoading(false);
+      async (_event, session) => {
+        await resolveUser(session);
       }
     );
 
     // Check initial session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        const { data: userRole } = await supabase
-          .from('user_roles')
-          .select('tenant_id, role')
-          .eq('user_id', session.user.id)
-          .single();
-
-        setUser({
-          id: session.user.id,
-          email: session.user.email || '',
-          name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Usuario',
-          role: userRole?.role || 'viewer',
-          tenantId: userRole?.tenant_id || null,
-        });
-      }
-      setIsLoading(false);
+      await resolveUser(session);
     });
 
     return () => {
