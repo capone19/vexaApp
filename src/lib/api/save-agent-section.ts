@@ -89,10 +89,9 @@ export async function saveAgentSection(
   const saveTimeout = 8000;
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), saveTimeout);
-
-    const { error: upsertError } = await (supabase as any)
+    console.log("[SaveSection] Intentando upsert en agent_settings_ui...");
+    
+    const { data, error: upsertError } = await (supabase as any)
       .from("agent_settings_ui")
       .upsert(
         {
@@ -105,16 +104,16 @@ export async function saveAgentSection(
         {
           onConflict: "tenant_id,section_key",
         }
-      );
-
-    clearTimeout(timeoutId);
+      )
+      .select();
 
     if (upsertError) {
+      console.error("[SaveSection] Error upsert:", upsertError);
       throw new Error(upsertError.message || "Error en base de datos");
     }
 
     cloudSaved = true;
-    console.log("[SaveSection] ✅ Guardado en agent_settings_ui:", sectionId);
+    console.log("[SaveSection] ✅ Guardado en agent_settings_ui:", sectionId, data);
   } catch (err) {
     console.error("[SaveSection] ❌ Error guardando en DB:", err);
     const errorMsg = err instanceof Error ? err.message : "Error guardando en base de datos";
