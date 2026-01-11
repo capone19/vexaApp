@@ -39,6 +39,7 @@ export interface PersonalitySettings {
   empathy: 'baja' | 'media' | 'alta';
   humor: 'ausente' | 'sutil' | 'moderado' | 'marcado';
   emojis: 'nunca' | 'ocasional' | 'frecuente';
+  responseLength: 'corta' | 'media' | 'extensa';
   // New fields
   primaryObjective: 'agendar' | 'vender' | 'calificar' | 'informar' | 'mixto';
   actionPriority: 'agendar_informar' | 'informar_agendar' | 'derivar_humano' | 'resolver_cerrar';

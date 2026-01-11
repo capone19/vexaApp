@@ -414,6 +414,7 @@ export const mockAgentSettings: AgentSettings = {
     empathy: 'alta',
     humor: 'sutil',
     emojis: 'ocasional',
+    responseLength: 'media',
     primaryObjective: 'agendar',
     actionPriority: 'agendar_informar',
     closingPreference: 'proponer_agendamiento',
