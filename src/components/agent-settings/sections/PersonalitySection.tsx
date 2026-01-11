@@ -24,11 +24,8 @@ const humorValues: PersonalitySettings["humor"][] = ["ausente", "sutil", "modera
 const emojiLabels = ["Nunca", "Ocasional", "Frecuente"];
 const emojiValues: PersonalitySettings["emojis"][] = ["nunca", "ocasional", "frecuente"];
 
-const responseLengthLabels: Record<PersonalitySettings["responseLength"], string> = {
-  corta: "Corta (1-2 párrafos)",
-  media: "Media (3-4 párrafos)",
-  extensa: "Extensa (4+ párrafos)",
-};
+const responseLengthLabels = ["Corta", "Media", "Extensa"];
+const responseLengthValues: PersonalitySettings["responseLength"][] = ["corta", "media", "extensa"];
 
 const objectiveLabels: Record<PersonalitySettings["primaryObjective"], string> = {
   agendar: "Agendar citas",
@@ -105,8 +102,8 @@ export function PersonalitySection({ settings, onChange }: PersonalitySectionPro
   }, [settings]);
 
   const handleSliderChange = (
-    key: keyof Pick<PersonalitySettings, "formality" | "empathy" | "humor" | "emojis">,
-    values: typeof formalityValues | typeof empathyValues | typeof humorValues | typeof emojiValues,
+    key: keyof Pick<PersonalitySettings, "formality" | "empathy" | "humor" | "emojis" | "responseLength">,
+    values: typeof formalityValues | typeof empathyValues | typeof humorValues | typeof emojiValues | typeof responseLengthValues,
     sliderValue: number[]
   ) => {
     const newValue = values[sliderValue[0]];
@@ -305,25 +302,24 @@ export function PersonalitySection({ settings, onChange }: PersonalitySectionPro
             </div>
 
             {/* Extensión de respuesta */}
-            <div className="space-y-3 pt-2 border-t border-border">
-              <Label className="text-sm font-medium">Extensión de respuesta</Label>
-              <RadioGroup
-                value={settings.responseLength || 'media'}
-                onValueChange={handleResponseLengthChange}
-                className="space-y-2"
-              >
-                {(Object.keys(responseLengthLabels) as PersonalitySettings["responseLength"][]).map((key) => (
-                  <div key={key} className="flex items-center space-x-2">
-                    <RadioGroupItem value={key} id={`resp-len-${key}`} />
-                    <Label htmlFor={`resp-len-${key}`} className="font-normal cursor-pointer">
-                      {responseLengthLabels[key]}
-                    </Label>
-                  </div>
-                ))}
-              </RadioGroup>
-              <p className="text-xs text-muted-foreground">
-                Qué tan largas serán las respuestas del agente
-              </p>
+            <div className="space-y-4">
+              <div className="flex justify-between">
+                <Label className="text-sm font-medium">Extensión de respuesta</Label>
+                <span className="text-sm text-primary font-medium">
+                  {responseLengthLabels[responseLengthValues.indexOf(settings.responseLength || 'media')]}
+                </span>
+              </div>
+              <Slider
+                value={[responseLengthValues.indexOf(settings.responseLength || 'media')]}
+                onValueChange={(v) => handleSliderChange("responseLength", responseLengthValues, v)}
+                max={2}
+                step={1}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>1-2 párrafos</span>
+                <span>4+ párrafos</span>
+              </div>
             </div>
           </CardContent>
         </Card>
