@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { AgentSettingsSidebar } from "@/components/agent-settings/AgentSettingsSidebar";
@@ -163,8 +163,15 @@ export default function AgentSettings() {
     }
   };
 
+  // Ref para evitar clicks concurrentes (más confiable que solo el estado)
+  const isSavingRef = useRef(false);
+
   const handleSave = async () => {
-    if (isSaving) return;
+    // Doble verificación: estado + ref para evitar race conditions
+    if (isSaving || isSavingRef.current) {
+      console.log("[AgentSettings] Guardado ignorado - ya hay uno en progreso");
+      return;
+    }
 
     // No permitir guardar si aún no tenemos tenantId (evita usar DEV_CLIENT_ID y que falle RLS)
     if (!user?.tenantId) {
@@ -176,18 +183,21 @@ export default function AgentSettings() {
       return;
     }
 
+    // Marcar como guardando ANTES de cualquier operación async
+    isSavingRef.current = true;
     setIsSaving(true);
 
-    // Timeout de seguridad: nunca dejar el botón bloqueado más de 10 segundos
+    // Timeout de seguridad: nunca dejar el botón bloqueado más de 15 segundos
     const safetyTimeout = setTimeout(() => {
       console.warn("[AgentSettings] Safety timeout reached - resetting save state");
+      isSavingRef.current = false;
       setIsSaving(false);
       toast({
         title: "Tiempo agotado",
         description: "El guardado tardó demasiado. Los cambios pueden haberse guardado parcialmente.",
         variant: "destructive",
       });
-    }, 10000);
+    }, 15000);
 
     try {
       const sectionData = getSectionData(activeSection);
@@ -238,6 +248,7 @@ export default function AgentSettings() {
       });
     } finally {
       clearTimeout(safetyTimeout);
+      isSavingRef.current = false;
       setIsSaving(false);
     }
   };
