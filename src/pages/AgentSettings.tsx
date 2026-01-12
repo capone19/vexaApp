@@ -175,10 +175,10 @@ export default function AgentSettings() {
 
     // No permitir guardar si aún no tenemos tenantId (evita usar DEV_CLIENT_ID y que falle RLS)
     if (!user?.tenantId) {
+      console.warn("[AgentSettings] tenantId no disponible:", { user, tenantId: user?.tenantId });
       toast({
-        title: "No se pudo guardar",
-        description: "Tu sesión aún no terminó de cargar (tenant). Espera 1-2 segundos y reintenta.",
-        variant: "destructive",
+        title: "Cargando sesión...",
+        description: "Espera un momento mientras se carga tu sesión.",
       });
       return;
     }
