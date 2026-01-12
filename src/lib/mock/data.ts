@@ -433,6 +433,7 @@ export const mockAgentSettings: AgentSettings = {
         instruction: 'Propón horarios disponibles y confirma la cita con los detalles (servicio, fecha, hora, ubicación).',
       },
     ],
+    customInstructions: [],
     lastModified: daysAgo(5),
   },
   business: {
