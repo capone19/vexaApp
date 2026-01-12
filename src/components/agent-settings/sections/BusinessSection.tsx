@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Trash2, MapPin, Phone, Clock, Globe, Users, Sparkles, Instagram, Facebook, Linkedin, Youtube, Link2 } from "lucide-react";
 import type { BusinessSettings, Location, DaySchedule, ServiceCoverageType, IdealClientType, SocialLinks } from "@/lib/types";
+import { CustomInstructionsSection } from "../CustomInstructionsSection";
 
 // TikTok icon component (not in Lucide)
 const TikTokIcon = ({ className }: { className?: string }) => (
@@ -584,6 +585,12 @@ export function BusinessSection({ settings, onChange }: BusinessSectionProps) {
         </CardContent>
       </Card>
 
+      {/* Instrucciones personalizadas */}
+      <CustomInstructionsSection
+        instructions={settings.customInstructions || []}
+        onChange={(customInstructions) => onChange({ ...settings, customInstructions, lastModified: new Date() })}
+        sectionName="información del negocio"
+      />
     </div>
   );
 }

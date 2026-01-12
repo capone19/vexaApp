@@ -15,6 +15,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { CreditCard, QrCode, Banknote, Link as LinkIcon, Wallet } from "lucide-react";
 import type { PaymentSettings, PaymentMethod, Service } from "@/lib/types";
+import { CustomInstructionsSection } from "../CustomInstructionsSection";
 
 interface PaymentsSectionProps {
   settings: PaymentSettings;
@@ -264,6 +265,13 @@ export function PaymentsSection({ settings, onChange, services = [] }: PaymentsS
           </div>
         </CardContent>
       </Card>
+
+      {/* Instrucciones personalizadas */}
+      <CustomInstructionsSection
+        instructions={settings.customInstructions || []}
+        onChange={(customInstructions) => onChange({ ...settings, customInstructions, lastModified: new Date() })}
+        sectionName="opciones de pago"
+      />
     </div>
   );
 }

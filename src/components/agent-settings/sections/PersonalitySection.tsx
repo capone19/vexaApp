@@ -3,9 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageSquare, Target, Zap, CheckCircle } from "lucide-react";
+import { MessageSquare, Target } from "lucide-react";
 import type { PersonalitySettings } from "@/lib/types";
+import { CustomInstructionsSection } from "../CustomInstructionsSection";
+import { SalesFlowSection } from "../SalesFlowSection";
 
 interface PersonalitySectionProps {
   settings: PersonalitySettings;
@@ -36,24 +37,9 @@ const objectiveLabels: Record<PersonalitySettings["primaryObjective"], string> =
   mixto: "Mixto",
 };
 
-const priorityLabels: Record<PersonalitySettings["actionPriority"], string> = {
-  agendar_informar: "Agendar → Informar",
-  informar_agendar: "Informar → Agendar",
-  derivar_humano: "Derivar a humano",
-  resolver_cerrar: "Resolver y cerrar",
-};
-
-const closingLabels: Record<PersonalitySettings["closingPreference"], string> = {
-  proponer_agendamiento: "Proponer agendamiento",
-  solicitar_datos: "Solicitar datos de contacto",
-  enviar_link: "Enviar link de acción",
-  derivar_humano: "Derivar a humano",
-  cerrar_educadamente: "Cerrar conversación educadamente",
-};
-
 // Generate preview responses based on personality settings
 const getPreviewResponses = (settings: PersonalitySettings): string[] => {
-  const { formality, empathy, humor, emojis, primaryObjective, closingPreference } = settings;
+  const { formality, empathy, humor, emojis, primaryObjective } = settings;
   
   const emoji = emojis === "frecuente" ? " 😊💅✨" : emojis === "ocasional" ? " 😊" : "";
   const greeting = formality === "muy_formal" ? "Estimado/a cliente" 
@@ -76,14 +62,14 @@ const getPreviewResponses = (settings: PersonalitySettings): string[] => {
     ? " Estoy seguro/a de que quedarás satisfecho/a."
     : "";
 
-  // Closing based on preference and objective
+  // Closing based on objective
   let closing = "";
-  if (primaryObjective === "agendar" || closingPreference === "proponer_agendamiento") {
+  if (primaryObjective === "agendar") {
     closing = "¿Te gustaría que agendemos tu cita ahora?";
-  } else if (closingPreference === "solicitar_datos") {
+  } else if (primaryObjective === "vender") {
+    closing = "¿Te gustaría conocer más sobre este servicio?";
+  } else if (primaryObjective === "calificar") {
     closing = "¿Me compartes tu nombre y número para contactarte?";
-  } else if (closingPreference === "enviar_link") {
-    closing = "Te comparto el link para que puedas agendar directamente.";
   } else {
     closing = "¿Hay algo más en lo que pueda ayudarte?";
   }
@@ -119,21 +105,9 @@ export function PersonalitySection({ settings, onChange }: PersonalitySectionPro
     onChange({ ...settings, primaryObjective: value, lastModified: new Date() });
   };
 
-  const handlePriorityChange = (value: PersonalitySettings["actionPriority"]) => {
-    onChange({ ...settings, actionPriority: value, lastModified: new Date() });
-  };
-
-  const handleClosingChange = (value: PersonalitySettings["closingPreference"]) => {
-    onChange({ ...settings, closingPreference: value, lastModified: new Date() });
-  };
-
-  const handleResponseLengthChange = (value: PersonalitySettings["responseLength"]) => {
-    onChange({ ...settings, responseLength: value, lastModified: new Date() });
-  };
-
   return (
     <div className="space-y-6">
-      {/* Objetivo y Prioridades */}
+      {/* Objetivo del agente */}
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -144,8 +118,7 @@ export function PersonalitySection({ settings, onChange }: PersonalitySectionPro
             Define qué debe priorizar tu agente en cada conversación
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Objetivo principal */}
+        <CardContent>
           <div className="space-y-3">
             <Label className="text-sm font-medium">Objetivo principal</Label>
             <RadioGroup
@@ -163,50 +136,14 @@ export function PersonalitySection({ settings, onChange }: PersonalitySectionPro
               ))}
             </RadioGroup>
           </div>
-
-          {/* Prioridad de acción */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium flex items-center gap-2">
-              <Zap className="h-4 w-4 text-warning" />
-              Prioridad de acción
-            </Label>
-            <Select value={settings.actionPriority} onValueChange={handlePriorityChange}>
-              <SelectTrigger className="w-full max-w-sm bg-muted/30 border-border">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(Object.keys(priorityLabels) as PersonalitySettings["actionPriority"][]).map((key) => (
-                  <SelectItem key={key} value={key}>{priorityLabels[key]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Define qué hacer primero cuando el cliente tiene múltiples necesidades
-            </p>
-          </div>
-
-          {/* Forma de cierre */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-success" />
-              Forma de cierre preferida
-            </Label>
-            <Select value={settings.closingPreference} onValueChange={handleClosingChange}>
-              <SelectTrigger className="w-full max-w-sm bg-muted/30 border-border">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(Object.keys(closingLabels) as PersonalitySettings["closingPreference"][]).map((key) => (
-                  <SelectItem key={key} value={key}>{closingLabels[key]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Cómo debe cerrar el agente una conversación exitosa
-            </p>
-          </div>
         </CardContent>
       </Card>
+
+      {/* Flujo de venta */}
+      <SalesFlowSection
+        steps={settings.salesFlowSteps || []}
+        onChange={(salesFlowSteps) => onChange({ ...settings, salesFlowSteps, lastModified: new Date() })}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Controles de personalidad */}
@@ -353,6 +290,13 @@ export function PersonalitySection({ settings, onChange }: PersonalitySectionPro
           </CardContent>
         </Card>
       </div>
+
+      {/* Instrucciones personalizadas */}
+      <CustomInstructionsSection
+        instructions={settings.customInstructions || []}
+        onChange={(customInstructions) => onChange({ ...settings, customInstructions, lastModified: new Date() })}
+        sectionName="personalidad del agente"
+      />
     </div>
   );
 }

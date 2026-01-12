@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Trash2, Edit2, Clock, Briefcase, DollarSign, Target, ClipboardList, AlertCircle, Users } from "lucide-react";
 import type { ServicesSettings, Service, DaySchedule, ServiceActionType, RequiredDataType, NoAvailabilityActionType } from "@/lib/types";
+import { CustomInstructionsSection } from "../CustomInstructionsSection";
 
 interface ServicesSectionProps {
   settings: ServicesSettings;
@@ -641,6 +642,13 @@ export function ServicesSection({ settings, onChange }: ServicesSectionProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Instrucciones personalizadas */}
+      <CustomInstructionsSection
+        instructions={settings.customInstructions || []}
+        onChange={(customInstructions) => onChange({ ...settings, customInstructions, lastModified: new Date() })}
+        sectionName="servicios"
+      />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { Slider } from "@/components/ui/slider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CalendarClock, XCircle, RefreshCw, AlertTriangle } from "lucide-react";
 import type { ReschedulingSettings } from "@/lib/types";
+import { CustomInstructionsSection } from "../CustomInstructionsSection";
 
 interface ReschedulingSectionProps {
   settings: ReschedulingSettings;
@@ -231,6 +232,13 @@ export function ReschedulingSection({ settings, onChange }: ReschedulingSectionP
           </div>
         </CardContent>
       </Card>
+
+      {/* Instrucciones personalizadas */}
+      <CustomInstructionsSection
+        instructions={settings.customInstructions || []}
+        onChange={(customInstructions) => onChange({ ...settings, customInstructions, lastModified: new Date() })}
+        sectionName="re-agendamientos"
+      />
     </div>
   );
 }

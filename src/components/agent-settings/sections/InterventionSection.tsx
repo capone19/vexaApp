@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, AlertTriangle, MessageSquare, UserX } from "lucide-react";
 import type { InterventionSettings, InterventionCondition, UnqualifiedLeadHandlingType } from "@/lib/types";
+import { CustomInstructionsSection } from "../CustomInstructionsSection";
 
 interface InterventionSectionProps {
   settings: InterventionSettings;
@@ -244,6 +245,13 @@ export function InterventionSection({ settings, onChange }: InterventionSectionP
           </CardContent>
         </Card>
       )}
+
+      {/* Instrucciones personalizadas */}
+      <CustomInstructionsSection
+        instructions={settings.customInstructions || []}
+        onChange={(customInstructions) => onChange({ ...settings, customInstructions, lastModified: new Date() })}
+        sectionName="intervención asistida"
+      />
     </div>
   );
 }

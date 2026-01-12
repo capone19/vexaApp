@@ -3,6 +3,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Lightbulb, Shield } from "lucide-react";
 import type { PoliciesSettings } from "@/lib/types";
+import { CustomInstructionsSection } from "../CustomInstructionsSection";
 
 interface PoliciesSectionProps {
   settings: PoliciesSettings;
@@ -115,6 +116,13 @@ Ejemplos:
           </div>
         </CardContent>
       </Card>
+
+      {/* Instrucciones personalizadas */}
+      <CustomInstructionsSection
+        instructions={settings.customInstructions || []}
+        onChange={(customInstructions) => onChange({ ...settings, customInstructions, lastModified: new Date() })}
+        sectionName="políticas generales"
+      />
     </div>
   );
 }

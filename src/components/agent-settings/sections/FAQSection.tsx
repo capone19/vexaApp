@@ -25,6 +25,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import type { FAQSettings, FAQItem } from "@/lib/types";
+import { CustomInstructionsSection } from "../CustomInstructionsSection";
 
 interface FAQSectionProps {
   settings: FAQSettings;
@@ -279,6 +280,13 @@ export function FAQSection({ settings, onChange }: FAQSectionProps) {
           </CardContent>
         </Card>
       )}
+
+      {/* Instrucciones personalizadas */}
+      <CustomInstructionsSection
+        instructions={settings.customInstructions || []}
+        onChange={(customInstructions) => onChange({ ...settings, customInstructions, lastModified: new Date() })}
+        sectionName="preguntas frecuentes"
+      />
     </div>
   );
 }

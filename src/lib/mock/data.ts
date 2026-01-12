@@ -416,8 +416,23 @@ export const mockAgentSettings: AgentSettings = {
     emojis: 'ocasional',
     responseLength: 'media',
     primaryObjective: 'agendar',
-    actionPriority: 'agendar_informar',
-    closingPreference: 'proponer_agendamiento',
+    salesFlowSteps: [
+      {
+        id: 'step-1',
+        order: 0,
+        instruction: 'Saluda al cliente y preséntate como asistente del salón. Pregunta en qué puedes ayudarlo.',
+      },
+      {
+        id: 'step-2',
+        order: 1,
+        instruction: 'Identifica el servicio que necesita el cliente y ofrece información relevante sobre precios y disponibilidad.',
+      },
+      {
+        id: 'step-3',
+        order: 2,
+        instruction: 'Propón horarios disponibles y confirma la cita con los detalles (servicio, fecha, hora, ubicación).',
+      },
+    ],
     lastModified: daysAgo(5),
   },
   business: {

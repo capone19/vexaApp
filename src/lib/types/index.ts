@@ -21,6 +21,22 @@ export interface User {
   clientId: string;
 }
 
+// Custom Instructions (shared across sections)
+export type InstructionPriority = 'alta' | 'media' | 'baja';
+
+export interface CustomInstruction {
+  id: string;
+  instruction: string;
+  priority: InstructionPriority;
+}
+
+// Sales Flow Step
+export interface SalesFlowStep {
+  id: string;
+  order: number;
+  instruction: string;
+}
+
 // Agent Settings
 export interface AgentSettings {
   personality: PersonalitySettings;
@@ -40,10 +56,11 @@ export interface PersonalitySettings {
   humor: 'ausente' | 'sutil' | 'moderado' | 'marcado';
   emojis: 'nunca' | 'ocasional' | 'frecuente';
   responseLength: 'corta' | 'media' | 'extensa';
-  // New fields
+  // Objective
   primaryObjective: 'agendar' | 'vender' | 'calificar' | 'informar' | 'mixto';
-  actionPriority: 'agendar_informar' | 'informar_agendar' | 'derivar_humano' | 'resolver_cerrar';
-  closingPreference: 'proponer_agendamiento' | 'solicitar_datos' | 'enviar_link' | 'derivar_humano' | 'cerrar_educadamente';
+  // Sales flow steps
+  salesFlowSteps?: SalesFlowStep[];
+  customInstructions?: CustomInstruction[];
   lastModified: Date;
 }
 
@@ -60,6 +77,7 @@ export interface BusinessSettings {
   coverageZones: string;
   idealClientTypes: IdealClientType[];
   valueProposition: string;
+  customInstructions?: CustomInstruction[];
   lastModified: Date;
 }
 
@@ -93,6 +111,7 @@ export interface DaySchedule {
 export interface PoliciesSettings {
   generalPolicies: string;
   guarantees: string;
+  customInstructions?: CustomInstruction[];
   lastModified: Date;
 }
 
@@ -103,6 +122,7 @@ export interface ServicesSettings {
   services: Service[];
   pricingType: 'fijo' | 'variable' | 'referencial';
   pricingNote?: string;
+  customInstructions?: CustomInstruction[];
   lastModified: Date;
 }
 
@@ -134,6 +154,7 @@ export interface ReschedulingSettings {
   cancellationPenalty: number; // percentage
   refundApplies: boolean;
   refundConditions: string;
+  customInstructions?: CustomInstruction[];
   lastModified: Date;
 }
 
@@ -144,6 +165,7 @@ export interface PaymentSettings {
   // New fields
   requiresDeposit: boolean;
   depositPercentage: number;
+  customInstructions?: CustomInstruction[];
   lastModified: Date;
 }
 
@@ -164,6 +186,7 @@ export interface InterventionSettings {
   customRules: string;
   // New field
   unqualifiedLeadHandling: UnqualifiedLeadHandlingType;
+  customInstructions?: CustomInstruction[];
   lastModified: Date;
 }
 
@@ -177,6 +200,7 @@ export interface InterventionCondition {
 
 export interface FAQSettings {
   items: FAQItem[];
+  customInstructions?: CustomInstruction[];
   lastModified: Date;
 }
 
@@ -197,6 +221,7 @@ export interface LimitsSettings {
   avoidedLanguage: string[];
   // New field
   prohibitedTopicAction: ProhibitedTopicActionType;
+  customInstructions?: CustomInstruction[];
   lastModified: Date;
 }
 

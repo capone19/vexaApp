@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ShieldAlert, X, Plus, AlertTriangle, Ban, MessageSquareOff, ArrowRight } from "lucide-react";
 import type { LimitsSettings, ProhibitedTopicActionType } from "@/lib/types";
+import { CustomInstructionsSection } from "../CustomInstructionsSection";
 
 interface LimitsSectionProps {
   settings: LimitsSettings;
@@ -310,6 +311,13 @@ Ejemplos:
           </div>
         </CardContent>
       </Card>
+
+      {/* Instrucciones personalizadas */}
+      <CustomInstructionsSection
+        instructions={settings.customInstructions || []}
+        onChange={(customInstructions) => onChange({ ...settings, customInstructions, lastModified: new Date() })}
+        sectionName="límites del agente"
+      />
     </div>
   );
 }
