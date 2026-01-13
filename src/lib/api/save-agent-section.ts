@@ -87,54 +87,59 @@ export async function saveAgentSection(
   // 1) Guardar en agent_settings_ui (sin devolver filas para evitar bloqueos)
   let cloudSaved = false;
 
-  const withTimeout = async <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
-    let t: ReturnType<typeof setTimeout> | null = null;
-    try {
-      return await Promise.race([
-        promise,
-        new Promise<T>((_, reject) => {
-          t = setTimeout(() => reject(new Error(`${label} timeout (${ms}ms)`)), ms);
-        }),
-      ]);
-    } finally {
-      if (t) clearTimeout(t);
-    }
-  };
+  const upsertViaRestWithTimeout = async (ms: number) => {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), ms);
 
-  const upsertOnce = async () => {
-    const { error: upsertError } = await (supabase as any)
-      .from("agent_settings_ui")
-      .upsert(
-        {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error("Sesión no disponible (sin access token)");
+      }
+
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/agent_settings_ui?on_conflict=tenant_id,section_key`;
+
+      const res = await fetch(url, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          Authorization: `Bearer ${accessToken}`,
+          Prefer: "resolution=merge-duplicates,return=minimal",
+        },
+        body: JSON.stringify({
           tenant_id: tenantId,
           section_key: sectionId,
           data: cleanData,
           updated_by: userId,
           updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: "tenant_id,section_key",
-        }
-      );
+        }),
+      });
 
-    if (upsertError) {
-      console.error("[SaveSection] Error upsert:", upsertError);
-      throw new Error(upsertError.message || "Error en base de datos");
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`DB upsert failed (${res.status}) ${text}`.trim());
+      }
+    } finally {
+      clearTimeout(t);
     }
   };
 
   try {
     console.log("[SaveSection] Intentando upsert en agent_settings_ui...");
 
-    // A veces, después de un rato inactivo, el request puede quedarse colgado.
-    // Evitamos dejar el guardado esperando infinito y reintentamos tras refrescar sesión.
+    // supabase-js a veces deja requests colgados tras inactividad.
+    // REST directo + AbortController nos permite cortar por timeout real.
     try {
-      await withTimeout(upsertOnce(), 10000, "upsert agent_settings_ui");
+      await upsertViaRestWithTimeout(10000);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.warn("[SaveSection] Upsert falló/timeout, intentando refrescar sesión y reintentar...", msg);
+      console.warn("[SaveSection] Upsert falló/timeout, refrescando sesión y reintentando...", msg);
       await supabase.auth.refreshSession().catch(() => null);
-      await withTimeout(upsertOnce(), 10000, "upsert agent_settings_ui (retry)");
+      await upsertViaRestWithTimeout(10000);
     }
 
     cloudSaved = true;
@@ -144,6 +149,7 @@ export async function saveAgentSection(
     const errorMsg = err instanceof Error ? err.message : "Error guardando en base de datos";
     errors.push(errorMsg);
   }
+
   // 2) Webhook a n8n: SIEMPRE se envía (independiente de Supabase)
   // Se ejecuta en background después de retornar
   setTimeout(() => {
