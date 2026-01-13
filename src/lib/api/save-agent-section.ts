@@ -87,9 +87,21 @@ export async function saveAgentSection(
   // 1) Guardar en agent_settings_ui (sin devolver filas para evitar bloqueos)
   let cloudSaved = false;
 
-  try {
-    console.log("[SaveSection] Intentando upsert en agent_settings_ui...");
+  const withTimeout = async <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+    let t: ReturnType<typeof setTimeout> | null = null;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          t = setTimeout(() => reject(new Error(`${label} timeout (${ms}ms)`)), ms);
+        }),
+      ]);
+    } finally {
+      if (t) clearTimeout(t);
+    }
+  };
 
+  const upsertOnce = async () => {
     const { error: upsertError } = await (supabase as any)
       .from("agent_settings_ui")
       .upsert(
@@ -109,6 +121,21 @@ export async function saveAgentSection(
       console.error("[SaveSection] Error upsert:", upsertError);
       throw new Error(upsertError.message || "Error en base de datos");
     }
+  };
+
+  try {
+    console.log("[SaveSection] Intentando upsert en agent_settings_ui...");
+
+    // A veces, después de un rato inactivo, el request puede quedarse colgado.
+    // Evitamos dejar el guardado esperando infinito y reintentamos tras refrescar sesión.
+    try {
+      await withTimeout(upsertOnce(), 10000, "upsert agent_settings_ui");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn("[SaveSection] Upsert falló/timeout, intentando refrescar sesión y reintentar...", msg);
+      await supabase.auth.refreshSession().catch(() => null);
+      await withTimeout(upsertOnce(), 10000, "upsert agent_settings_ui (retry)");
+    }
 
     cloudSaved = true;
     console.log("[SaveSection] ✅ Guardado en agent_settings_ui:", sectionId);
@@ -117,7 +144,6 @@ export async function saveAgentSection(
     const errorMsg = err instanceof Error ? err.message : "Error guardando en base de datos";
     errors.push(errorMsg);
   }
-
   // 2) Webhook a n8n: SIEMPRE se envía (independiente de Supabase)
   // Se ejecuta en background después de retornar
   setTimeout(() => {
