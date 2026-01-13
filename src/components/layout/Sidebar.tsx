@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { Logo, LogoMark } from "@/components/shared/Logo";
+import { Logo } from "@/components/shared/Logo";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -112,7 +112,7 @@ export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
         {isExpanded ? (
           <Logo variant="full" color="dark" className="h-7" />
         ) : (
-          <LogoMark background="muted" className="h-9 w-9" />
+          <Logo variant="icon" color="dark" className="h-9 w-9" />
         )}
       </div>
 
