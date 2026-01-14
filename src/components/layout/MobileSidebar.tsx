@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { logout } from "@/lib/auth";
 import { useAuth } from "@/hooks/use-auth";
-import { mockUser } from "@/lib/mock/data";
+
 import { isPremiumPlan, onPlanChange } from "@/lib/plan";
 
 interface NavItem {
@@ -117,9 +117,10 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
     );
   };
 
-  const displayName = userProfile?.companyName || authUser?.name || mockUser.name;
+  // SIEMPRE usar el usuario autenticado primero
+  const displayName = authUser?.name || userProfile?.companyName || 'Usuario';
   const displayLogo = userProfile?.logo || null;
-  const displayRole = authUser?.role || mockUser.role;
+  const displayRole = authUser?.role || 'viewer';
 
   const initials = displayName
     .split(" ")
@@ -139,9 +140,8 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
   };
 
   const handleLogout = async () => {
-    await logout();
-    navigate('/auth');
     onOpenChange(false);
+    await logout(); // logout ya hace redirect a /auth
   };
 
   return (
