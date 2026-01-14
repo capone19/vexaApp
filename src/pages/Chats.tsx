@@ -107,9 +107,10 @@ export default function Chats() {
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/human-message-proxy`,
         {
           method: "POST",
-          headers: { 
+          headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            // Nota: la función no requiere JWT, pero enviamos el publishable key como header estándar.
+            "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           },
           body: JSON.stringify({
             message: messageContent,
@@ -120,20 +121,23 @@ export default function Chats() {
           }),
         }
       );
-      
-      const result = await response.json();
-      
+
+      const result: { success: boolean; status?: number; response?: string; error?: string } =
+        await response.json();
+
       if (!result.success) {
-        throw new Error(result.error || "Error del servidor");
+        const details = result.status
+          ? `n8n HTTP ${result.status}${result.response ? `: ${result.response}` : ""}`
+          : result.error || "Error del servidor";
+        throw new Error(details);
       }
-      
+
       setMessageInput(""); // Limpiar solo si fue exitoso
       toast.success("Mensaje enviado");
-      // Refrescar mensajes para ver el nuevo mensaje
       setTimeout(() => refetch?.(), 1000);
     } catch (err) {
       console.error("[Chats] Error sending human message:", err);
-      toast.error("Error al enviar el mensaje");
+      toast.error(err instanceof Error ? err.message : "Error al enviar el mensaje");
     } finally {
       setIsSendingMessage(false);
     }
