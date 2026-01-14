@@ -95,38 +95,45 @@ export default function Chats() {
     }
   }, [selectedSessionId, messages]);
 
-  // Enviar mensaje de agente humano via webhook
+  // Enviar mensaje de agente humano via edge function proxy
   const sendHumanMessage = useCallback(async () => {
     if (!messageInput.trim() || !selectedSessionId || isSendingMessage) return;
     
     const messageContent = messageInput.trim();
-    setMessageInput("");
     setIsSendingMessage(true);
     
     try {
-      const response = await fetch(WEBHOOKS.N8N_HUMAN_MESSAGE, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: messageContent,
-          session_id: selectedSessionId,
-          tenant_id: tenantId,
-          source: "human_agent",
-          timestamp: new Date().toISOString(),
-        }),
-      });
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/human-message-proxy`,
+        {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({
+            message: messageContent,
+            session_id: selectedSessionId,
+            tenant_id: tenantId,
+            source: "human_agent",
+            timestamp: new Date().toISOString(),
+          }),
+        }
+      );
       
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || "Error del servidor");
       }
       
+      setMessageInput(""); // Limpiar solo si fue exitoso
       toast.success("Mensaje enviado");
       // Refrescar mensajes para ver el nuevo mensaje
       setTimeout(() => refetch?.(), 1000);
     } catch (err) {
       console.error("[Chats] Error sending human message:", err);
       toast.error("Error al enviar el mensaje");
-      setMessageInput(messageContent); // Restaurar mensaje
     } finally {
       setIsSendingMessage(false);
     }
