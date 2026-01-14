@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,8 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useN8nChatHistory } from "@/hooks/use-n8n-chat-history";
 import { externalSupabase } from "@/integrations/supabase/external-client";
+import { WEBHOOKS } from "@/lib/constants";
+import { useAuth } from "@/hooks/use-auth";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio } from "lucide-react";
@@ -68,18 +70,75 @@ function IntentBadge({ label }: { label: IntentLabel }) {
 }
 
 export default function Chats() {
-  const { messages, isLoading, error } = useN8nChatHistory({
+  const { messages, isLoading, error, refetch } = useN8nChatHistory({
     enableRealtime: true,
     limit: 500,
   });
+  const { user } = useAuth();
+  const tenantId = user?.tenantId;
   
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterTab, setFilterTab] = useState<FilterTab>("todos");
   const [botStates, setBotStates] = useState<Record<string, boolean>>({});
   const [isTogglingBot, setIsTogglingBot] = useState(false);
+  const [messageInput, setMessageInput] = useState("");
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
   
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
+
+  // Auto-scroll al último mensaje cuando cambia la selección o llegan nuevos mensajes
+  useEffect(() => {
+    if (selectedSessionId && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [selectedSessionId, messages]);
+
+  // Enviar mensaje de agente humano via webhook
+  const sendHumanMessage = useCallback(async () => {
+    if (!messageInput.trim() || !selectedSessionId || isSendingMessage) return;
+    
+    const messageContent = messageInput.trim();
+    setMessageInput("");
+    setIsSendingMessage(true);
+    
+    try {
+      const response = await fetch(WEBHOOKS.N8N_HUMAN_MESSAGE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: messageContent,
+          session_id: selectedSessionId,
+          tenant_id: tenantId,
+          source: "human_agent",
+          timestamp: new Date().toISOString(),
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      toast.success("Mensaje enviado");
+      // Refrescar mensajes para ver el nuevo mensaje
+      setTimeout(() => refetch?.(), 1000);
+    } catch (err) {
+      console.error("[Chats] Error sending human message:", err);
+      toast.error("Error al enviar el mensaje");
+      setMessageInput(messageContent); // Restaurar mensaje
+    } finally {
+      setIsSendingMessage(false);
+    }
+  }, [messageInput, selectedSessionId, tenantId, isSendingMessage, refetch]);
+
+  // Manejar Enter para enviar
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendHumanMessage();
+    }
+  };
 
   // Cargar estados iniciales de bot_activado desde la DB externa
   useEffect(() => {
@@ -503,20 +562,34 @@ export default function Chats() {
                   </div>
                 );
               })}
+              {/* Elemento para auto-scroll */}
+              <div ref={messagesEndRef} />
             </div>
           )}
         </ScrollArea>
 
-        {/* Input */}
+        {/* Input para agente humano */}
         <div className="p-3 md:p-4 border-t border-border bg-background">
           <div className="flex gap-2">
             <Input
               placeholder="Escribe un mensaje..."
-              disabled
+              value={messageInput}
+              onChange={(e) => setMessageInput(e.target.value)}
+              onKeyDown={handleKeyPress}
+              disabled={isSendingMessage}
               className="bg-secondary border-border h-11"
             />
-            <Button size="icon" className="h-11 w-11 shrink-0 bg-primary hover:bg-primary/90">
-              <Send className="h-4 w-4" />
+            <Button 
+              size="icon" 
+              className="h-11 w-11 shrink-0 bg-primary hover:bg-primary/90"
+              onClick={sendHumanMessage}
+              disabled={isSendingMessage || !messageInput.trim()}
+            >
+              {isSendingMessage ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
             </Button>
           </div>
         </div>
