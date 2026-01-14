@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, addWeeks, subWeeks, addDays, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Clock, User, Phone, MapPin, Calendar as CalendarIcon, Filter, Plus, X, Lock, Loader2 } from 'lucide-react';
@@ -40,10 +40,13 @@ const CalendarContent = () => {
   
   const isMobile = useIsMobile();
 
-  // Calcular rango de fechas para el mes actual +/- 1 mes
-  const startDate = subMonths(startOfMonth(currentDate), 1);
-  const endDate = addMonths(endOfMonth(currentDate), 1);
-
+  // Calcular rango de fechas para el mes actual +/- 1 mes (memoized para evitar refetch infinito)
+  const { startDate, endDate } = useMemo(() => {
+    return {
+      startDate: subMonths(startOfMonth(currentDate), 1),
+      endDate: addMonths(endOfMonth(currentDate), 1),
+    };
+  }, [currentDate]);
   // Usar hook de bookings reales
   const { 
     bookings: appointments, 
