@@ -6,7 +6,7 @@ interface UseN8nChatHistoryOptions {
   sessionId?: string;
   limit?: number;
   enableRealtime?: boolean;
-  pollingIntervalMs?: number; // Fallback polling si realtime no funciona
+  pollingIntervalMs?: number;
 }
 
 export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
@@ -14,7 +14,7 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
     sessionId, 
     limit = 100, 
     enableRealtime = true,
-    pollingIntervalMs = 3000 // Poll cada 3 segundos como fallback
+    pollingIntervalMs = 3000
   } = options;
   
   const [messages, setMessages] = useState<N8nChatMessage[]>([]);
@@ -23,8 +23,17 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
   const [error, setError] = useState<string | null>(null);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastMessageIdRef = useRef<number | null>(null);
+  const isMountedRef = useRef(true);
+
+  // Track mount state
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Fetch all unique sessions
   const fetchSessions = useCallback(async () => {
@@ -35,6 +44,7 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
         .order('created_at', { ascending: false });
 
       if (fetchError) throw fetchError;
+      if (!isMountedRef.current) return;
 
       // Get unique session IDs
       const uniqueSessions = [...new Set(data?.map(d => d.session_id) || [])];
@@ -65,6 +75,7 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
       const { data, error: fetchError } = await query;
 
       if (fetchError) throw fetchError;
+      if (!isMountedRef.current) return;
 
       const newMessages = data as N8nChatMessage[] || [];
       
@@ -85,13 +96,14 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
         return prev;
       });
     } catch (err) {
+      if (!isMountedRef.current) return;
       const errorMessage = err instanceof Error ? err.message : 'Error fetching chat history';
       console.error('[useN8nChatHistory] Error:', err);
       if (!silent) {
         setError(errorMessage);
       }
     } finally {
-      if (!silent) {
+      if (!silent && isMountedRef.current) {
         setIsLoading(false);
       }
     }
@@ -99,6 +111,8 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
 
   // Polling para nuevos mensajes (fallback cuando realtime no está disponible)
   const fetchNewMessages = useCallback(async () => {
+    if (!isMountedRef.current) return;
+    
     try {
       let query = externalSupabase
         .from('n8n_chat_histories')
@@ -117,6 +131,7 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
       const { data, error: fetchError } = await query;
 
       if (fetchError) throw fetchError;
+      if (!isMountedRef.current) return;
 
       const newMessages = data as N8nChatMessage[] || [];
       
@@ -162,6 +177,8 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
             ...(sessionId ? { filter: `session_id=eq.${sessionId}` } : {}),
           },
           (payload) => {
+            if (!isMountedRef.current) return;
+            
             console.log('[useN8nChatHistory] Realtime event:', payload.eventType);
             
             if (payload.eventType === 'INSERT') {
@@ -204,7 +221,9 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
         )
         .subscribe((status) => {
           console.log('[useN8nChatHistory] Realtime subscription status:', status);
-          setRealtimeConnected(status === 'SUBSCRIBED');
+          if (isMountedRef.current) {
+            setRealtimeConnected(status === 'SUBSCRIBED');
+          }
         });
     }
 
