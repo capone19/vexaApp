@@ -22,7 +22,7 @@ import {
   X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DEV_CLIENT_ID, WEBHOOKS } from "@/lib/constants";
+import { WEBHOOKS } from "@/lib/constants";
 
 interface Message {
   id: string;
@@ -68,6 +68,19 @@ export function PlaygroundChat({ tenantId }: PlaygroundChatProps) {
   const sendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
 
+    // No permitir enviar si no hay tenantId del usuario logueado
+    if (!tenantId) {
+      console.warn("[Playground] No tenantId disponible - usuario no logueado correctamente");
+      const errorMessage: Message = {
+        id: generateId(),
+        role: "assistant",
+        content: "No se pudo identificar tu cuenta. Por favor, recarga la página e intenta de nuevo.",
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      return;
+    }
+
     const userMessage: Message = {
       id: generateId(),
       role: "user",
@@ -79,6 +92,8 @@ export function PlaygroundChat({ tenantId }: PlaygroundChatProps) {
     setInputValue("");
     setIsLoading(true);
 
+    console.log("[Playground] Enviando mensaje con tenant_id:", tenantId);
+
     try {
       const response = await fetch(WEBHOOKS.N8N_AGENT, {
         method: "POST",
@@ -87,7 +102,7 @@ export function PlaygroundChat({ tenantId }: PlaygroundChatProps) {
         },
         body: JSON.stringify({
           message: userMessage.content,
-          tenant_id: tenantId || DEV_CLIENT_ID,
+          tenant_id: tenantId,
           session_id: `playground-${Date.now()}`,
           source: "playground",
           timestamp: new Date().toISOString(),
