@@ -2,7 +2,7 @@
 // VEXA - Hook para Bookings/Calendar (Supabase Real)
 // ============================================
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Appointment, AppointmentStatus, AppointmentSource } from '@/lib/types';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -66,6 +66,10 @@ export function useBookings({
   const [services, setServices] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Use refs to avoid infinite loops in realtime effect
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  const isMountedRef = useRef(true);
 
   const fetchBookings = useCallback(async () => {
     if (!tenantId) {
@@ -113,6 +117,7 @@ export function useBookings({
       const { data, error: queryError } = await query;
 
       if (queryError) throw queryError;
+      if (!isMountedRef.current) return;
 
       // Mapear a tipo Appointment
       const appointments: Appointment[] = (data || []).map(booking => ({
@@ -139,53 +144,68 @@ export function useBookings({
       setServices(uniqueServices);
     } catch (err) {
       console.error('[useBookings] Error:', err);
-      setError(err instanceof Error ? err.message : 'Error cargando reservas');
-      setBookings([]);
+      if (isMountedRef.current) {
+        setError(err instanceof Error ? err.message : 'Error cargando reservas');
+        setBookings([]);
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [tenantId, startDate, endDate, status, service]);
 
   // Efecto para cargar datos iniciales
   useEffect(() => {
+    isMountedRef.current = true;
     fetchBookings();
+    
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [fetchBookings]);
 
-  // Efecto para realtime
+  // Efecto separado para realtime - solo depende de tenantId
   useEffect(() => {
     if (!tenantId || !enableRealtime) return;
 
-    let channel: RealtimeChannel | null = null;
+    // Limpiar canal anterior si existe
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
 
-    const setupRealtime = () => {
-      channel = supabase
-        .channel(`bookings_${tenantId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*', // INSERT, UPDATE, DELETE
-            schema: 'public',
-            table: 'bookings',
-            filter: `tenant_id=eq.${tenantId}`,
-          },
-          (payload) => {
-            console.log('[Realtime] Booking change:', payload.eventType);
-            fetchBookings();
-          }
-        )
-        .subscribe((status) => {
-          console.log('[Realtime] Bookings subscription:', status);
-        });
-    };
+    const channel = supabase
+      .channel(`bookings_realtime_${tenantId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'bookings',
+          filter: `tenant_id=eq.${tenantId}`,
+        },
+        (payload) => {
+          console.log('[Realtime] Booking change:', payload.eventType);
+          // Refetch cuando hay cambios
+          fetchBookings();
+        }
+      )
+      .subscribe((status) => {
+        console.log('[Realtime] Bookings subscription:', status);
+      });
 
-    setupRealtime();
+    channelRef.current = channel;
 
     return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
       }
     };
-  }, [tenantId, enableRealtime, fetchBookings]);
+  // Solo re-suscribir cuando cambia tenantId o enableRealtime
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, enableRealtime]);
 
   return {
     bookings,
