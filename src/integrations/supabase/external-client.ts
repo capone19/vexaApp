@@ -2,7 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 const EXTERNAL_SUPABASE_URL = 'https://gfltyrhndfuttacrmcjd.supabase.co';
-const EXTERNAL_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmbHR5cmhuZGZ1dHRhY3JtY2pkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzY2MjE4NzAsImV4cCI6MjA1MjE5Nzg3MH0.sb_publishable_i-hBahsTuRGLcdCRpV-zpQ_Rw3R_tOk';
+const EXTERNAL_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmbHR5cmhuZGZ1dHRhY3JtY2pkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwMDc4NTcsImV4cCI6MjA4MzU4Mzg1N30.7xrEuVCFKT8vO6JLXTJx4cAVkhc5MIqxa7dPrZ6-IMU';
 
 // Interfaz para los mensajes de chat de n8n
 export interface N8nChatMessage {
