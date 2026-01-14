@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -7,11 +7,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useN8nChatHistory } from "@/hooks/use-n8n-chat-history";
+import { externalSupabase } from "@/integrations/supabase/external-client";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio, Info } from "lucide-react";
+import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 import {
   Tooltip,
   TooltipContent,
@@ -75,16 +77,77 @@ export default function Chats() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterTab, setFilterTab] = useState<FilterTab>("todos");
   const [botStates, setBotStates] = useState<Record<string, boolean>>({});
+  const [isTogglingBot, setIsTogglingBot] = useState(false);
   
   const isMobile = useIsMobile();
 
-  // Toggle bot state for a session
-  const toggleBotState = (sessionId: string) => {
-    setBotStates(prev => ({
-      ...prev,
-      [sessionId]: prev[sessionId] === undefined ? false : !prev[sessionId],
-    }));
-  };
+  // Cargar estados iniciales de bot_activado desde la DB externa
+  useEffect(() => {
+    const loadBotStates = async () => {
+      try {
+        // Obtener el estado más reciente de bot_activado para cada session_id
+        const { data, error } = await externalSupabase
+          .from('n8n_chat_histories')
+          .select('session_id, bot_activado')
+          .order('created_at', { ascending: false });
+        
+        if (error) {
+          console.error('[Chats] Error loading bot states:', error);
+          return;
+        }
+        
+        // Crear mapa de estados (tomar el más reciente por session)
+        const statesMap: Record<string, boolean> = {};
+        data?.forEach(row => {
+          if (!(row.session_id in statesMap)) {
+            statesMap[row.session_id] = row.bot_activado ?? true;
+          }
+        });
+        
+        setBotStates(statesMap);
+      } catch (err) {
+        console.error('[Chats] Error loading bot states:', err);
+      }
+    };
+    
+    loadBotStates();
+  }, [messages]); // Re-cargar cuando llegan nuevos mensajes
+
+  // Toggle bot state for a session - actualiza en DB externa
+  const toggleBotState = useCallback(async (sessionId: string) => {
+    const currentState = botStates[sessionId] ?? true;
+    const newState = !currentState;
+    
+    // Optimistic update
+    setBotStates(prev => ({ ...prev, [sessionId]: newState }));
+    setIsTogglingBot(true);
+    
+    try {
+      // Actualizar TODAS las filas de este session_id en la DB externa
+      const { error } = await externalSupabase
+        .from('n8n_chat_histories')
+        .update({ bot_activado: newState })
+        .eq('session_id', sessionId);
+      
+      if (error) {
+        // Revert on error
+        setBotStates(prev => ({ ...prev, [sessionId]: currentState }));
+        console.error('[Chats] Error updating bot state:', error);
+        toast.error('Error al actualizar el estado del bot');
+        return;
+      }
+      
+      toast.success(newState ? 'Bot activado' : 'Bot desactivado');
+      console.log(`[Chats] Bot ${newState ? 'activado' : 'desactivado'} para session: ${sessionId}`);
+    } catch (err) {
+      // Revert on error
+      setBotStates(prev => ({ ...prev, [sessionId]: currentState }));
+      console.error('[Chats] Error updating bot state:', err);
+      toast.error('Error al actualizar el estado del bot');
+    } finally {
+      setIsTogglingBot(false);
+    }
+  }, [botStates]);
 
   // Process sessions from messages
   const processedSessions = useMemo(() => {
@@ -379,6 +442,7 @@ export default function Chats() {
                     <Switch
                       checked={isBotEnabled}
                       onCheckedChange={() => toggleBotState(selectedSessionId)}
+                      disabled={isTogglingBot}
                       className="data-[state=checked]:bg-primary"
                     />
                   </div>
