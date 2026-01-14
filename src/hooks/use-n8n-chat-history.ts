@@ -9,6 +9,46 @@ interface UseN8nChatHistoryOptions {
   pollingIntervalMs?: number;
 }
 
+// Función para deduplicar mensajes con el mismo contenido + tipo + session en ventana de tiempo
+function deduplicateMessages(messages: N8nChatMessage[]): N8nChatMessage[] {
+  const seen = new Map<string, N8nChatMessage>();
+  const TIME_WINDOW_MS = 10000; // 10 segundos de ventana
+  
+  // Ordenar por fecha primero
+  const sorted = [...messages].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+  
+  for (const msg of sorted) {
+    // Crear clave única: session + tipo + contenido normalizado
+    const contentKey = `${msg.session_id}|${msg.message.type}|${(msg.message.content || '').trim().toLowerCase()}`;
+    
+    const existing = seen.get(contentKey);
+    if (existing) {
+      // Si ya existe uno similar, verificar si está dentro de la ventana de tiempo
+      const existingTime = new Date(existing.created_at).getTime();
+      const currentTime = new Date(msg.created_at).getTime();
+      
+      // Si está dentro de la ventana, mantener el primero (ignorar duplicado)
+      if (Math.abs(currentTime - existingTime) < TIME_WINDOW_MS) {
+        continue; // Saltar este mensaje duplicado
+      }
+    }
+    
+    // Guardar usando el contentKey más el timestamp redondeado para permitir repeticiones legítimas
+    const timeSlot = Math.floor(new Date(msg.created_at).getTime() / TIME_WINDOW_MS);
+    const finalKey = `${contentKey}|${timeSlot}`;
+    
+    if (!seen.has(finalKey)) {
+      seen.set(finalKey, msg);
+    }
+  }
+  
+  return Array.from(seen.values()).sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+}
+
 export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
   const { 
     sessionId, 
@@ -77,21 +117,24 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
       if (fetchError) throw fetchError;
       if (!isMountedRef.current) return;
 
-      const newMessages = data as N8nChatMessage[] || [];
+      const rawMessages = data as N8nChatMessage[] || [];
+      
+      // Deduplicar mensajes por contenido + tipo + timestamp cercano (dentro de 5 segundos)
+      const deduplicatedMessages = deduplicateMessages(rawMessages);
       
       // Actualizar solo si hay cambios (para evitar re-renders innecesarios)
       setMessages(prev => {
         const prevIds = new Set(prev.map(m => m.id));
-        const newIds = new Set(newMessages.map(m => m.id));
+        const newIds = new Set(deduplicatedMessages.map(m => m.id));
         
         // Si son diferentes, actualizar
         if (prevIds.size !== newIds.size || 
-            newMessages.some(m => !prevIds.has(m.id))) {
+            deduplicatedMessages.some(m => !prevIds.has(m.id))) {
           // Trackear último ID para polling eficiente
-          if (newMessages.length > 0) {
-            lastMessageIdRef.current = Math.max(...newMessages.map(m => m.id));
+          if (deduplicatedMessages.length > 0) {
+            lastMessageIdRef.current = Math.max(...deduplicatedMessages.map(m => m.id));
           }
-          return newMessages;
+          return deduplicatedMessages;
         }
         return prev;
       });
@@ -141,16 +184,10 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
         // Actualizar último ID
         lastMessageIdRef.current = Math.max(...newMessages.map(m => m.id));
         
-        // Agregar nuevos mensajes
+        // Agregar nuevos mensajes con deduplicación
         setMessages(prev => {
-          const existingIds = new Set(prev.map(m => m.id));
-          const uniqueNew = newMessages.filter(m => !existingIds.has(m.id));
-          if (uniqueNew.length > 0) {
-            return [...prev, ...uniqueNew].sort(
-              (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-            );
-          }
-          return prev;
+          const combined = [...prev, ...newMessages];
+          return deduplicateMessages(combined);
         });
         
         // También actualizar sessions si hay nuevas
@@ -190,11 +227,9 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
               }
               
               setMessages(prev => {
-                // Evitar duplicados
-                if (prev.some(m => m.id === newMessage.id)) {
-                  return prev;
-                }
-                return [...prev, newMessage];
+                // Agregar y deduplicar
+                const combined = [...prev, newMessage];
+                return deduplicateMessages(combined);
               });
               
               // Update sessions list if new session
