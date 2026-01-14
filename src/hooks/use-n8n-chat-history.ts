@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { externalSupabase, type N8nChatMessage } from '@/integrations/supabase/external-client';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -6,14 +6,25 @@ interface UseN8nChatHistoryOptions {
   sessionId?: string;
   limit?: number;
   enableRealtime?: boolean;
+  pollingIntervalMs?: number; // Fallback polling si realtime no funciona
 }
 
 export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
-  const { sessionId, limit = 100, enableRealtime = true } = options;
+  const { 
+    sessionId, 
+    limit = 100, 
+    enableRealtime = true,
+    pollingIntervalMs = 3000 // Poll cada 3 segundos como fallback
+  } = options;
+  
   const [messages, setMessages] = useState<N8nChatMessage[]>([]);
   const [sessions, setSessions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const lastMessageIdRef = useRef<number | null>(null);
 
   // Fetch all unique sessions
   const fetchSessions = useCallback(async () => {
@@ -34,8 +45,10 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
   }, []);
 
   // Fetch messages for a specific session or all
-  const fetchMessages = useCallback(async () => {
-    setIsLoading(true);
+  const fetchMessages = useCallback(async (silent = false) => {
+    if (!silent) {
+      setIsLoading(true);
+    }
     setError(null);
 
     try {
@@ -53,15 +66,85 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
 
       if (fetchError) throw fetchError;
 
-      setMessages(data as N8nChatMessage[] || []);
+      const newMessages = data as N8nChatMessage[] || [];
+      
+      // Actualizar solo si hay cambios (para evitar re-renders innecesarios)
+      setMessages(prev => {
+        const prevIds = new Set(prev.map(m => m.id));
+        const newIds = new Set(newMessages.map(m => m.id));
+        
+        // Si son diferentes, actualizar
+        if (prevIds.size !== newIds.size || 
+            newMessages.some(m => !prevIds.has(m.id))) {
+          // Trackear último ID para polling eficiente
+          if (newMessages.length > 0) {
+            lastMessageIdRef.current = Math.max(...newMessages.map(m => m.id));
+          }
+          return newMessages;
+        }
+        return prev;
+      });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error fetching chat history';
       console.error('[useN8nChatHistory] Error:', err);
-      setError(errorMessage);
+      if (!silent) {
+        setError(errorMessage);
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   }, [sessionId, limit]);
+
+  // Polling para nuevos mensajes (fallback cuando realtime no está disponible)
+  const fetchNewMessages = useCallback(async () => {
+    try {
+      let query = externalSupabase
+        .from('n8n_chat_histories')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (sessionId) {
+        query = query.eq('session_id', sessionId);
+      }
+
+      // Solo buscar mensajes más nuevos que el último conocido
+      if (lastMessageIdRef.current) {
+        query = query.gt('id', lastMessageIdRef.current);
+      }
+
+      const { data, error: fetchError } = await query;
+
+      if (fetchError) throw fetchError;
+
+      const newMessages = data as N8nChatMessage[] || [];
+      
+      if (newMessages.length > 0) {
+        console.log('[useN8nChatHistory] Polling: found', newMessages.length, 'new messages');
+        
+        // Actualizar último ID
+        lastMessageIdRef.current = Math.max(...newMessages.map(m => m.id));
+        
+        // Agregar nuevos mensajes
+        setMessages(prev => {
+          const existingIds = new Set(prev.map(m => m.id));
+          const uniqueNew = newMessages.filter(m => !existingIds.has(m.id));
+          if (uniqueNew.length > 0) {
+            return [...prev, ...uniqueNew].sort(
+              (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+          }
+          return prev;
+        });
+        
+        // También actualizar sessions si hay nuevas
+        fetchSessions();
+      }
+    } catch (err) {
+      console.error('[useN8nChatHistory] Polling error:', err);
+    }
+  }, [sessionId, fetchSessions]);
 
   // Subscribe to realtime changes
   useEffect(() => {
@@ -83,12 +166,27 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
             
             if (payload.eventType === 'INSERT') {
               const newMessage = payload.new as N8nChatMessage;
-              setMessages(prev => [...prev, newMessage]);
+              
+              // Actualizar último ID
+              if (newMessage.id > (lastMessageIdRef.current || 0)) {
+                lastMessageIdRef.current = newMessage.id;
+              }
+              
+              setMessages(prev => {
+                // Evitar duplicados
+                if (prev.some(m => m.id === newMessage.id)) {
+                  return prev;
+                }
+                return [...prev, newMessage];
+              });
               
               // Update sessions list if new session
-              if (!sessions.includes(newMessage.session_id)) {
-                setSessions(prev => [newMessage.session_id, ...prev]);
-              }
+              setSessions(prev => {
+                if (!prev.includes(newMessage.session_id)) {
+                  return [newMessage.session_id, ...prev];
+                }
+                return prev;
+              });
             } else if (payload.eventType === 'UPDATE') {
               setMessages(prev => 
                 prev.map(msg => 
@@ -106,6 +204,7 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
         )
         .subscribe((status) => {
           console.log('[useN8nChatHistory] Realtime subscription status:', status);
+          setRealtimeConnected(status === 'SUBSCRIBED');
         });
     }
 
@@ -114,7 +213,21 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
         externalSupabase.removeChannel(channel);
       }
     };
-  }, [sessionId, enableRealtime, sessions]);
+  }, [sessionId, enableRealtime]);
+
+  // Polling fallback - siempre activo para garantizar sincronización
+  useEffect(() => {
+    // Iniciar polling
+    pollingRef.current = setInterval(() => {
+      fetchNewMessages();
+    }, pollingIntervalMs);
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, [fetchNewMessages, pollingIntervalMs]);
 
   // Initial fetch
   useEffect(() => {
@@ -127,6 +240,7 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
     sessions,
     isLoading,
     error,
+    realtimeConnected,
     refetch: fetchMessages,
     refetchSessions: fetchSessions,
   };
