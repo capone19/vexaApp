@@ -27,7 +27,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { mockUser } from "@/lib/mock/data";
+
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
@@ -35,12 +35,14 @@ import { logout } from "@/lib/auth";
 import { useAuth } from "@/hooks/use-auth";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-// Función para obtener el perfil del usuario desde localStorage
+// Función para obtener el perfil del usuario desde localStorage (solo para datos extra como logo)
 const getUserProfile = () => {
   try {
     const stored = localStorage.getItem('company_profile');
     if (stored) {
-      return JSON.parse(stored);
+      const profile = JSON.parse(stored);
+      // Solo devolver si hay datos válidos
+      return profile?.logo ? profile : null;
     }
   } catch (e) {
     console.error('Error loading profile:', e);
@@ -231,10 +233,10 @@ export function TopBar() {
   // Obtener usuario autenticado
   const { user: authUser } = useAuth();
   
-  // Usar el nombre del perfil guardado, usuario autenticado, o el mock por defecto
-  const displayName = userProfile?.companyName || authUser?.name || mockUser.name;
+  // SIEMPRE usar el usuario autenticado primero, luego fallback a perfil guardado
+  const displayName = authUser?.name || userProfile?.companyName || 'Usuario';
   const displayLogo = userProfile?.logo || null;
-  const displayRole = authUser?.role || mockUser.role;
+  const displayRole = authUser?.role || 'viewer';
   
   const initials = displayName
     .split(" ")
@@ -431,8 +433,7 @@ export function TopBar() {
               <DropdownMenuItem 
                 className="cursor-pointer text-destructive focus:text-destructive"
                 onClick={async () => {
-                  await logout();
-                  navigate('/auth');
+                  await logout(); // logout ya hace redirect a /auth
                 }}
               >
                 <LogOut className="mr-2 h-4 w-4" />

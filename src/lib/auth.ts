@@ -99,8 +99,12 @@ export const logout = async (): Promise<void> => {
   } catch (error) {
     console.error('[logout] Error during signOut:', error);
   }
-  // Limpiar cualquier dato local para forzar cierre de sesión
+  // Limpiar TODOS los datos locales para evitar mezcla de sesiones
   localStorage.removeItem('sb-ymlvklodwwvkfpnrlfsa-auth-token');
+  localStorage.removeItem('company_profile');
+  localStorage.removeItem('readNotifications');
+  // Forzar recarga limpia
+  window.location.href = '/auth';
 };
 
 // Autenticación con Google
