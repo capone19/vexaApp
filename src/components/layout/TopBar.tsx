@@ -407,14 +407,40 @@ export function TopBar() {
           </DropdownMenu>
         )}
 
-        {/* Mobile: Simple avatar indicator */}
+        {/* Mobile: Avatar with dropdown for logout */}
         {isMobile && (
-          <Avatar className="h-8 w-8 border border-border">
-            {displayLogo && <AvatarImage src={displayLogo} alt={displayName} />}
-            <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-9 w-9 p-0">
+                <Avatar className="h-8 w-8 border border-border">
+                  {displayLogo && <AvatarImage src={displayLogo} alt={displayName} />}
+                  <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <div className="px-2 py-1.5 text-sm font-medium">{displayName}</div>
+              <div className="px-2 pb-1.5 text-xs text-muted-foreground capitalize">{displayRole}</div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="cursor-pointer" onClick={() => navigate('/configuracion')}>
+                <Settings className="mr-2 h-4 w-4" />
+                Configuración
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem 
+                className="cursor-pointer text-destructive focus:text-destructive"
+                onClick={async () => {
+                  await logout();
+                  navigate('/auth');
+                }}
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Cerrar sesión
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
     </header>
