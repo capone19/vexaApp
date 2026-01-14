@@ -13,7 +13,8 @@ import {
   CheckCircle,
   AlertCircle,
   XCircle,
-  ExternalLink
+  ExternalLink,
+  Info
 } from 'lucide-react';
 import type { TemplateStatus } from '@/lib/types';
 
@@ -28,142 +29,29 @@ interface WhatsAppTemplate {
   category: 'promocion' | 'recuperacion' | 'bienvenida' | 'seguimiento';
 }
 
-// Plantillas de ejemplo estilo WhatsApp promocional
+// Plantilla de ejemplo - Los clientes crearán sus propias plantillas
 const mockWhatsAppTemplates: WhatsAppTemplate[] = [
   {
-    id: 'tpl-001',
-    name: 'cyber_promo_1',
+    id: 'tpl-ejemplo',
+    name: 'ejemplo_bienvenida',
     status: 'approved',
-    content: `Listo 🔥
-Ya empezó el Cyber en PROSA y te juro que las ofertas están demasiado buenas.
+    content: `¡Hola {{1}}! 👋
 
-(Casi me arrepiento 😅)
+Gracias por contactarnos.
 
-Si estabas esperando el momento... es ahora.
+Soy el asistente virtual de [Tu Negocio] y estoy aquí para ayudarte.
 
-Encontrarás nuestros packs de siempre con descuentos de hasta un 50% 🤩
-
-Estoy emocionadísima 🥹
-Sé que esta es la oportunidad para muchas de tener sus pestañas más fuertes, naturales y cuidadas 💅
-y eso me encanta.
-
-Ah, y porfa: fíjate bien en los descuentos que vienen en algunos packs, son ÚNICOS por poquísimos días...!
-No quiero que se te pasen 🥹`,
-    hasButton: true,
-    buttonText: 'VER OFERTAS',
-    buttonUrl: 'https://prosachile.cl/cyber',
-    category: 'promocion'
-  },
-  {
-    id: 'tpl-002',
-    name: 'cyber_promo_2',
-    status: 'approved',
-    content: `Listo 🔥
-Ya empezó el Cyber en PROSA y te juro que las ofertas están demasiado buenas.
-
-(Casi me arrepiento 😅)
-
-Si estabas esperando el momento... es ahora.
-
-Encontrarás nuestros packs de siempre con descuentos de hasta un 50% 🤩
-
-Estoy emocionadísima 🥹
-Sé que esta es la oportunidad para muchas de tener sus pestañas más fuertes, naturales y cuidadas 💅
-y eso me encanta.
-
-Ah, y porfa: fíjate bien en los descuentos que vienen en algunos packs. Son ÚNICOS por estos días.. No quiero que se te pasen 🥹`,
-    hasButton: false,
-    category: 'promocion'
-  },
-  {
-    id: 'tpl-003',
-    name: 'recuperacion_diego',
-    status: 'approved',
-    content: `¿Viste que dejaste tu pedido sin completar?
-
-No sé si te pasó algo o te distrajiste (yo soy la reina de eso 👸),
-pero te juro que vale la pena rescatarlo.
-
-Es de esos maquillajes que te hacen la vida más fácil al tiro:
-
-✨ Fortalece tus pestañas mientras duermes
-✨ Te ahorra tiempo en la mañana
-✨ Y sí, también te ves más despierta sin tanto maquillaje
-
-👉 https://prosachile.cl
-
-Y que tú, lo recupero ahora antes de que me distraiga con otra cosa.
-
-Y si necesitas ayuda para elegir, dime tú...
-feliz te guío 💬`,
-    hasButton: true,
-    buttonText: 'IR AL PEDIDO',
-    buttonUrl: 'https://prosachile.cl/recuperar',
-    category: 'recuperacion'
-  },
-  {
-    id: 'tpl-004',
-    name: 'cyber_prosa_final',
-    status: 'approved',
-    content: `Listo 🔥
-Ya empezó el Cyber en PROSA y te juro que las ofertas están demasiado buenas.
-
-(Casi me arrepiento 😅)
-
-Si estabas esperando el momento... es ahora.
-
-Encontrarás nuestros packs de siempre con descuentos de hasta un 50% 🤩
-
-👉 https://prosachile.cl
-
-Estoy emocionadísima 🥹
-Sé que esta es la oportunidad para muchas de tener sus pestañas más fuertes, naturales y cuidadas 💅
-y eso me encanta.
-
-Ah, y porfa: fíjate bien en los regalitos que vienen en algunos packs.
-No quiero que se te pasen 🥹`,
-    hasButton: true,
-    buttonText: 'RECUPERAR PEDIDO',
-    buttonUrl: 'https://prosachile.cl',
-    category: 'promocion'
-  },
-  {
-    id: 'tpl-005',
-    name: 'bienvenida_nueva',
-    status: 'approved',
-    content: `¡Hola! 👋
-
-Bienvenida a nuestra comunidad 💕
-
-Soy tu asistente virtual y estoy aquí para ayudarte con todo lo que necesites.
-
-¿Qué te gustaría saber?
-• Nuestros productos
-• Promociones activas
-• Estado de tu pedido
-• Métodos de pago
+¿En qué puedo asistirte hoy?
+• Información de servicios
+• Agendar una cita
+• Consultar disponibilidad
+• Resolver dudas
 
 Solo escríbeme y con gusto te ayudo ✨`,
-    hasButton: false,
-    category: 'bienvenida'
-  },
-  {
-    id: 'tpl-006',
-    name: 'seguimiento_post_compra',
-    status: 'pending',
-    content: `¡Hola! 🌟
-
-¿Cómo te fue con tu compra?
-
-Quería saber si ya recibiste todo bien y si tienes alguna duda sobre cómo usar los productos.
-
-Recuerda que estoy aquí para lo que necesites 💬
-
-¡Un abrazo!`,
     hasButton: true,
-    buttonText: 'NECESITO AYUDA',
-    buttonUrl: 'https://wa.me/+59171234567',
-    category: 'seguimiento'
+    buttonText: 'VER SERVICIOS',
+    buttonUrl: 'https://tunegocio.com/servicios',
+    category: 'bienvenida'
   },
 ];
 
@@ -272,11 +160,20 @@ const MarketingTemplates = () => {
           </Select>
         </div>
 
-        {/* WhatsApp number indicator */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 rounded-full">
-            <div className="w-2 h-2 rounded-full bg-green-500"></div>
-            <span className="text-sm text-green-700 font-medium">+59171234567</span>
+        {/* Info panel */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex gap-3">
+            <div className="shrink-0">
+              <Info className="h-5 w-5 text-blue-600" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-blue-900">¿Cómo funcionan las plantillas?</p>
+              <p className="text-sm text-blue-700">
+                Las plantillas deben ser aprobadas por Meta antes de usarse. 
+                Usa variables como <code className="bg-blue-100 px-1 rounded">{"{{1}}"}</code> para personalizar mensajes.
+                El tiempo de aprobación es de 24-48 horas.
+              </p>
+            </div>
           </div>
         </div>
 

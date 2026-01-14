@@ -10,11 +10,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { fetchChats } from "@/lib/mock/data";
-import type { Chat, FunnelStage, ChatStatus } from "@/lib/types";
+import { useChatSessions } from "@/hooks/use-chat-sessions";
+import { useAuth } from "@/hooks/use-auth";
+import type { Chat, Message, FunnelStage, ChatStatus } from "@/lib/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { Search, User, Send, Bot, ArrowLeft, Filter, X, Info } from "lucide-react";
+import { Search, User, Send, Bot, ArrowLeft, Filter, X, Info, MessageSquare, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -26,9 +27,15 @@ interface Filters {
 }
 
 export default function Chats() {
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const { chats, isLoading, error, loadMessages } = useChatSessions({
+    tenantId: user?.tenantId,
+    enableRealtime: true,
+  });
+  
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
+  const [selectedChatMessages, setSelectedChatMessages] = useState<Message[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [botEnabled, setBotEnabled] = useState<Record<string, boolean>>({});
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<Filters>({
@@ -39,18 +46,21 @@ export default function Chats() {
   
   const isMobile = useIsMobile();
 
+  // Cargar mensajes cuando se selecciona un chat
   useEffect(() => {
-    const load = async () => {
-      const data = await fetchChats();
-      setChats(data);
-      // Don't auto-select on mobile
-      if (!isMobile && data[0]) {
-        setSelectedChat(data[0]);
-      }
-      setLoading(false);
-    };
-    load();
-  }, [isMobile]);
+    if (selectedChat) {
+      setLoadingMessages(true);
+      loadMessages(selectedChat.id)
+        .then(messages => {
+          setSelectedChatMessages(messages);
+        })
+        .finally(() => {
+          setLoadingMessages(false);
+        });
+    } else {
+      setSelectedChatMessages([]);
+    }
+  }, [selectedChat, loadMessages]);
 
   const filteredChats = chats.filter((chat) => {
     if (filters.search && !chat.userName.toLowerCase().includes(filters.search.toLowerCase())) return false;
@@ -76,6 +86,41 @@ export default function Chats() {
   const handleStageChange = useCallback((value: string) => {
     setFilters((prev) => ({ ...prev, stage: value as Filters["stage"] }));
   }, []);
+
+  // Empty State Component
+  const EmptyState = () => (
+    <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+      <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mb-4">
+        <MessageSquare className="h-8 w-8 text-muted-foreground" />
+      </div>
+      <h3 className="text-lg font-semibold text-foreground mb-2">Sin conversaciones</h3>
+      <p className="text-sm text-muted-foreground max-w-sm">
+        Cuando tus clientes envíen mensajes por WhatsApp, aparecerán aquí en tiempo real.
+      </p>
+    </div>
+  );
+
+  // Loading State
+  const LoadingState = () => (
+    <div className="flex flex-col items-center justify-center h-full p-8">
+      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
+      <p className="text-sm text-muted-foreground">Cargando conversaciones...</p>
+    </div>
+  );
+
+  // Error State
+  const ErrorState = () => (
+    <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+      <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+        <X className="h-8 w-8 text-destructive" />
+      </div>
+      <h3 className="text-lg font-semibold text-foreground mb-2">Error al cargar</h3>
+      <p className="text-sm text-muted-foreground max-w-sm mb-4">{error}</p>
+      <Button variant="outline" onClick={() => window.location.reload()}>
+        Reintentar
+      </Button>
+    </div>
+  );
 
   // Chat List content rendered inline to prevent Input focus loss
   const chatListContent = (
@@ -154,10 +199,18 @@ export default function Chats() {
 
       {/* Chat List */}
       <ScrollArea className="flex-1">
-        {filteredChats.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground">
-            <p className="text-sm">No se encontraron chats</p>
-          </div>
+        {isLoading ? (
+          <LoadingState />
+        ) : error ? (
+          <ErrorState />
+        ) : filteredChats.length === 0 ? (
+          chats.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <div className="p-8 text-center text-muted-foreground">
+              <p className="text-sm">No se encontraron chats con estos filtros</p>
+            </div>
+          )
         ) : (
           filteredChats.map((chat) => (
             <button
@@ -204,7 +257,10 @@ export default function Chats() {
     if (!selectedChat) {
       return (
         <div className="flex-1 flex items-center justify-center text-muted-foreground rounded-lg border border-border bg-card">
-          <p>Selecciona un chat para ver la conversación</p>
+          <div className="text-center">
+            <MessageSquare className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+            <p>Selecciona un chat para ver la conversación</p>
+          </div>
         </div>
       );
     }
@@ -232,7 +288,9 @@ export default function Chats() {
             </div>
             <div className="min-w-0">
               <h3 className="font-semibold text-foreground text-sm md:text-base truncate">{selectedChat.userName}</h3>
-              <p className="text-xs text-muted-foreground truncate">Session: {selectedChat.sessionId}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {selectedChat.userPhone || `ID: ${selectedChat.sessionId.slice(0, 8)}...`}
+              </p>
             </div>
           </div>
           
@@ -287,39 +345,49 @@ export default function Chats() {
 
         {/* Messages */}
         <ScrollArea className="flex-1 p-4 bg-secondary/30">
-          <div className="space-y-4">
-            {selectedChat.messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={cn(
-                  "flex",
-                  msg.sender === "user" ? "justify-start" : "justify-end"
-                )}
-              >
+          {loadingMessages ? (
+            <div className="flex items-center justify-center h-32">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : selectedChatMessages.length === 0 ? (
+            <div className="flex items-center justify-center h-32 text-muted-foreground">
+              <p className="text-sm">Sin mensajes en esta conversación</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {selectedChatMessages.map((msg) => (
                 <div
+                  key={msg.id}
                   className={cn(
-                    "max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm",
-                    msg.sender === "user"
-                      ? "bg-background border border-border text-foreground rounded-bl-md"
-                      : msg.sender === "bot"
-                      ? "bg-primary text-primary-foreground rounded-br-md"
-                      : "bg-warning text-warning-foreground rounded-br-md"
+                    "flex",
+                    msg.sender === "user" ? "justify-start" : "justify-end"
                   )}
                 >
-                  <p className="text-sm leading-relaxed">{msg.content}</p>
-                  <p className={cn(
-                    "text-[10px] mt-1",
-                    msg.sender === "user" ? "text-muted-foreground" : "opacity-70"
-                  )}>
-                    {format(msg.timestamp, "HH:mm", { locale: es })}
-                  </p>
+                  <div
+                    className={cn(
+                      "max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm",
+                      msg.sender === "user"
+                        ? "bg-background border border-border text-foreground rounded-bl-md"
+                        : msg.sender === "bot"
+                        ? "bg-primary text-primary-foreground rounded-br-md"
+                        : "bg-warning text-warning-foreground rounded-br-md"
+                    )}
+                  >
+                    <p className="text-sm leading-relaxed">{msg.content}</p>
+                    <p className={cn(
+                      "text-[10px] mt-1",
+                      msg.sender === "user" ? "text-muted-foreground" : "opacity-70"
+                    )}>
+                      {format(msg.timestamp, "HH:mm", { locale: es })}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </ScrollArea>
 
-        {/* Input (disabled for demo) */}
+        {/* Input (disabled - view only) */}
         <div className="p-3 md:p-4 border-t border-border bg-background">
           <div className="flex gap-2">
             <Input
@@ -332,7 +400,7 @@ export default function Chats() {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2 text-center">
-            Vista de solo lectura - Demo
+            Vista de solo lectura
           </p>
         </div>
       </div>

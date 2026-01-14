@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, DollarSign, Calendar, Target, Award, Zap, ArrowUpRight, ArrowDownRight, BarChart3 } from 'lucide-react';
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { useState, useMemo } from 'react';
+import { TrendingUp, TrendingDown, DollarSign, Calendar, Target, Award, BarChart3 } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -8,71 +8,74 @@ import { Badge } from '@/components/ui/badge';
 import { KPICard } from '@/components/shared/KPICard';
 import { DateRangeFilter } from '@/components/shared/DateRangeFilter';
 import { SkeletonCard } from '@/components/shared/SkeletonCard';
-import { fetchDashboardData } from '@/lib/mock/data';
-import type { DashboardMetrics, DateRangePreset } from '@/lib/types';
+import { useDashboardMetrics } from '@/hooks/use-dashboard-metrics';
+import { useAuth } from '@/hooks/use-auth';
+import type { DateRangePreset } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-// Mock data for results
-const generateConversionTrend = () => {
-  const data = [];
-  const days = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-  for (let i = 0; i < 7; i++) {
-    data.push({
-      day: days[i],
-      appointments: Math.floor(Math.random() * 30) + 20,
-      appointmentsPrev: Math.floor(Math.random() * 25) + 18,
-      rate: Math.floor(Math.random() * 8) + 10,
-    });
-  }
-  return data;
-};
-
-// WhatsApp performance data
-const whatsappPerformance = {
-  chats: 1800,
-  conversions: 220,
-  revenue: 9900000,
-  conversionRate: 12.2,
-  avgTicket: 45000,
-  trend: 15.3
-};
-
-const topServices = [
-  { name: 'Corte de cabello', conversions: 145, revenue: 2175000, growth: 18.5 },
-  { name: 'Tinte completo', conversions: 89, revenue: 4005000, growth: 12.3 },
-  { name: 'Manicure + Pedicure', conversions: 67, revenue: 2010000, growth: -5.2 },
-  { name: 'Tratamiento capilar', conversions: 41, revenue: 1435000, growth: 25.8 },
-];
+// Empty State Component
+const EmptyState = () => (
+  <div className="flex flex-col items-center justify-center p-12 text-center">
+    <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mb-4">
+      <DollarSign className="h-8 w-8 text-muted-foreground" />
+    </div>
+    <h3 className="text-lg font-semibold text-foreground mb-2">Sin resultados aún</h3>
+    <p className="text-sm text-muted-foreground max-w-sm">
+      Cuando comiences a realizar ventas y agendamientos, tus resultados aparecerán aquí.
+    </p>
+  </div>
+);
 
 const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(value);
+  return new Intl.NumberFormat('es-BO', { style: 'currency', currency: 'BOB', maximumFractionDigits: 0 }).format(value);
 };
 
 const Results = () => {
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
   const [dateRange, setDateRange] = useState<DateRangePreset>('7d');
-  const [conversionTrend] = useState(generateConversionTrend);
 
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      const data = await fetchDashboardData();
-      setMetrics(data);
-      setLoading(false);
-    };
-    loadData();
+  // Calcular rango de fechas
+  const dateRangeObj = useMemo(() => {
+    const now = new Date();
+    let startDate: Date;
+    
+    switch (dateRange) {
+      case "today":
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case "7d":
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case "30d":
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case "90d":
+        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        break;
+      case "ytd":
+        startDate = new Date(now.getFullYear(), 0, 1);
+        break;
+      default:
+        startDate = new Date(0);
+    }
+    
+    return { startDate, endDate: now };
   }, [dateRange]);
+
+  const { metrics, isLoading, error } = useDashboardMetrics({
+    tenantId: user?.tenantId,
+    dateRange: dateRangeObj,
+  });
 
   const handleDateChange = (preset: DateRangePreset) => {
     setDateRange(preset);
   };
 
-  if (loading || !metrics) {
+  if (isLoading) {
     return (
       <MainLayout>
         <div className="space-y-6">
-          <PageHeader title="Ventas" subtitle="Impacto en el negocio y rendimiento comercial" />
+          <PageHeader title="Resultados" subtitle="Impacto en el negocio y rendimiento comercial" />
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {[...Array(4)].map((_, i) => <SkeletonCard key={i} />)}
           </div>
@@ -84,9 +87,37 @@ const Results = () => {
     );
   }
 
-  const totalConversions = whatsappPerformance.conversions;
-  const totalRevenue = whatsappPerformance.revenue;
-  const avgConversionRate = (totalConversions / metrics.totalChats) * 100;
+  if (error) {
+    return (
+      <MainLayout>
+        <div className="space-y-6">
+          <PageHeader title="Resultados" subtitle="Impacto en el negocio" />
+          <div className="flex flex-col items-center justify-center h-[400px]">
+            <div className="text-destructive mb-4">Error al cargar resultados</div>
+            <p className="text-sm text-muted-foreground">{error}</p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Check if there's any data
+  const hasData = metrics && (metrics.servicesBooked > 0 || metrics.revenue > 0);
+  
+  const conversionRate = metrics && metrics.totalChats > 0 
+    ? ((metrics.servicesBooked / metrics.totalChats) * 100).toFixed(1)
+    : "0";
+
+  // Empty conversion trend data
+  const conversionTrend = [
+    { day: 'Lun', appointments: 0 },
+    { day: 'Mar', appointments: 0 },
+    { day: 'Mié', appointments: 0 },
+    { day: 'Jue', appointments: 0 },
+    { day: 'Vie', appointments: 0 },
+    { day: 'Sáb', appointments: 0 },
+    { day: 'Dom', appointments: 0 },
+  ];
 
   return (
     <MainLayout>
@@ -97,168 +128,151 @@ const Results = () => {
           actions={<DateRangeFilter value={dateRange} onChange={handleDateChange} />}
         />
 
+        {/* KPI Cards - Always show but with 0/empty values */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard
             title="Servicios Agendados"
-            value={metrics.servicesBooked.toLocaleString()}
+            value={(metrics?.servicesBooked || 0).toLocaleString()}
             icon={Calendar}
-            trend={{ value: 18.2, isPositive: true }}
             variant="success"
           />
           <KPICard
             title="Tasa de Conversión"
-            value={`${avgConversionRate.toFixed(1)}%`}
+            value={`${conversionRate}%`}
             icon={Target}
-            trend={{ value: 3.5, isPositive: true }}
             variant="primary"
           />
           <KPICard
             title="Revenue Generado"
-            value={formatCurrency(metrics.revenue)}
+            value={formatCurrency(metrics?.revenue || 0)}
             icon={DollarSign}
-            trend={{ value: 22.4, isPositive: true }}
             variant="warning"
+          />
+          <KPICard
+            title="Total Conversaciones"
+            value={(metrics?.totalChats || 0).toLocaleString()}
+            icon={BarChart3}
+            variant="info"
           />
         </div>
 
-        {/* Conversion Trend & Impact Summary */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Conversion Trend Chart */}
-          <Card className="lg:col-span-2 border-border">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Target className="h-4 w-4 text-primary" />
-                Tendencia de Conversión a Agendamientos
-              </CardTitle>
-              <CardDescription>Servicios agendados por día a través del chatbot</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={conversionTrend}>
-                  <defs>
-                    <linearGradient id="colorAppointments" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--success))" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="hsl(var(--success))" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-                  <XAxis dataKey="day" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'hsl(var(--card))', 
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: '8px'
-                    }} 
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="appointments" 
-                    stroke="hsl(var(--success))" 
-                    fill="url(#colorAppointments)" 
-                    strokeWidth={2}
-                    name="Agendamientos"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </CardContent>
+        {/* Empty State or Content */}
+        {!hasData ? (
+          <Card className="border-border">
+            <EmptyState />
           </Card>
+        ) : (
+          <>
+            {/* Conversion Trend & Impact Summary */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Conversion Trend Chart */}
+              <Card className="lg:col-span-2 border-border">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Target className="h-4 w-4 text-primary" />
+                    Tendencia de Conversión a Agendamientos
+                  </CardTitle>
+                  <CardDescription>Servicios agendados por día a través del chatbot</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <AreaChart data={conversionTrend}>
+                      <defs>
+                        <linearGradient id="colorAppointments" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(var(--success))" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="hsl(var(--success))" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+                      <XAxis dataKey="day" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                      <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'hsl(var(--card))', 
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '8px'
+                        }} 
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="appointments" 
+                        stroke="hsl(var(--success))" 
+                        fill="url(#colorAppointments)" 
+                        strokeWidth={2}
+                        name="Agendamientos"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
 
-          {/* Business Impact Summary */}
-          <Card className="bg-primary/5 border-primary/20">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Award className="h-4 w-4 text-primary" />
-                Impacto en el Negocio
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground">Revenue Total (Período)</div>
-                <div className="text-3xl font-bold text-primary">{formatCurrency(totalRevenue)}</div>
-                <div className="flex items-center gap-1 text-sm text-success">
-                  <ArrowUpRight className="h-4 w-4" />
-                  <span>+22.4% vs período anterior</span>
-                </div>
-              </div>
-
-              <div className="h-px bg-border/50" />
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="text-xs text-muted-foreground">Ticket Promedio</div>
-                  <div className="text-lg font-semibold">{formatCurrency(totalRevenue / totalConversions)}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Conversiones</div>
-                  <div className="text-lg font-semibold">{totalConversions}</div>
-                </div>
-              </div>
-
-              <div className="h-px bg-border/50" />
-
-              <div className="space-y-2">
-                <div className="text-xs text-muted-foreground">ROI Estimado del Bot</div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="bg-success/10 text-success border-success/30 text-lg px-3 py-1">
-                    +340%
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">vs atención manual</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-
-        {/* Top Services */}
-        <Card className="border-border">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Award className="h-4 w-4 text-warning" />
-              Top Servicios por Conversiones
-            </CardTitle>
-            <CardDescription>Servicios más agendados a través del chatbot</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {topServices.map((service, idx) => (
-                <div 
-                  key={idx}
-                  className="p-4 rounded-lg border border-border bg-card hover:bg-secondary/50 transition-all space-y-3"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className={cn(
-                        "text-lg font-bold",
-                        idx === 0 && "text-warning",
-                        idx === 1 && "text-muted-foreground",
-                        idx === 2 && "text-orange-600",
-                        idx >= 3 && "text-muted-foreground"
-                      )}>
-                        #{idx + 1}
-                      </span>
+              {/* Business Impact Summary */}
+              <Card className="bg-primary/5 border-primary/20">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Award className="h-4 w-4 text-primary" />
+                    Impacto en el Negocio
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground">Revenue Total (Período)</div>
+                    <div className="text-3xl font-bold text-primary">
+                      {formatCurrency(metrics?.revenue || 0)}
                     </div>
-                    <span className={cn(
-                      "flex items-center gap-1 text-xs font-medium",
-                      service.growth >= 0 ? "text-success" : "text-destructive"
-                    )}>
-                      {service.growth >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                      {Math.abs(service.growth)}%
-                    </span>
                   </div>
-                  <div>
-                    <div className="font-medium">{service.name}</div>
-                    <div className="text-sm text-muted-foreground">{service.conversions} conversiones</div>
+
+                  <div className="h-px bg-border/50" />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Ticket Promedio</div>
+                      <div className="text-lg font-semibold">
+                        {metrics && metrics.servicesBooked > 0 
+                          ? formatCurrency(metrics.revenue / metrics.servicesBooked)
+                          : formatCurrency(0)
+                        }
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Conversiones</div>
+                      <div className="text-lg font-semibold">{metrics?.servicesBooked || 0}</div>
+                    </div>
                   </div>
-                  <div className="text-lg font-semibold text-primary">
-                    {formatCurrency(service.revenue)}
+
+                  <div className="h-px bg-border/50" />
+
+                  <div className="space-y-2">
+                    <div className="text-xs text-muted-foreground">Tasa de Conversión</div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="bg-success/10 text-success border-success/30 text-lg px-3 py-1">
+                        {conversionRate}%
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">de conversaciones</span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                </CardContent>
+              </Card>
             </div>
-          </CardContent>
-        </Card>
+
+            {/* Top Services - Empty State */}
+            <Card className="border-border">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Award className="h-4 w-4 text-warning" />
+                  Top Servicios por Conversiones
+                </CardTitle>
+                <CardDescription>Servicios más agendados a través del chatbot</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-8 text-muted-foreground">
+                  <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                  <p>Los servicios más vendidos aparecerán aquí cuando tengas conversiones</p>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
     </MainLayout>
   );

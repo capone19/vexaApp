@@ -6,45 +6,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Info, Calendar } from 'lucide-react';
+import { Info, Calendar, BarChart3 } from 'lucide-react';
 import {
   Tooltip as UITooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// Mock data para métricas de remarketing WhatsApp
+// Data vacía para producción - Se llenará con datos reales
 const generateDailyData = () => {
-  const data = [];
-  const startDate = new Date('2025-10-01');
-  
-  for (let i = 0; i < 50; i++) {
-    const currentDate = new Date(startDate);
-    currentDate.setDate(startDate.getDate() + i);
-    
-    // Simular picos y valles realistas
-    let mensajesEnviados = Math.floor(Math.random() * 80) + 20;
-    let conversiones = Math.floor(mensajesEnviados * (Math.random() * 0.2 + 0.05));
-    
-    // Pico al inicio (simulando campaña)
-    if (i < 10) {
-      mensajesEnviados = Math.floor(Math.random() * 100) + 80;
-      conversiones = Math.floor(mensajesEnviados * (Math.random() * 0.15 + 0.08));
-    }
-    
-    // Otro pico a mitad de mes
-    if (i > 25 && i < 35) {
-      mensajesEnviados = Math.floor(Math.random() * 60) + 30;
-      conversiones = Math.floor(mensajesEnviados * (Math.random() * 0.18 + 0.06));
-    }
-    
-    data.push({
-      date: `${String(currentDate.getDate()).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}`,
-      mensajesEnviados,
-      conversiones,
-    });
-  }
-  return data;
+  return [];
 };
 
 const MarketingPerformance = () => {
@@ -52,12 +23,12 @@ const MarketingPerformance = () => {
   const [activeTab, setActiveTab] = useState('chats');
   const [chartData] = useState(generateDailyData);
 
-  // Calcular totales
+  // Calcular totales - valores vacíos para producción
   const totalMensajesEnviados = chartData.reduce((sum, d) => sum + d.mensajesEnviados, 0);
   const totalConversiones = chartData.reduce((sum, d) => sum + d.conversiones, 0);
-  const tasaConversion = ((totalConversiones / totalMensajesEnviados) * 100).toFixed(2);
-  const valorRecuperado = totalConversiones * 5985; // Valor promedio por conversión
-  const roas = (valorRecuperado / (totalMensajesEnviados * 15)).toFixed(2); // Costo por mensaje ~15 CLP
+  const tasaConversion = totalMensajesEnviados > 0 ? ((totalConversiones / totalMensajesEnviados) * 100).toFixed(2) : '0.00';
+  const valorRecuperado = totalConversiones * 5985;
+  const roas = totalMensajesEnviados > 0 ? (valorRecuperado / (totalMensajesEnviados * 15)).toFixed(2) : '0.00';
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-CL', { 
@@ -66,6 +37,9 @@ const MarketingPerformance = () => {
       maximumFractionDigits: 0 
     }).format(value);
   };
+
+  // Si no hay datos, mostrar estado vacío
+  const hasData = chartData.length > 0;
 
   return (
     <MainLayout>
@@ -193,135 +167,119 @@ const MarketingPerformance = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {/* Legend */}
-            <div className="flex items-center justify-center gap-6 mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-[#6366F1]"></div>
-                <span className="text-sm text-muted-foreground">Mensajes Enviados</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-[#10B981]"></div>
-                <span className="text-sm text-muted-foreground">Conversiones</span>
-              </div>
-            </div>
+            {hasData ? (
+              <>
+                {/* Legend */}
+                <div className="flex items-center justify-center gap-6 mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-[#6366F1]"></div>
+                    <span className="text-sm text-muted-foreground">Mensajes Enviados</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-[#10B981]"></div>
+                    <span className="text-sm text-muted-foreground">Conversiones</span>
+                  </div>
+                </div>
 
-            <ResponsiveContainer width="100%" height={400}>
-              <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
-                <XAxis 
-                  dataKey="date" 
-                  stroke="hsl(var(--muted-foreground))" 
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                  interval={4}
-                />
-                <YAxis 
-                  stroke="hsl(var(--muted-foreground))" 
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'hsl(var(--background))', 
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                  }}
-                  labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 600 }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="mensajesEnviados" 
-                  stroke="#6366F1" 
-                  strokeWidth={2}
-                  dot={{ fill: '#6366F1', strokeWidth: 0, r: 3 }}
-                  activeDot={{ r: 5, fill: '#6366F1' }}
-                  name="Mensajes Enviados"
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="conversiones" 
-                  stroke="#10B981" 
-                  strokeWidth={2}
-                  dot={{ fill: '#10B981', strokeWidth: 0, r: 3 }}
-                  activeDot={{ r: 5, fill: '#10B981' }}
-                  name="Conversiones"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+                <ResponsiveContainer width="100%" height={400}>
+                  <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
+                    <XAxis 
+                      dataKey="date" 
+                      stroke="hsl(var(--muted-foreground))" 
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      interval={4}
+                    />
+                    <YAxis 
+                      stroke="hsl(var(--muted-foreground))" 
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'hsl(var(--background))', 
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                      }}
+                      labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 600 }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="mensajesEnviados" 
+                      stroke="#6366F1" 
+                      strokeWidth={2}
+                      dot={{ fill: '#6366F1', strokeWidth: 0, r: 3 }}
+                      activeDot={{ r: 5, fill: '#6366F1' }}
+                      name="Mensajes Enviados"
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="conversiones" 
+                      stroke="#10B981" 
+                      strokeWidth={2}
+                      dot={{ fill: '#10B981', strokeWidth: 0, r: 3 }}
+                      activeDot={{ r: 5, fill: '#10B981' }}
+                      name="Conversiones"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                  <BarChart3 className="h-8 w-8 text-muted-foreground/50" />
+                </div>
+                <p className="text-lg font-medium text-foreground mb-1">Sin datos de campañas</p>
+                <p className="text-sm text-muted-foreground max-w-sm">
+                  Cuando envíes campañas de remarketing por WhatsApp, aquí verás las métricas de rendimiento.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Additional Metrics */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Top Performing Templates */}
-          <Card className="border-border">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold text-foreground">
-                Plantillas con Mejor Rendimiento
-              </CardTitle>
-              <CardDescription>
-                Mensajes con mayor tasa de conversión
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {[
-                  { name: 'cyber_promo_1', enviados: 456, conversiones: 78, tasa: 17.1 },
-                  { name: 'recuperacion_diego', enviados: 312, conversiones: 45, tasa: 14.4 },
-                  { name: 'cyber_prosa_final', enviados: 289, conversiones: 38, tasa: 13.1 },
-                  { name: 'bienvenida_nueva', enviados: 225, conversiones: 28, tasa: 12.4 },
-                ].map((template, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
-                    <div>
-                      <p className="font-medium text-foreground">{template.name}</p>
-                      <p className="text-xs text-muted-foreground">{template.enviados} enviados • {template.conversiones} conversiones</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-lg font-semibold text-success">{template.tasa}%</p>
-                      <p className="text-xs text-muted-foreground">Tasa conv.</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+        {/* Additional Metrics - Solo mostrar si hay datos */}
+        {hasData && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Top Performing Templates */}
+            <Card className="border-border">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-foreground">
+                  Plantillas con Mejor Rendimiento
+                </CardTitle>
+                <CardDescription>
+                  Mensajes con mayor tasa de conversión
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <p className="text-sm text-muted-foreground">Sin datos disponibles</p>
+                </div>
+              </CardContent>
+            </Card>
 
-          {/* Performance by Hour */}
-          <Card className="border-border">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold text-foreground">
-                Mejor Horario de Envío
-              </CardTitle>
-              <CardDescription>
-                Horas con mayor tasa de apertura y conversión
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {[
-                  { hora: '10:00 - 12:00', enviados: 423, tasa: 18.2, mejor: true },
-                  { hora: '14:00 - 16:00', enviados: 356, tasa: 15.8, mejor: false },
-                  { hora: '18:00 - 20:00', enviados: 298, tasa: 14.1, mejor: false },
-                  { hora: '08:00 - 10:00', enviados: 205, tasa: 12.3, mejor: false },
-                ].map((slot, idx) => (
-                  <div key={idx} className={`flex items-center justify-between p-3 rounded-lg ${slot.mejor ? 'bg-success/10 border border-success/20' : 'bg-secondary/50'}`}>
-                    <div>
-                      <p className={`font-medium ${slot.mejor ? 'text-success' : 'text-foreground'}`}>{slot.hora}</p>
-                      <p className="text-xs text-muted-foreground">{slot.enviados} mensajes enviados</p>
-                    </div>
-                    <div className="text-right">
-                      <p className={`text-lg font-semibold ${slot.mejor ? 'text-success' : 'text-foreground'}`}>{slot.tasa}%</p>
-                      <p className="text-xs text-muted-foreground">Conversión</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            {/* Performance by Hour */}
+            <Card className="border-border">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-foreground">
+                  Mejor Horario de Envío
+                </CardTitle>
+                <CardDescription>
+                  Horas con mayor tasa de apertura y conversión
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <p className="text-sm text-muted-foreground">Sin datos disponibles</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     </MainLayout>
   );

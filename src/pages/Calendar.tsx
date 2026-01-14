@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, addWeeks, subWeeks, addDays, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Clock, User, Phone, MapPin, Calendar as CalendarIcon, Filter, Plus, X, Lock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, User, Phone, MapPin, Calendar as CalendarIcon, Filter, Plus, X, Lock, Loader2 } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -14,8 +14,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { SkeletonCard } from '@/components/shared/SkeletonCard';
-import { fetchAppointments, getAvailableServices } from '@/lib/mock/data';
-import type { Appointment, AppointmentSource } from '@/lib/types';
+import { useBookings, useTenantServices } from '@/hooks/use-bookings';
+import { useAuth } from '@/hooks/use-auth';
+import type { Appointment, AppointmentSource, AppointmentStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { BlockingModeProvider, useBlockingMode } from '@/components/calendar/BlockingModeContext';
 import { CalendarDayCell } from '@/components/calendar/CalendarDayCell';
@@ -26,8 +27,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 type CalendarView = 'month' | 'week' | 'day';
 
 const CalendarContent = () => {
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
   const [view, setView] = useState<CalendarView>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -39,6 +39,34 @@ const CalendarContent = () => {
   const [filterSource, setFilterSource] = useState<string>('all');
   
   const isMobile = useIsMobile();
+
+  // Calcular rango de fechas para el mes actual +/- 1 mes
+  const startDate = subMonths(startOfMonth(currentDate), 1);
+  const endDate = addMonths(endOfMonth(currentDate), 1);
+
+  // Usar hook de bookings reales
+  const { 
+    bookings: appointments, 
+    services: bookingServices, 
+    isLoading: loading, 
+    error 
+  } = useBookings({
+    tenantId: user?.tenantId,
+    startDate,
+    endDate,
+    status: filterStatus === 'all' ? 'all' : filterStatus as AppointmentStatus,
+    service: filterService,
+    enableRealtime: true,
+  });
+
+  // Servicios del tenant (desde tabla services)
+  const { services: tenantServices } = useTenantServices(user?.tenantId);
+
+  // Combinar servicios de bookings + servicios configurados
+  const services = [...new Set([
+    ...bookingServices,
+    ...tenantServices.map(s => s.name),
+  ])];
 
   const { 
     isBlockingMode, 
@@ -66,19 +94,7 @@ const CalendarContent = () => {
     };
   }, [isBlockingMode, isDragging, endDrag]);
 
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      const data = await fetchAppointments();
-      setAppointments(data);
-      setLoading(false);
-    };
-    loadData();
-  }, []);
-
   const filteredAppointments = appointments.filter(apt => {
-    if (filterStatus !== 'all' && apt.status !== filterStatus) return false;
-    if (filterService !== 'all' && apt.service !== filterService) return false;
     if (filterSource !== 'all' && apt.source !== filterSource) return false;
     return true;
   });
@@ -88,11 +104,6 @@ const CalendarContent = () => {
   };
 
   const selectedDateAppointments = getAppointmentsForDate(selectedDate);
-  // Servicios sincronizados con Ajustes del Agente
-  const configuredServices = getAvailableServices();
-  const appointmentServices = [...new Set(appointments.map(a => a.service))];
-  // Combinar servicios configurados + servicios de citas existentes (sin duplicados)
-  const services = [...new Set([...configuredServices, ...appointmentServices])];
   const hasActiveFilters = filterStatus !== 'all' || filterService !== 'all' || filterSource !== 'all';
 
   const navigatePrevious = () => {
@@ -157,6 +168,19 @@ const CalendarContent = () => {
     setFilterSource('all');
   };
 
+  // Empty State
+  const EmptyState = () => (
+    <div className="flex flex-col items-center justify-center py-12 text-center">
+      <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mb-4">
+        <CalendarIcon className="h-8 w-8 text-muted-foreground" />
+      </div>
+      <h3 className="text-lg font-semibold text-foreground mb-2">Sin agendamientos</h3>
+      <p className="text-sm text-muted-foreground max-w-sm">
+        Cuando tus clientes agenden citas por WhatsApp, aparecerán aquí automáticamente.
+      </p>
+    </div>
+  );
+
   if (loading) {
     return (
       <MainLayout>
@@ -165,6 +189,23 @@ const CalendarContent = () => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
             <div className="lg:col-span-2"><SkeletonCard className="h-[400px] md:h-[600px]" /></div>
             <div className="hidden lg:block"><SkeletonCard className="h-[600px]" /></div>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <MainLayout>
+        <div className="space-y-4 md:space-y-6">
+          <PageHeader title="Calendario" subtitle="Gestiona las citas y disponibilidad" />
+          <div className="flex flex-col items-center justify-center h-[400px]">
+            <div className="text-destructive mb-4">Error al cargar calendario</div>
+            <p className="text-sm text-muted-foreground mb-4">{error}</p>
+            <Button variant="outline" onClick={() => window.location.reload()}>
+              Reintentar
+            </Button>
           </div>
         </div>
       </MainLayout>
@@ -368,9 +409,13 @@ const CalendarContent = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos los servicios</SelectItem>
-                  {services.map(s => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                  ))}
+                  {services.length === 0 ? (
+                    <SelectItem value="none" disabled>Sin servicios configurados</SelectItem>
+                  ) : (
+                    services.map(s => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
               <Select value={filterSource} onValueChange={setFilterSource}>
@@ -427,7 +472,12 @@ const CalendarContent = () => {
               {/* Blocking mode overlay message */}
               <BlockingModeOverlay />
 
-              {view === 'month' && (
+              {/* Show empty state if no appointments at all */}
+              {appointments.length === 0 && !isBlockingMode && (
+                <EmptyState />
+              )}
+
+              {(appointments.length > 0 || isBlockingMode) && view === 'month' && (
                 <div className="space-y-1 md:space-y-2">
                   {/* Weekday headers */}
                   <div className="grid grid-cols-7 gap-0.5 md:gap-1">
@@ -503,7 +553,7 @@ const CalendarContent = () => {
                 </div>
               )}
 
-              {view === 'week' && (
+              {(appointments.length > 0 || isBlockingMode) && view === 'week' && (
                 <div className="space-y-2">
                   <div className={cn(
                     "grid gap-1 md:gap-2",
@@ -575,7 +625,7 @@ const CalendarContent = () => {
                 </div>
               )}
 
-              {view === 'day' && !isMobile && (
+              {(appointments.length > 0 || isBlockingMode) && view === 'day' && !isMobile && (
                 <div className="space-y-2">
                   <div className="text-center mb-4">
                     <div className="text-xl font-semibold capitalize text-foreground">
@@ -743,10 +793,6 @@ const CalendarContent = () => {
                     <span className="text-foreground">{selectedAppointment.clientPhone}</span>
                   </div>
                 )}
-                <div className="flex items-center gap-3 text-sm">
-                  <MapPin className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-foreground">Sede Providencia</span>
-                </div>
               </div>
 
               <div className="flex items-center gap-2">

@@ -82,53 +82,8 @@ interface Notification {
   };
 }
 
-// Mock de las últimas notificaciones (sin mensajes de chat)
-const initialNotifications: Notification[] = [
-  {
-    id: 'notif-001',
-    type: 'appointment',
-    title: 'Nueva cita agendada',
-    description: 'María González agendó Corte de cabello para hoy a las 15:00',
-    timestamp: new Date(Date.now() - 1000 * 60 * 5),
-    read: false,
-    metadata: { clientName: 'María González' },
-  },
-  {
-    id: 'notif-002',
-    type: 'appointment',
-    title: 'Recordatorio: Cita en 1 hora',
-    description: 'Ana Rodríguez tiene cita de Manicure + Pedicure a las 16:00',
-    timestamp: new Date(Date.now() - 1000 * 60 * 30),
-    read: false,
-    metadata: { clientName: 'Ana Rodríguez' },
-  },
-  {
-    id: 'notif-003',
-    type: 'alert',
-    title: 'Cita cancelada',
-    description: 'Pedro Silva canceló su cita de Tratamiento capilar programada para mañana',
-    timestamp: new Date(Date.now() - 1000 * 60 * 45),
-    read: false,
-    metadata: { clientName: 'Pedro Silva' },
-  },
-  {
-    id: 'notif-004',
-    type: 'success',
-    title: 'Cita confirmada',
-    description: 'Valentina Torres confirmó su asistencia para Tinte completo',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60),
-    read: false,
-    metadata: { clientName: 'Valentina Torres' },
-  },
-  {
-    id: 'notif-005',
-    type: 'system',
-    title: 'Actualización del sistema',
-    description: 'Se han aplicado mejoras de rendimiento a tu cuenta',
-    timestamp: new Date(Date.now() - 1000 * 60 * 90),
-    read: false,
-  },
-];
+// Lista vacía para producción - Se llenará con datos reales
+const initialNotifications: Notification[] = [];
 
 // Función para obtener IDs de notificaciones leídas desde localStorage
 const getReadNotificationIds = (): Set<string> => {
@@ -232,16 +187,19 @@ export function TopBar() {
   const { user: authUser } = useAuth();
   
   // Usar el nombre del perfil guardado, usuario autenticado, o el mock por defecto
-  const displayName = userProfile?.companyName || authUser?.name || mockUser.name;
+  const displayName = userProfile?.companyName || authUser?.name || mockUser.name || '';
   const displayLogo = userProfile?.logo || null;
-  const displayRole = authUser?.role || mockUser.role;
+  const displayRole = authUser?.role || mockUser.role || 'Admin';
   
   const initials = displayName
-    .split(" ")
-    .map((n: string) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+    ? displayName
+        .split(" ")
+        .filter((n: string) => n.length > 0)
+        .map((n: string) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : '?';
 
   const markAsRead = (id: string) => {
     setNotifications(prev => 
@@ -339,44 +297,51 @@ export function TopBar() {
 
             {/* Notifications List */}
             <div className="max-h-[320px] overflow-y-auto">
-              {notifications.slice(0, 5).map((notification) => {
-                const Icon = getNotificationIcon(notification.type);
-                const colorClass = getNotificationColor(notification.type);
+              {notifications.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                  <Bell className="h-8 w-8 mb-2 opacity-20" />
+                  <p className="text-sm">Sin notificaciones</p>
+                </div>
+              ) : (
+                notifications.slice(0, 5).map((notification) => {
+                  const Icon = getNotificationIcon(notification.type);
+                  const colorClass = getNotificationColor(notification.type);
 
-                return (
-                  <div
-                    key={notification.id}
-                    className={cn(
-                      "flex items-start gap-3 px-4 py-3 hover:bg-secondary/50 active:bg-secondary transition-colors cursor-pointer border-b border-border/30 last:border-b-0",
-                      !notification.read && "bg-primary/5"
-                    )}
-                    onClick={() => handleNotificationClick(notification)}
-                  >
-                    <div className={cn("p-1.5 rounded-lg shrink-0 mt-0.5", colorClass)}>
-                      <Icon className="h-3.5 w-3.5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className={cn(
-                          "text-sm leading-tight",
-                          !notification.read ? "font-semibold text-foreground" : "font-medium text-foreground/90"
-                        )}>
-                          {notification.title}
-                        </p>
-                        {!notification.read && (
-                          <div className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5" />
-                        )}
+                  return (
+                    <div
+                      key={notification.id}
+                      className={cn(
+                        "flex items-start gap-3 px-4 py-3 hover:bg-secondary/50 active:bg-secondary transition-colors cursor-pointer border-b border-border/30 last:border-b-0",
+                        !notification.read && "bg-primary/5"
+                      )}
+                      onClick={() => handleNotificationClick(notification)}
+                    >
+                      <div className={cn("p-1.5 rounded-lg shrink-0 mt-0.5", colorClass)}>
+                        <Icon className="h-3.5 w-3.5" />
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-                        {notification.metadata?.clientName || notification.description}
-                      </p>
-                      <span className="text-[10px] text-muted-foreground/70 mt-1 block">
-                        {formatDistanceToNow(notification.timestamp, { addSuffix: true, locale: es })}
-                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className={cn(
+                            "text-sm leading-tight",
+                            !notification.read ? "font-semibold text-foreground" : "font-medium text-foreground/90"
+                          )}>
+                            {notification.title}
+                          </p>
+                          {!notification.read && (
+                            <div className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5" />
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                          {notification.metadata?.clientName || notification.description}
+                        </p>
+                        <span className="text-[10px] text-muted-foreground/70 mt-1 block">
+                          {formatDistanceToNow(notification.timestamp, { addSuffix: true, locale: es })}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
 
             {/* Footer */}

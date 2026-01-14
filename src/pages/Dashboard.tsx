@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { KPICard } from "@/components/shared/KPICard";
@@ -6,8 +6,9 @@ import { LiveBadge } from "@/components/shared/LiveBadge";
 import { DateRangeFilter } from "@/components/shared/DateRangeFilter";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { SkeletonCard, SkeletonTable } from "@/components/shared/SkeletonCard";
-import { fetchDashboardData, mockAppointments } from "@/lib/mock/data";
-import type { DashboardMetrics, DateRangePreset } from "@/lib/types";
+import { useDashboardMetrics } from "@/hooks/use-dashboard-metrics";
+import { useAuth } from "@/hooks/use-auth";
+import type { DateRangePreset } from "@/lib/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import {
@@ -25,6 +26,8 @@ import {
   Zap,
   Target,
   ChevronRight,
+  Calendar,
+  Loader2,
 } from "lucide-react";
 import {
   Table,
@@ -39,55 +42,65 @@ import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function Dashboard() {
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
   const [dateRange, setDateRange] = useState<DateRangePreset>("30d");
   const isMobile = useIsMobile();
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      const data = await fetchDashboardData(dateRange);
-      setMetrics(data);
-      setLoading(false);
-    };
-    load();
-  }, [dateRange]);
-
-  // Función para obtener la fecha límite según el rango seleccionado
-  const getDateRangeLimit = (): Date => {
+  // Calcular fechas según el rango seleccionado
+  const dateRangeObj = useMemo(() => {
     const now = new Date();
+    let startDate: Date;
+    
     switch (dateRange) {
       case "today":
-        return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
       case "7d":
-        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
       case "30d":
-        return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
       case "90d":
-        return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        break;
       case "ytd":
-        return new Date(now.getFullYear(), 0, 1);
+        startDate = new Date(now.getFullYear(), 0, 1);
+        break;
       case "all":
       default:
-        return new Date(0); // Desde el inicio
+        startDate = new Date(0);
     }
-  };
+    
+    return { startDate, endDate: now };
+  }, [dateRange]);
 
-  // Filtrar appointments según el rango de fechas
-  const filteredAppointments = mockAppointments.filter(apt => {
-    const aptDate = new Date(apt.datetime);
-    return aptDate >= getDateRangeLimit();
+  const { metrics, recentAppointments, isLoading, error } = useDashboardMetrics({
+    tenantId: user?.tenantId,
+    dateRange: dateRangeObj,
   });
 
   const formatCurrency = (value: number) =>
-    new Intl.NumberFormat("es-CL", {
+    new Intl.NumberFormat("es-BO", {
       style: "currency",
-      currency: "CLP",
+      currency: "BOB",
       maximumFractionDigits: 0,
     }).format(value);
 
-  if (loading || !metrics) {
+  // Empty State Component
+  const EmptyState = () => (
+    <div className="flex flex-col items-center justify-center p-12 text-center">
+      <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mb-4">
+        <Calendar className="h-8 w-8 text-muted-foreground" />
+      </div>
+      <h3 className="text-lg font-semibold text-foreground mb-2">Sin datos aún</h3>
+      <p className="text-sm text-muted-foreground max-w-sm">
+        Cuando comiences a recibir conversaciones y agendamientos, tus métricas aparecerán aquí.
+      </p>
+    </div>
+  );
+
+  if (isLoading) {
     return (
       <MainLayout>
         <div className="space-y-4 md:space-y-6">
@@ -107,11 +120,93 @@ export default function Dashboard() {
     );
   }
 
+  if (error) {
+    return (
+      <MainLayout>
+        <div className="flex flex-col items-center justify-center h-[60vh]">
+          <div className="text-destructive mb-4">Error al cargar datos</div>
+          <p className="text-sm text-muted-foreground mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="text-primary hover:underline"
+          >
+            Reintentar
+          </button>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Si no hay metrics, mostrar estado vacío
+  if (!metrics || (metrics.totalChats === 0 && metrics.totalMessages === 0)) {
+    return (
+      <MainLayout>
+        <div className="space-y-4 md:space-y-6">
+          <PageHeader
+            title="Dashboard"
+            subtitle="Vista general de tu rendimiento"
+            badge={<LiveBadge />}
+            actions={
+              <DateRangeFilter
+                value={dateRange}
+                onChange={(preset) => setDateRange(preset)}
+              />
+            }
+          />
+          
+          {/* Empty Funnel Card */}
+          <div className="rounded-xl border border-border bg-card p-4 md:p-6">
+            <EmptyState />
+          </div>
+
+          {/* Empty KPI Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+            <KPICard
+              title="Total mensajes"
+              value="0"
+              icon={MessageSquare}
+              variant="info"
+            />
+            <KPICard
+              title="Promedio msgs/sesión"
+              value="0"
+              icon={TrendingUp}
+              variant="primary"
+            />
+            <KPICard
+              title="Tasa de conversión"
+              value="0%"
+              icon={TrendingUp}
+              variant="success"
+            />
+            <KPICard
+              title="Servicios agendados"
+              value="0"
+              icon={CalendarCheck}
+              variant="warning"
+            />
+          </div>
+
+          {/* Empty Appointments */}
+          <div className="rounded-lg border border-border bg-card overflow-hidden">
+            <div className="p-4 border-b border-border">
+              <h3 className="text-sm md:text-base font-semibold text-foreground">Últimos agendamientos</h3>
+            </div>
+            <div className="p-8 text-center text-muted-foreground">
+              <Calendar className="h-8 w-8 mx-auto mb-3 text-muted-foreground/50" />
+              <p className="text-sm">Sin agendamientos en este período</p>
+            </div>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
   const funnelStages = [
     { 
       label: "TOFU", 
       sublabel: "Conversaciones iniciales", 
-      value: metrics.funnel.tofu || "--", 
+      value: metrics.funnel.tofu || 0, 
       icon: Radio,
       bgColor: "bg-slate-100 border-slate-200",
       iconBg: "bg-slate-200",
@@ -120,7 +215,7 @@ export default function Dashboard() {
     { 
       label: "MOFU", 
       sublabel: "Sesiones WhatsApp", 
-      value: metrics.funnel.mofu, 
+      value: metrics.funnel.mofu || 0, 
       icon: Flag,
       bgColor: "bg-emerald-50 border-emerald-200",
       iconBg: "bg-emerald-100",
@@ -128,8 +223,8 @@ export default function Dashboard() {
     },
     { 
       label: "Hot Leads", 
-      sublabel: "6+ mensajes", 
-      value: metrics.funnel.hotLeads, 
+      sublabel: "Alta intención", 
+      value: metrics.funnel.hotLeads || 0, 
       icon: Flame,
       bgColor: "bg-amber-50 border-amber-200",
       iconBg: "bg-amber-100",
@@ -138,7 +233,7 @@ export default function Dashboard() {
     { 
       label: "BOFU", 
       sublabel: "Ventas", 
-      value: metrics.funnel.bofu, 
+      value: metrics.funnel.bofu || 0, 
       icon: ShoppingCart,
       bgColor: "bg-green-50 border-green-200",
       iconBg: "bg-green-100",
@@ -147,10 +242,10 @@ export default function Dashboard() {
   ];
 
   const rateStages = [
-    { label: "Sin respuesta", value: metrics.funnel.deadRate, color: "bg-slate-400", icon: Snowflake, iconColor: "text-slate-500" },
-    { label: "En progreso", value: metrics.funnel.warmRate, color: "bg-sky-400", icon: Thermometer, iconColor: "text-sky-500" },
-    { label: "Alta intención", value: metrics.funnel.hotRate, color: "bg-amber-400", icon: Zap, iconColor: "text-amber-500" },
-    { label: "Conversión", value: metrics.funnel.conversionRate, color: "bg-emerald-500", icon: Target, iconColor: "text-emerald-500" },
+    { label: "Sin respuesta", value: metrics.funnel.deadRate || 0, color: "bg-slate-400", icon: Snowflake, iconColor: "text-slate-500" },
+    { label: "En progreso", value: metrics.funnel.warmRate || 0, color: "bg-sky-400", icon: Thermometer, iconColor: "text-sky-500" },
+    { label: "Alta intención", value: metrics.funnel.hotRate || 0, color: "bg-amber-400", icon: Zap, iconColor: "text-amber-500" },
+    { label: "Conversión", value: metrics.funnel.conversionRate || 0, color: "bg-emerald-500", icon: Target, iconColor: "text-emerald-500" },
   ];
 
   return (
@@ -290,7 +385,7 @@ export default function Dashboard() {
           />
           <KPICard
             title="Servicios agendados"
-            value={metrics.servicesBooked}
+            value={metrics.servicesBooked.toString()}
             icon={CalendarCheck}
             variant="warning"
           />
@@ -300,17 +395,22 @@ export default function Dashboard() {
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between">
             <h3 className="text-sm md:text-base font-semibold text-foreground">Últimos agendamientos</h3>
-            {isMobile && (
+            {isMobile && recentAppointments.length > 0 && (
               <button className="text-xs text-primary font-medium flex items-center gap-1">
                 Ver todos <ChevronRight className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
           
-          {isMobile ? (
+          {recentAppointments.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">
+              <Calendar className="h-8 w-8 mx-auto mb-3 text-muted-foreground/50" />
+              <p className="text-sm">Sin agendamientos en este período</p>
+            </div>
+          ) : isMobile ? (
             // Mobile: Card list
             <div className="divide-y divide-border">
-              {filteredAppointments.slice(0, 5).map((apt) => (
+              {recentAppointments.slice(0, 5).map((apt) => (
                 <div key={apt.id} className="p-4 hover:bg-secondary/30 active:bg-secondary/50 transition-colors">
                   <div className="flex items-start justify-between mb-2">
                     <div>
@@ -337,7 +437,7 @@ export default function Dashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredAppointments.slice(0, 8).map((apt) => (
+                {recentAppointments.slice(0, 8).map((apt) => (
                   <TableRow key={apt.id} className="border-border hover:bg-secondary/50">
                     <TableCell className="font-medium text-foreground">
                       {format(apt.datetime, "dd MMM, HH:mm", { locale: es })}

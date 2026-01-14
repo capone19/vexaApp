@@ -33,7 +33,7 @@ interface CompanyProfile {
 const STORAGE_KEY = 'company_profile';
 const PHONE_PREFIX = '+591';
 
-// Función para obtener el perfil guardado o el inicial
+// Función para obtener el perfil guardado o vacío para producción
 const getStoredProfile = (): CompanyProfile => {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -43,11 +43,12 @@ const getStoredProfile = (): CompanyProfile => {
   } catch (e) {
     console.error('Error loading profile:', e);
   }
+  // Valores vacíos por defecto para nuevos clientes
   return {
-    companyName: 'Beauty Salon Pro',
-    email: 'contacto@beautysalonpro.com',
-    phoneNumber: '7123 4567',
-    industry: 'Belleza y Estética',
+    companyName: '',
+    email: '',
+    phoneNumber: '',
+    industry: '',
     logo: null,
   };
 };
@@ -129,11 +130,14 @@ export default function Settings() {
   };
 
   const initials = profile.companyName
-    .split(' ')
-    .map(word => word[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+    ? profile.companyName
+        .split(' ')
+        .filter(word => word.length > 0)
+        .map(word => word[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
+    : '?';
 
   return (
     <MainLayout>

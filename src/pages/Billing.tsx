@@ -45,10 +45,10 @@ interface BillingInfoData {
 const BILLING_INFO_STORAGE_KEY = 'vexa_billing_info';
 
 const defaultBillingInfo: BillingInfoData = {
-  companyName: 'Beauty Salon Pro SpA',
-  taxId: '76.543.210-K',
-  address: 'Av. Providencia 1234, Santiago',
-  billingEmail: 'facturas@beautysalonpro.cl',
+  companyName: '',
+  taxId: '',
+  address: '',
+  billingEmail: '',
 };
 
 const getStoredBillingInfo = (): BillingInfoData => {
@@ -73,6 +73,7 @@ const plans: Array<{
   currency: string;
   description: string;
   features: string[];
+  reports: string[];
   popular: boolean;
 }> = [
   {
@@ -89,6 +90,9 @@ const plans: Array<{
       '1 número de WhatsApp conectado',
       'Modelo 4.1 mini, OpenAI',
     ],
+    reports: [
+      '1 reporte: Rendimiento del agente',
+    ],
     popular: false,
   },
   {
@@ -102,9 +106,14 @@ const plans: Array<{
       'Hasta 1,000 conversaciones al mes',
       'Conversación adicional: $0.30 USD',
       'Soporte personalizado',
-      'Módulo de WhatsApp Marketing (campañas outbound)',
+      'Módulo de WhatsApp Marketing',
       '3 números de WhatsApp conectados',
       'Acceso a todos los modelos OpenAI',
+    ],
+    reports: [
+      '2 reportes incluidos:',
+      '• Rendimiento del agente',
+      '• Métricas conversacionales',
     ],
     popular: true,
   },
@@ -119,10 +128,15 @@ const plans: Array<{
       'Hasta 4,000 conversaciones al mes',
       'Conversación adicional: $0.30 USD',
       'Integraciones personalizadas',
-      'Asesoría publicitaria',
-      'Todo lo incluido en el plan Pro',
       'Números de WhatsApp: ilimitados',
       'Acceso a todos los modelos OpenAI',
+      'Soporte prioritario',
+    ],
+    reports: [
+      '3 reportes incluidos:',
+      '• Rendimiento del agente',
+      '• Métricas conversacionales',
+      '• Leads no convertidos',
     ],
     popular: false,
   },
@@ -247,10 +261,19 @@ const Billing = () => {
                   <div className="p-4">
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">Incluye</p>
                     <ul className="space-y-1.5">
-                      {plan.features.slice(0, 4).map((feature, index) => (
+                      {plan.features.slice(0, 3).map((feature, index) => (
                         <li key={index} className="flex items-start gap-2 text-xs">
                           <CheckCircle className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
                           <span className="text-muted-foreground">{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {/* Reportes */}
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-3 mb-2 font-medium">Reportes</p>
+                    <ul className="space-y-1">
+                      {plan.reports.map((report, index) => (
+                        <li key={index} className="text-xs text-muted-foreground">
+                          {report}
                         </li>
                       ))}
                     </ul>
@@ -311,13 +334,25 @@ const Billing = () => {
               </div>
               
               {/* Features */}
-              <div className="px-5 pb-4">
+              <div className="px-5 pb-2">
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">Funciones incluidas</p>
                 <ul className="space-y-2">
                   {plan.features.map((feature, index) => (
                     <li key={index} className="flex items-start gap-2 text-sm">
                       <CheckCircle className="h-4 w-4 text-primary shrink-0 mt-0.5" />
                       <span className="text-foreground">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              
+              {/* Reportes */}
+              <div className="px-5 pb-4 pt-2 border-t border-border/50 mt-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">Reportes semanales</p>
+                <ul className="space-y-1">
+                  {plan.reports.map((report, index) => (
+                    <li key={index} className="text-sm text-foreground">
+                      {report}
                     </li>
                   ))}
                 </ul>
@@ -392,12 +427,12 @@ const Billing = () => {
                   <span className="text-xs md:text-sm text-muted-foreground">Conversaciones</span>
                   <MessageSquare className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>684</p>
+                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>0</p>
                 <div className="mt-2">
                   <div className="h-1.5 bg-border rounded-full overflow-hidden">
-                    <div className="h-full bg-primary rounded-full" style={{ width: '68%' }} />
+                    <div className="h-full bg-primary rounded-full" style={{ width: '0%' }} />
                   </div>
-                  <p className="text-[10px] md:text-xs text-muted-foreground mt-1">68% de 1,000</p>
+                  <p className="text-[10px] md:text-xs text-muted-foreground mt-1">0% de 1,000</p>
                 </div>
               </div>
               <div className={cn("rounded-lg bg-secondary", isMobile ? "p-3" : "p-4")}>
@@ -405,16 +440,16 @@ const Billing = () => {
                   <span className="text-xs md:text-sm text-muted-foreground">WhatsApp</span>
                   <Users className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>2</p>
-                <p className="text-[10px] md:text-xs text-muted-foreground mt-2">de 3 disponibles</p>
+                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>0</p>
+                <p className="text-[10px] md:text-xs text-muted-foreground mt-2">de 1 disponible</p>
               </div>
               <div className={cn("rounded-lg bg-secondary", isMobile ? "p-3" : "p-4")}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs md:text-sm text-muted-foreground">Campañas</span>
                   <Receipt className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>4</p>
-                <p className="text-[10px] md:text-xs text-muted-foreground mt-2">Incluido en Pro</p>
+                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>0</p>
+                <p className="text-[10px] md:text-xs text-muted-foreground mt-2">Disponible en Pro</p>
               </div>
             </div>
           </CardContent>
@@ -518,22 +553,22 @@ const Billing = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Razón Social</p>
-                  <p className="text-sm font-medium text-foreground">{billingInfo.companyName}</p>
+                  <p className="text-sm font-medium text-foreground">{billingInfo.companyName || <span className="text-muted-foreground italic">Sin configurar</span>}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">RUT</p>
-                  <p className="text-sm font-medium text-foreground">{billingInfo.taxId}</p>
+                  <p className="text-xs text-muted-foreground">RUT / NIT</p>
+                  <p className="text-sm font-medium text-foreground">{billingInfo.taxId || <span className="text-muted-foreground italic">Sin configurar</span>}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Dirección</p>
-                  <p className="text-sm font-medium text-foreground">{billingInfo.address}</p>
+                  <p className="text-sm font-medium text-foreground">{billingInfo.address || <span className="text-muted-foreground italic">Sin configurar</span>}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Email de Facturación</p>
-                  <p className="text-sm font-medium text-foreground truncate">{billingInfo.billingEmail}</p>
+                  <p className="text-sm font-medium text-foreground truncate">{billingInfo.billingEmail || <span className="text-muted-foreground italic">Sin configurar</span>}</p>
                 </div>
               </div>
               <Button 
@@ -565,49 +600,10 @@ const Billing = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              {mockBilling.history.map((record) => (
-                <div 
-                  key={record.id}
-                  className={cn(
-                    "flex items-center justify-between rounded-lg bg-secondary hover:bg-secondary/80 active:bg-secondary transition-colors",
-                    isMobile ? "p-3" : "p-4"
-                  )}
-                >
-                  <div className="flex items-center gap-3 md:gap-4 min-w-0">
-                    <div className="hidden sm:flex w-10 h-10 rounded-lg bg-background items-center justify-center border border-border shrink-0">
-                      <Receipt className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">
-                        Factura #{record.id.replace('inv-', '').padStart(4, '0')}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {format(record.date, isMobile ? 'dd MMM yy' : 'dd MMMM yyyy', { locale: es })}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 md:gap-4 shrink-0">
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-foreground">{formatCurrency(record.amount, 'USD')}</p>
-                      <div className="flex items-center gap-1 text-xs justify-end">
-                        {getStatusIcon(record.status)}
-                        <span className={cn(
-                          record.status === 'paid' ? 'text-success' :
-                          record.status === 'pending' ? 'text-warning' : 'text-destructive'
-                        )}>
-                          {getStatusLabel(record.status)}
-                        </span>
-                      </div>
-                    </div>
-                    {record.invoiceUrl && (
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <Download className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Receipt className="h-12 w-12 text-muted-foreground/50 mb-4" />
+              <p className="text-sm text-muted-foreground">Aún no tienes pagos registrados</p>
+              <p className="text-xs text-muted-foreground mt-1">Tus facturas aparecerán aquí</p>
             </div>
           </CardContent>
         </Card>

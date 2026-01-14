@@ -5,197 +5,298 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { 
   Lock, 
-  FileText, 
-  Download, 
-  Calendar,
   TrendingUp,
   Users,
   MessageSquare,
   DollarSign,
   BarChart3,
-  PieChart,
+  Megaphone,
+  UserX,
+  ShoppingCart,
+  Bot,
   ArrowRight,
   Sparkles,
   Crown,
-  CheckCircle
+  CheckCircle,
+  Plus,
+  Check,
+  X
 } from 'lucide-react';
-import { isPremiumPlan, onPlanChange, getCurrentPlan, type PlanId } from '@/lib/plan';
+import { onPlanChange, getCurrentPlan, type PlanId } from '@/lib/plan';
+import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { toast } from 'sonner';
 
-const reportTypes = [
+// Definición de reportes
+interface ReportType {
+  id: string;
+  title: string;
+  description: string;
+  icon: React.ElementType;
+  frequency: string;
+  price: number; // 0 = incluido en plan, >0 = precio adicional
+  includedIn: PlanId[]; // planes donde está incluido gratis
+  isPremiumAddon: boolean; // si es un addon de pago
+}
+
+const reportTypes: ReportType[] = [
   {
-    id: 'performance',
-    title: 'Rendimiento del Agente',
-    description: 'Análisis detallado de tiempos de respuesta, tasas de resolución y satisfacción.',
-    icon: TrendingUp,
+    id: 'agent-performance',
+    title: 'Análisis de rendimiento del agente',
+    description: 'Métricas de tiempos de respuesta, tasas de resolución, satisfacción y eficiencia del bot.',
+    icon: Bot,
     frequency: 'Semanal',
-    requiresPremium: false, // Always available
+    price: 0,
+    includedIn: ['basic', 'pro', 'enterprise'], // Incluido en TODOS los planes
+    isPremiumAddon: false,
   },
   {
-    id: 'conversations',
-    title: 'Análisis de Conversaciones',
-    description: 'Insights sobre patrones de conversación, preguntas frecuentes y puntos de fricción.',
+    id: 'conversational-metrics',
+    title: 'Analítica de métricas conversacionales',
+    description: 'Insights profundos sobre patrones de conversación, preguntas frecuentes y puntos de fricción.',
     icon: MessageSquare,
     frequency: 'Semanal',
-    requiresPremium: true,
+    price: 0,
+    includedIn: ['pro', 'enterprise'], // Incluido en Pro y Enterprise
+    isPremiumAddon: false,
   },
   {
-    id: 'funnel',
-    title: 'Reporte de Funnel',
-    description: 'Análisis profundo del embudo de conversión con recomendaciones de mejora.',
-    icon: BarChart3,
-    frequency: 'Mensual',
-    requiresPremium: true,
-  },
-  {
-    id: 'revenue',
-    title: 'Impacto en Ingresos',
-    description: 'ROI del agente, ingresos generados y proyecciones de crecimiento.',
-    icon: DollarSign,
-    frequency: 'Mensual',
-    requiresPremium: true,
-  },
-  {
-    id: 'whatsapp',
-    title: 'Rendimiento WhatsApp',
-    description: 'Métricas detalladas de rendimiento del funnel de ventas por WhatsApp.',
-    icon: PieChart,
+    id: 'unconverted-leads',
+    title: 'Clientes potenciales no convertidos',
+    description: 'Análisis de leads que no llegaron a conversión, razones de abandono y oportunidades de mejora.',
+    icon: UserX,
     frequency: 'Semanal',
-    requiresPremium: true,
+    price: 9,
+    includedIn: ['enterprise'], // Solo incluido en Enterprise
+    isPremiumAddon: true,
   },
   {
-    id: 'customers',
-    title: 'Segmentación de Clientes',
-    description: 'Análisis de comportamiento, preferencias y valor de vida del cliente.',
-    icon: Users,
-    frequency: 'Mensual',
-    requiresPremium: true,
+    id: 'converted-sales',
+    title: 'Clientes convertidos (ventas)',
+    description: 'Reporte detallado de conversiones, ticket promedio, servicios más vendidos y tendencias.',
+    icon: ShoppingCart,
+    frequency: 'Semanal',
+    price: 9,
+    includedIn: [], // No incluido en ningún plan, siempre es addon
+    isPremiumAddon: true,
   },
-];
-
-const scheduledReports = [
-  { name: 'Rendimiento Semanal', nextDate: 'Lunes 10:00', enabled: true },
-  { name: 'Resumen Mensual', nextDate: '1 de cada mes', enabled: false },
+  {
+    id: 'meta-ads',
+    title: 'Marketing / Campañas Meta Ads',
+    description: 'Rendimiento de campañas publicitarias, ROAS, CPA, alcance y métricas de conversión.',
+    icon: Megaphone,
+    frequency: 'Semanal',
+    price: 9,
+    includedIn: [], // No incluido en ningún plan, siempre es addon
+    isPremiumAddon: true,
+  },
+  {
+    id: 'ad-advisor',
+    title: 'Asesor publicitario',
+    description: 'Recomendaciones personalizadas de IA para optimizar tu inversión publicitaria y mejorar resultados.',
+    icon: Sparkles,
+    frequency: 'Semanal',
+    price: 29,
+    includedIn: [], // No incluido en ningún plan, siempre es addon
+    isPremiumAddon: true,
+  },
 ];
 
 const Reports = () => {
   const navigate = useNavigate();
-  const [hasPremium, setHasPremium] = useState(isPremiumPlan());
   const [currentPlan, setCurrentPlanState] = useState<PlanId>(getCurrentPlan());
+  const [purchasedAddons, setPurchasedAddons] = useState<string[]>([]);
+  const [selectedReport, setSelectedReport] = useState<ReportType | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   // Listen for plan changes
   useEffect(() => {
     const unsubscribe = onPlanChange((plan) => {
-      setHasPremium(isPremiumPlan());
       setCurrentPlanState(plan);
     });
     return unsubscribe;
   }, []);
+
+  // Check if a report is available for the current user
+  const isReportAvailable = (report: ReportType): boolean => {
+    // Incluido en el plan actual
+    if (report.includedIn.includes(currentPlan)) return true;
+    // Comprado como addon
+    if (purchasedAddons.includes(report.id)) return true;
+    return false;
+  };
+
+  // Check if report is included in current plan (free)
+  const isIncludedInPlan = (report: ReportType): boolean => {
+    return report.includedIn.includes(currentPlan);
+  };
+
+  // Get the label for the report status
+  const getReportStatus = (report: ReportType): { label: string; variant: 'included' | 'addon' | 'locked' } => {
+    if (isIncludedInPlan(report)) {
+      return { label: 'Incluido', variant: 'included' };
+    }
+    if (purchasedAddons.includes(report.id)) {
+      return { label: 'Activo', variant: 'included' };
+    }
+    if (report.price > 0) {
+      return { label: `+$${report.price}/mes`, variant: 'addon' };
+    }
+    return { label: 'Bloqueado', variant: 'locked' };
+  };
+
+  // Get minimum plan required for a report
+  const getMinimumPlan = (report: ReportType): string | null => {
+    if (report.includedIn.includes('basic')) return null;
+    if (report.includedIn.includes('pro')) return 'Pro';
+    if (report.includedIn.includes('enterprise')) return 'Enterprise';
+    return null;
+  };
+
+  const handleReportClick = (report: ReportType) => {
+    if (isReportAvailable(report)) {
+      // Abrir el reporte (en el futuro, navegar a la vista del reporte)
+      toast.success(`Abriendo ${report.title}...`);
+    } else {
+      // Mostrar modal para comprar
+      setSelectedReport(report);
+      setIsDialogOpen(true);
+    }
+  };
+
+  const handlePurchaseAddon = (report: ReportType) => {
+    // En producción, esto conectaría con Stripe o similar
+    setPurchasedAddons(prev => [...prev, report.id]);
+    setIsDialogOpen(false);
+    toast.success(`${report.title} activado correctamente`);
+  };
 
   return (
     <MainLayout>
       <div className="space-y-6">
         <PageHeader
           title="Reportes"
-          subtitle="Análisis avanzados e insights de tu agente"
+          subtitle="Análisis avanzados e insights de tu negocio"
         />
 
-        {/* Upgrade Banner - Only show if not premium */}
-        {!hasPremium && (
-          <Card className="bg-primary/5 border-primary/20">
-            <CardContent className="p-6">
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div className="flex items-start gap-4">
-                  <div className="p-3 rounded-xl bg-primary/20">
+        {/* Current Plan Info */}
+        <Card className={cn(
+          "border-2",
+          currentPlan === 'basic' ? "border-border bg-secondary/30" :
+          currentPlan === 'pro' ? "border-primary/30 bg-primary/5" :
+          "border-amber-500/30 bg-amber-50"
+        )}>
+          <CardContent className="p-4 md:p-6">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <div className={cn(
+                  "p-3 rounded-xl",
+                  currentPlan === 'basic' ? "bg-secondary" :
+                  currentPlan === 'pro' ? "bg-primary/20" :
+                  "bg-amber-500/20"
+                )}>
+                  {currentPlan === 'basic' ? (
+                    <BarChart3 className="h-6 w-6 text-muted-foreground" />
+                  ) : currentPlan === 'pro' ? (
                     <Crown className="h-6 w-6 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold mb-1">
-                      Desbloquea Reportes Avanzados
-                    </h3>
-                    <p className="text-muted-foreground text-sm max-w-md">
-                      Obtén insights profundos sobre el rendimiento de tu agente, 
-                      análisis de conversaciones con IA y reportes automáticos programados.
-                    </p>
-                  </div>
-                </div>
-                <Button className="gap-2 shrink-0" onClick={() => navigate('/facturacion')}>
-                  <Sparkles className="h-4 w-4" />
-                  Actualizar a Pro
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Premium Success Banner - Show when premium */}
-        {hasPremium && (
-          <Card className="bg-success/5 border-success/20">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-success/20">
-                  <CheckCircle className="h-6 w-6 text-success" />
+                  ) : (
+                    <Sparkles className="h-6 w-6 text-amber-600" />
+                  )}
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold mb-1 text-success">
-                    Plan {currentPlan === 'pro' ? 'Pro' : 'Enterprise'} Activo
+                  <h3 className="text-lg font-semibold mb-1">
+                    Plan {currentPlan === 'basic' ? 'Básico' : currentPlan === 'pro' ? 'Pro' : 'Enterprise'}
                   </h3>
                   <p className="text-muted-foreground text-sm">
-                    Tienes acceso a todos los reportes avanzados, exportación de datos y reportes programados.
+                    {currentPlan === 'basic' && "1 reporte incluido. Agrega más según tu necesidad."}
+                    {currentPlan === 'pro' && "2 reportes incluidos. Acceso a reportes avanzados."}
+                    {currentPlan === 'enterprise' && "3 reportes incluidos. Máxima analítica disponible."}
                   </p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        )}
+              {currentPlan === 'basic' && (
+                <Button className="gap-2 shrink-0" onClick={() => navigate('/facturacion')}>
+                  <Sparkles className="h-4 w-4" />
+                  Actualizar Plan
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Report Types Grid */}
+        {/* Reports Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {reportTypes.map((report) => {
             const Icon = report.icon;
-            const isLocked = report.requiresPremium && !hasPremium;
+            const available = isReportAvailable(report);
+            const status = getReportStatus(report);
+            const minPlan = getMinimumPlan(report);
             
             return (
               <Card 
                 key={report.id}
-                className={`relative overflow-hidden transition-all ${
-                  isLocked 
-                    ? 'border-border opacity-75' 
-                    : 'border-border hover:border-primary/50 hover:shadow-md cursor-pointer'
-                }`}
-              >
-                {isLocked && (
-                  <div className="absolute top-3 right-3">
-                    <div className="p-1.5 rounded-full bg-secondary">
-                      <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                    </div>
-                  </div>
+                className={cn(
+                  "relative overflow-hidden transition-all cursor-pointer",
+                  available 
+                    ? "border-border hover:border-primary/50 hover:shadow-md" 
+                    : "border-border"
                 )}
+                onClick={() => handleReportClick(report)}
+              >
+                {/* Status Badge */}
+                <div className="absolute top-3 right-3">
+                  {status.variant === 'included' ? (
+                    <Badge className="bg-success/10 text-success border-success/30 gap-1">
+                      <Check className="h-3 w-3" />
+                      {status.label}
+                    </Badge>
+                  ) : status.variant === 'addon' ? (
+                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 gap-1">
+                      <Plus className="h-3 w-3" />
+                      {status.label}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="bg-secondary text-muted-foreground gap-1">
+                      <Lock className="h-3 w-3" />
+                      {minPlan}
+                    </Badge>
+                  )}
+                </div>
+
                 <CardHeader className="pb-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${
-                    isLocked ? 'bg-secondary' : 'bg-primary/10'
-                  }`}>
-                    <Icon className={`h-5 w-5 ${isLocked ? 'text-muted-foreground' : 'text-primary'}`} />
+                  <div className={cn(
+                    "w-10 h-10 rounded-lg flex items-center justify-center mb-3",
+                    available ? "bg-primary/10" : "bg-secondary"
+                  )}>
+                    <Icon className={cn(
+                      "h-5 w-5",
+                      available ? "text-primary" : "text-muted-foreground"
+                    )} />
                   </div>
-                  <CardTitle className="text-base">{report.title}</CardTitle>
+                  <CardTitle className={cn("text-base pr-20", !available && "text-muted-foreground")}>
+                    {report.title}
+                  </CardTitle>
                   <CardDescription className="text-sm">
                     {report.description}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="pt-0">
                   <div className="flex items-center justify-between">
-                    <Badge variant="outline" className={isLocked ? 'opacity-50' : ''}>
+                    <Badge variant="outline" className={!available ? 'opacity-50' : ''}>
                       {report.frequency}
                     </Badge>
-                    {isLocked ? (
-                      <Button variant="ghost" size="sm" className="text-primary gap-1" disabled>
-                        <Lock className="h-3.5 w-3.5" />
-                        Pro
+                    {available ? (
+                      <Button variant="ghost" size="sm" className="text-primary gap-1">
+                        Ver reporte
+                        <ArrowRight className="h-3.5 w-3.5" />
                       </Button>
                     ) : (
-                      <Button variant="ghost" size="sm" className="text-primary gap-1">
-                        Ver
+                      <Button variant="ghost" size="sm" className="text-amber-600 gap-1">
+                        {report.price > 0 ? 'Agregar' : 'Desbloquear'}
                         <ArrowRight className="h-3.5 w-3.5" />
                       </Button>
                     )}
@@ -206,177 +307,173 @@ const Reports = () => {
           })}
         </div>
 
-        {/* Scheduled Reports Section */}
+        {/* Plan Comparison */}
         <Card className="border-border">
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${hasPremium ? 'bg-primary/10' : 'bg-secondary'}`}>
-                  <Calendar className={`h-5 w-5 ${hasPremium ? 'text-primary' : 'text-muted-foreground'}`} />
-                </div>
-                <div>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    Reportes Programados
-                    {!hasPremium && (
-                      <div className="p-1 rounded-full bg-secondary">
-                        <Lock className="h-3 w-3 text-muted-foreground" />
-                      </div>
-                    )}
-                  </CardTitle>
-                  <CardDescription>
-                    Recibe reportes automáticos en tu correo
-                  </CardDescription>
-                </div>
-              </div>
-              {!hasPremium && (
-                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
-                  Pro
-                </Badge>
-              )}
-            </div>
+            <CardTitle className="text-lg">Compara Planes - Reportes Incluidos</CardTitle>
+            <CardDescription>
+              Cada plan incluye diferentes reportes. Puedes agregar más como addons.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className={`space-y-3 ${!hasPremium ? 'opacity-50' : ''}`}>
-              {scheduledReports.map((report, index) => (
-                <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-secondary">
-                  <div className="flex items-center gap-3">
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{report.name}</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground">{report.nextDate}</span>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-3 px-2 font-medium">Reporte</th>
+                    <th className="text-center py-3 px-2 font-medium">
+                      <div className="flex flex-col items-center gap-1">
+                        <Badge variant="outline">Básico</Badge>
+                        <span className="text-xs text-muted-foreground">$99/mes</span>
+                      </div>
+                    </th>
+                    <th className="text-center py-3 px-2 font-medium">
+                      <div className="flex flex-col items-center gap-1">
+                        <Badge className="bg-primary">Pro</Badge>
+                        <span className="text-xs text-muted-foreground">$199/mes</span>
+                      </div>
+                    </th>
+                    <th className="text-center py-3 px-2 font-medium">
+                      <div className="flex flex-col items-center gap-1">
+                        <Badge className="bg-amber-500">Enterprise</Badge>
+                        <span className="text-xs text-muted-foreground">$499/mes</span>
+                      </div>
+                    </th>
+                    <th className="text-center py-3 px-2 font-medium">
+                      <span className="text-muted-foreground">Addon</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportTypes.map((report) => (
+                    <tr key={report.id} className="border-b border-border/50 last:border-0">
+                      <td className="py-3 px-2">
+                        <div className="flex items-center gap-2">
+                          <report.icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <span className={cn(isMobile && "text-xs")}>{report.title}</span>
+                        </div>
+                      </td>
+                      <td className="text-center py-3 px-2">
+                        {report.includedIn.includes('basic') ? (
+                          <CheckCircle className="h-5 w-5 text-success mx-auto" />
+                        ) : (
+                          <X className="h-5 w-5 text-muted-foreground/30 mx-auto" />
+                        )}
+                      </td>
+                      <td className="text-center py-3 px-2">
+                        {report.includedIn.includes('pro') || report.includedIn.includes('basic') ? (
+                          <CheckCircle className="h-5 w-5 text-success mx-auto" />
+                        ) : (
+                          <X className="h-5 w-5 text-muted-foreground/30 mx-auto" />
+                        )}
+                      </td>
+                      <td className="text-center py-3 px-2">
+                        {report.includedIn.includes('enterprise') || report.includedIn.includes('pro') || report.includedIn.includes('basic') ? (
+                          <CheckCircle className="h-5 w-5 text-success mx-auto" />
+                        ) : (
+                          <X className="h-5 w-5 text-muted-foreground/30 mx-auto" />
+                        )}
+                      </td>
+                      <td className="text-center py-3 px-2">
+                        {report.price > 0 ? (
+                          <Badge variant="outline" className="text-xs">
+                            +${report.price}/mes
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Summary */}
+            <div className="mt-6 p-4 bg-secondary/50 rounded-lg">
+              <p className="text-sm text-muted-foreground">
+                <strong className="text-foreground">Nota:</strong> Todos los reportes se generan semanalmente. 
+                Los addons se suman al costo de tu plan mensual. 
+                El <strong>Asesor publicitario</strong> incluye recomendaciones personalizadas de IA.
+              </p>
             </div>
           </CardContent>
         </Card>
+      </div>
 
-        {/* Export Section */}
-        <Card className="border-border">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-lg ${hasPremium ? 'bg-primary/10' : 'bg-secondary'}`}>
-                <Download className={`h-5 w-5 ${hasPremium ? 'text-primary' : 'text-muted-foreground'}`} />
-              </div>
-              <div>
-                <CardTitle className="text-base flex items-center gap-2">
-                  Exportación de Datos
-                  {!hasPremium && (
-                    <div className="p-1 rounded-full bg-muted/50">
-                      <Lock className="h-3 w-3 text-muted-foreground" />
+      {/* Purchase Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedReport && <selectedReport.icon className="h-5 w-5 text-primary" />}
+              {selectedReport?.title}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedReport?.description}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedReport && (
+            <div className="space-y-4 py-4">
+              {/* Si el reporte requiere un plan superior */}
+              {!selectedReport.isPremiumAddon && getMinimumPlan(selectedReport) && (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-sm text-amber-800">
+                    Este reporte está incluido en el plan <strong>{getMinimumPlan(selectedReport)}</strong> o superior.
+                  </p>
+                  <Button 
+                    className="mt-3 w-full" 
+                    onClick={() => {
+                      setIsDialogOpen(false);
+                      navigate('/facturacion');
+                    }}
+                  >
+                    Ver planes disponibles
+                  </Button>
+                </div>
+              )}
+
+              {/* Si el reporte es un addon de pago */}
+              {selectedReport.isPremiumAddon && selectedReport.price > 0 && (
+                <>
+                  {/* Check if included in higher plan */}
+                  {selectedReport.includedIn.length > 0 && !selectedReport.includedIn.includes(currentPlan) && (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-sm text-blue-800">
+                        💡 Este reporte está <strong>incluido gratis</strong> en el plan {selectedReport.includedIn.includes('pro') ? 'Pro' : 'Enterprise'}.
+                      </p>
                     </div>
                   )}
-                </CardTitle>
-                <CardDescription>
-                  Descarga tus datos en formatos CSV, Excel o PDF
-                </CardDescription>
-              </div>
+
+                  <div className="p-4 bg-secondary rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-muted-foreground">Costo mensual adicional</span>
+                      <span className="text-2xl font-bold">${selectedReport.price}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Se suma a tu plan actual. Puedes cancelar en cualquier momento.
+                    </p>
+                  </div>
+
+                  <Button 
+                    className="w-full" 
+                    onClick={() => handlePurchaseAddon(selectedReport)}
+                  >
+                    Agregar por ${selectedReport.price}/mes
+                  </Button>
+                </>
+              )}
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className={`flex flex-wrap gap-2 ${!hasPremium ? 'opacity-50' : ''}`}>
-              <Button variant="outline" size="sm" disabled={!hasPremium}>
-                <FileText className="h-4 w-4 mr-2" />
-                Exportar Chats
-              </Button>
-              <Button variant="outline" size="sm" disabled={!hasPremium}>
-                <FileText className="h-4 w-4 mr-2" />
-                Exportar Citas
-              </Button>
-              <Button variant="outline" size="sm" disabled={!hasPremium}>
-                <FileText className="h-4 w-4 mr-2" />
-                Exportar Métricas
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          )}
 
-        {/* Feature Comparison - Only show if not premium */}
-        {!hasPremium && (
-          <Card className="border-border">
-            <CardHeader>
-              <CardTitle className="text-lg">Compara Planes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Basic */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">Básico</Badge>
-                    {currentPlan === 'basic' && (
-                      <span className="text-sm text-muted-foreground">Tu plan actual</span>
-                    )}
-                  </div>
-                  <ul className="space-y-2 text-sm">
-                    <li className="flex items-center gap-2 text-muted-foreground">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                      Dashboard básico
-                    </li>
-                    <li className="flex items-center gap-2 text-muted-foreground">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                      Métricas en tiempo real
-                    </li>
-                    <li className="flex items-center gap-2 text-muted-foreground">
-                      <span className="w-1.5 h-1.5 rounded-full bg-muted" />
-                      1 reporte básico
-                    </li>
-                  </ul>
-                </div>
-
-                {/* Pro */}
-                <div className="space-y-4 p-4 -m-4 rounded-lg bg-primary/5 border border-primary/20">
-                  <div className="flex items-center gap-2">
-                    <Badge className="bg-primary">Pro</Badge>
-                    <span className="text-sm text-primary">Recomendado</span>
-                  </div>
-                  <ul className="space-y-2 text-sm">
-                    <li className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                      Todo del plan Básico
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                      6 tipos de reportes
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                      Reportes programados
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                      Exportación de datos
-                    </li>
-                  </ul>
-                </div>
-
-                {/* Enterprise */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">Enterprise</Badge>
-                  </div>
-                  <ul className="space-y-2 text-sm text-muted-foreground">
-                    <li className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                      Todo del plan Pro
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                      Reportes personalizados
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                      API de datos
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                      Soporte prioritario
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              Cancelar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 };

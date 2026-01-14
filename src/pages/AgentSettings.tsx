@@ -12,7 +12,7 @@ import { PaymentsSection } from "@/components/agent-settings/sections/PaymentsSe
 import { InterventionSection } from "@/components/agent-settings/sections/InterventionSection";
 import { FAQSection } from "@/components/agent-settings/sections/FAQSection";
 import { LimitsSection } from "@/components/agent-settings/sections/LimitsSection";
-import { mockAgentSettings } from "@/lib/mock/data";
+import { getEmptyAgentSettings } from "@/lib/mock/empty-defaults";
 import type { AgentSettings as AgentSettingsType } from "@/lib/types";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/hooks/use-auth";
@@ -54,7 +54,7 @@ const sectionsList: Omit<AgentSettingsSectionInfo, "lastModified">[] = [
 export default function AgentSettings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeSection = (searchParams.get("section") as AgentSettingsSectionId) || "personality";
-  const [settings, setSettings] = useState<AgentSettingsType>(mockAgentSettings);
+  const [settings, setSettings] = useState<AgentSettingsType>(getEmptyAgentSettings());
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -92,8 +92,9 @@ export default function AgentSettings() {
         for (const { sectionId, data } of results) {
           if (data) {
             // Merge con los datos existentes para mantener estructura
+            const emptyDefaults = getEmptyAgentSettings();
             (updated as any)[sectionId] = {
-              ...mockAgentSettings[sectionId as keyof typeof mockAgentSettings],
+              ...emptyDefaults[sectionId as keyof typeof emptyDefaults],
               ...data,
               lastModified: data.lastModified ? new Date(data.lastModified as string) : new Date(),
             };
