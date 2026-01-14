@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, addWeeks, subWeeks, addDays, subDays } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, isToday, addMonths, subMonths, startOfWeek, endOfWeek, addWeeks, subWeeks, addDays, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Clock, User, Phone, MapPin, Calendar as CalendarIcon, Filter, Plus, X, Lock } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -500,13 +500,14 @@ const CalendarContent = () => {
               {/* Calendar Grid */}
               {view === 'month' && (
                 <div className="grid grid-cols-7 gap-1">
-                  {getDaysForMonth().map((day) => (
+                  {getDaysForMonth().map((date) => (
                     <CalendarDayCell
-                      key={day.toISOString()}
-                      date={day}
-                      currentMonth={currentDate}
-                      selectedDate={selectedDate}
-                      appointments={getAppointmentsForDate(day)}
+                      key={date.toISOString()}
+                      day={date}
+                      isCurrentMonth={isSameMonth(date, currentDate)}
+                      isToday={isToday(date)}
+                      isSelected={isSameDay(date, selectedDate)}
+                      appointments={getAppointmentsForDate(date)}
                       onSelect={handleDateSelect}
                     />
                   ))}
@@ -515,15 +516,15 @@ const CalendarContent = () => {
 
               {view === 'week' && (
                 <div className="grid grid-cols-7 gap-1">
-                  {getDaysForWeek().map((day) => (
+                  {getDaysForWeek().map((date) => (
                     <CalendarDayCell
-                      key={day.toISOString()}
-                      date={day}
-                      currentMonth={currentDate}
-                      selectedDate={selectedDate}
-                      appointments={getAppointmentsForDate(day)}
+                      key={date.toISOString()}
+                      day={date}
+                      isCurrentMonth={isSameMonth(date, currentDate)}
+                      isToday={isToday(date)}
+                      isSelected={isSameDay(date, selectedDate)}
+                      appointments={getAppointmentsForDate(date)}
                       onSelect={handleDateSelect}
-                      isWeekView
                     />
                   ))}
                 </div>

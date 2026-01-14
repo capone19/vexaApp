@@ -108,7 +108,7 @@ export default function Chats() {
             id: msg.id,
             chatId: session.id,
             content: msg.content || '',
-            sender: msg.sender_type === 'user' ? 'user' : msg.sender_type === 'bot' ? 'bot' : 'human',
+            sender: (msg.sender_type === 'user' ? 'user' : msg.sender_type === 'bot' ? 'bot' : 'human') as 'user' | 'bot' | 'human',
             timestamp: new Date(msg.created_at),
             read: true,
           })).sort((a: Message, b: Message) => a.timestamp.getTime() - b.timestamp.getTime()),
