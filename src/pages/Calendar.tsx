@@ -472,12 +472,8 @@ const CalendarContent = () => {
               {/* Blocking mode overlay message */}
               <BlockingModeOverlay />
 
-              {/* Show empty state if no appointments at all */}
-              {appointments.length === 0 && !isBlockingMode && (
-                <EmptyState />
-              )}
-
-              {(appointments.length > 0 || isBlockingMode) && view === 'month' && (
+              {/* Always show calendar grid */}
+              {view === 'month' && (
                 <div className="space-y-1 md:space-y-2">
                   {/* Weekday headers */}
                   <div className="grid grid-cols-7 gap-0.5 md:gap-1">
@@ -553,7 +549,7 @@ const CalendarContent = () => {
                 </div>
               )}
 
-              {(appointments.length > 0 || isBlockingMode) && view === 'week' && (
+              {view === 'week' && (
                 <div className="space-y-2">
                   <div className={cn(
                     "grid gap-1 md:gap-2",
@@ -625,7 +621,7 @@ const CalendarContent = () => {
                 </div>
               )}
 
-              {(appointments.length > 0 || isBlockingMode) && view === 'day' && !isMobile && (
+              {view === 'day' && !isMobile && (
                 <div className="space-y-2">
                   <div className="text-center mb-4">
                     <div className="text-xl font-semibold capitalize text-foreground">
