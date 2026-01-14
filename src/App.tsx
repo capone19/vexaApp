@@ -19,6 +19,7 @@ import Notifications from "./pages/Notifications";
 import Support from "./pages/Support";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
+import PendingSetup from "./pages/PendingSetup";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,8 +31,9 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          {/* Ruta pública */}
+          {/* Rutas públicas */}
           <Route path="/auth" element={<Auth />} />
+          <Route path="/pending-setup" element={<PendingSetup />} />
           
           {/* Rutas protegidas */}
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
