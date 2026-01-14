@@ -329,52 +329,12 @@ const Reports = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {/* Sample weekly reports - in production these would come from DB */}
-              {[
-                { id: 1, name: 'Reporte Semanal - Rendimiento del Agente', date: '6 - 12 Ene 2025', size: '2.4 MB', type: 'agent-performance' },
-                { id: 2, name: 'Reporte Semanal - Métricas Conversacionales', date: '6 - 12 Ene 2025', size: '1.8 MB', type: 'conversational-metrics' },
-                { id: 3, name: 'Reporte Semanal - Rendimiento del Agente', date: '30 Dic - 5 Ene 2025', size: '2.1 MB', type: 'agent-performance' },
-                { id: 4, name: 'Reporte Semanal - Métricas Conversacionales', date: '30 Dic - 5 Ene 2025', size: '1.6 MB', type: 'conversational-metrics' },
-                { id: 5, name: 'Reporte Semanal - Rendimiento del Agente', date: '23 - 29 Dic 2024', size: '2.3 MB', type: 'agent-performance' },
-              ].map((report) => {
-                const reportType = reportTypes.find(r => r.id === report.type);
-                const Icon = reportType?.icon || FileText;
-                
-                return (
-                  <div 
-                    key={report.id}
-                    className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-secondary/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-secondary">
-                        <Icon className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-sm">{report.name}</p>
-                        <p className="text-xs text-muted-foreground">{report.date} • {report.size}</p>
-                      </div>
-                    </div>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="gap-2 text-primary"
-                      onClick={() => toast.success('Descargando reporte...')}
-                    >
-                      <Download className="h-4 w-4" />
-                      <span className="hidden sm:inline">Descargar</span>
-                    </Button>
-                  </div>
-                );
-              })}
-              
-              {/* Empty state for when there are no reports */}
-              {false && (
-                <div className="text-center py-8 text-muted-foreground">
-                  <FileText className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">Aún no hay reportes generados</p>
-                  <p className="text-xs mt-1">Los reportes se generan automáticamente cada semana</p>
-                </div>
-              )}
+              {/* Empty state - no reports yet */}
+              <div className="text-center py-8 text-muted-foreground">
+                <FileText className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                <p className="text-sm">Aún no hay reportes generados</p>
+                <p className="text-xs mt-1">Los reportes se generan automáticamente cada semana</p>
+              </div>
             </div>
           </CardContent>
         </Card>
