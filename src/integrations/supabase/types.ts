@@ -1265,6 +1265,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_user_to_tenant: {
+        Args: { _role?: string; _tenant_id: string; _user_id: string }
+        Returns: boolean
+      }
       get_available_slots: {
         Args: { _date: string; _service_id?: string; _tenant_id: string }
         Returns: {
@@ -1282,6 +1286,16 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      setup_new_client: {
+        Args: {
+          _plan?: string
+          _tenant_name: string
+          _tenant_slug: string
+          _timezone?: string
+          _user_id: string
+        }
+        Returns: string
       }
       user_belongs_to_tenant: {
         Args: { _tenant_id: string; _user_id: string }
