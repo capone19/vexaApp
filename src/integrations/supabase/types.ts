@@ -695,6 +695,60 @@ export type Database = {
           },
         ]
       }
+      invoices: {
+        Row: {
+          amount_usd: number
+          created_at: string | null
+          description: string | null
+          id: string
+          invoice_url: string | null
+          paid_at: string | null
+          status: string
+          stripe_invoice_id: string | null
+          subscription_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          amount_usd: number
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          invoice_url?: string | null
+          paid_at?: string | null
+          status?: string
+          stripe_invoice_id?: string | null
+          subscription_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          amount_usd?: number
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          invoice_url?: string | null
+          paid_at?: string | null
+          status?: string
+          stripe_invoice_id?: string | null
+          subscription_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       metrics_daily: {
         Row: {
           avg_response_time_seconds: number | null
@@ -914,13 +968,113 @@ export type Database = {
           },
         ]
       }
+      subscriptions: {
+        Row: {
+          billing_cycle: string
+          created_at: string | null
+          current_period_end: string
+          current_period_start: string
+          id: string
+          plan: string
+          price_usd: number
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          billing_cycle?: string
+          created_at?: string | null
+          current_period_end?: string
+          current_period_start?: string
+          id?: string
+          plan?: string
+          price_usd: number
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          billing_cycle?: string
+          created_at?: string | null
+          current_period_end?: string
+          current_period_start?: string
+          id?: string
+          plan?: string
+          price_usd?: number
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_addons: {
+        Row: {
+          activated_at: string | null
+          addon_id: string
+          cancelled_at: string | null
+          created_at: string | null
+          expires_at: string | null
+          id: string
+          price_usd: number
+          status: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          activated_at?: string | null
+          addon_id: string
+          cancelled_at?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          price_usd: number
+          status?: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          activated_at?: string | null
+          addon_id?: string
+          cancelled_at?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          price_usd?: number
+          status?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_addons_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           created_at: string | null
           id: string
           is_active: boolean | null
           name: string
-          plan: string | null
+          plan: string
           slug: string
           timezone: string | null
           updated_at: string | null
@@ -932,7 +1086,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name: string
-          plan?: string | null
+          plan?: string
           slug: string
           timezone?: string | null
           updated_at?: string | null
@@ -944,7 +1098,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name?: string
-          plan?: string | null
+          plan?: string
           slug?: string
           timezone?: string | null
           updated_at?: string | null
@@ -1135,6 +1289,13 @@ export type Database = {
       }
     }
     Enums: {
+      addon_type:
+        | "report_meta_ads"
+        | "report_unconverted_leads"
+        | "report_converted_sales"
+        | "report_ad_advisor"
+        | "report_conversational_metrics"
+        | "report_agent_performance"
       app_role: "owner" | "admin" | "agent" | "viewer"
       booking_origin: "chat" | "campaign" | "manual" | "web"
       booking_status:
@@ -1153,6 +1314,7 @@ export type Database = {
       chat_status: "active" | "waiting" | "resolved" | "escalated" | "abandoned"
       funnel_stage: "tofu" | "mofu" | "hot" | "bofu" | "converted" | "lost"
       notification_type: "handoff" | "booking" | "campaign" | "system" | "alert"
+      plan_type: "basic" | "pro" | "enterprise"
       template_category: "marketing" | "utility" | "authentication" | "service"
       template_status: "draft" | "pending" | "approved" | "rejected"
       webhook_event_type:
@@ -1288,6 +1450,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      addon_type: [
+        "report_meta_ads",
+        "report_unconverted_leads",
+        "report_converted_sales",
+        "report_ad_advisor",
+        "report_conversational_metrics",
+        "report_agent_performance",
+      ],
       app_role: ["owner", "admin", "agent", "viewer"],
       booking_origin: ["chat", "campaign", "manual", "web"],
       booking_status: [
@@ -1308,6 +1478,7 @@ export const Constants = {
       chat_status: ["active", "waiting", "resolved", "escalated", "abandoned"],
       funnel_stage: ["tofu", "mofu", "hot", "bofu", "converted", "lost"],
       notification_type: ["handoff", "booking", "campaign", "system", "alert"],
+      plan_type: ["basic", "pro", "enterprise"],
       template_category: ["marketing", "utility", "authentication", "service"],
       template_status: ["draft", "pending", "approved", "rejected"],
       webhook_event_type: [
