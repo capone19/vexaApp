@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/tooltip";
 
 type IntentLabel = "alta_intencion" | "en_progreso" | null;
+type FilterTab = "todos" | "alta_intencion" | "en_progreso";
 
 interface N8nSession {
   sessionId: string;
@@ -30,6 +31,18 @@ interface N8nSession {
   intentLabel: IntentLabel;
   botEnabled: boolean;
 }
+
+// Mapeo de etiquetas para búsqueda y display
+const INTENT_LABELS: Record<string, { text: string; className: string }> = {
+  alta_intencion: {
+    text: "Alta intención",
+    className: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+  },
+  en_progreso: {
+    text: "En progreso",
+    className: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  },
+};
 
 // Determinar etiqueta de intención basada en cantidad de mensajes
 function getIntentLabel(messageCount: number): IntentLabel {
@@ -42,22 +55,12 @@ function getIntentLabel(messageCount: number): IntentLabel {
 function IntentBadge({ label }: { label: IntentLabel }) {
   if (!label) return null;
   
-  const config = {
-    alta_intencion: {
-      text: "Alta intención",
-      className: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-    },
-    en_progreso: {
-      text: "En progreso",
-      className: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-    },
-  };
-  
-  const { text, className } = config[label];
+  const config = INTENT_LABELS[label];
+  if (!config) return null;
   
   return (
-    <Badge variant="outline" className={cn("text-xs font-medium", className)}>
-      {text}
+    <Badge variant="outline" className={cn("text-xs font-medium", config.className)}>
+      {config.text}
     </Badge>
   );
 }
@@ -70,6 +73,7 @@ export default function Chats() {
   
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [filterTab, setFilterTab] = useState<FilterTab>("todos");
   const [botStates, setBotStates] = useState<Record<string, boolean>>({});
   
   const isMobile = useIsMobile();
@@ -119,14 +123,30 @@ export default function Chats() {
     );
   }, [messages, botStates]);
 
-  // Filter sessions by search
+  // Filter sessions by search and tab
   const filteredSessions = useMemo(() => {
-    if (!searchTerm) return processedSessions;
-    return processedSessions.filter(s => 
-      s.contactName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.lastMessage.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [processedSessions, searchTerm]);
+    let filtered = processedSessions;
+    
+    // Filter by tab
+    if (filterTab !== "todos") {
+      filtered = filtered.filter(s => s.intentLabel === filterTab);
+    }
+    
+    // Filter by search term (including label text)
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(s => {
+        const labelText = s.intentLabel ? INTENT_LABELS[s.intentLabel]?.text.toLowerCase() : "";
+        return (
+          s.contactName.toLowerCase().includes(term) ||
+          s.lastMessage.toLowerCase().includes(term) ||
+          labelText.includes(term)
+        );
+      });
+    }
+    
+    return filtered;
+  }, [processedSessions, searchTerm, filterTab]);
 
   // Get messages for selected session
   const selectedMessages = useMemo(() => {
@@ -204,13 +224,37 @@ export default function Chats() {
             className="pl-9 bg-background border-border h-10"
           />
         </div>
-        {/* Tabs */}
-        <div className="flex gap-2">
-          <Button variant="secondary" size="sm" className="text-xs h-7">
+        {/* Filter Tabs */}
+        <div className="flex gap-1 flex-wrap">
+          <Button 
+            variant={filterTab === "todos" ? "secondary" : "ghost"} 
+            size="sm" 
+            className="text-xs h-7"
+            onClick={() => setFilterTab("todos")}
+          >
             Todos
           </Button>
-          <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground">
-            Nuevos
+          <Button 
+            variant={filterTab === "en_progreso" ? "secondary" : "ghost"} 
+            size="sm" 
+            className={cn(
+              "text-xs h-7",
+              filterTab !== "en_progreso" && "text-muted-foreground"
+            )}
+            onClick={() => setFilterTab("en_progreso")}
+          >
+            En progreso
+          </Button>
+          <Button 
+            variant={filterTab === "alta_intencion" ? "secondary" : "ghost"} 
+            size="sm" 
+            className={cn(
+              "text-xs h-7",
+              filterTab !== "alta_intencion" && "text-muted-foreground"
+            )}
+            onClick={() => setFilterTab("alta_intencion")}
+          >
+            Alta intención
           </Button>
         </div>
       </div>
