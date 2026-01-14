@@ -1,17 +1,25 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useN8nChatHistory } from "@/hooks/use-n8n-chat-history";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio } from "lucide-react";
+import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio, Info } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+type IntentLabel = "alta_intencion" | "en_progreso" | null;
 
 interface N8nSession {
   sessionId: string;
@@ -19,18 +27,60 @@ interface N8nSession {
   lastMessageAt: Date;
   messageCount: number;
   contactName: string;
+  intentLabel: IntentLabel;
+  botEnabled: boolean;
+}
+
+// Determinar etiqueta de intención basada en cantidad de mensajes
+function getIntentLabel(messageCount: number): IntentLabel {
+  if (messageCount > 10) return "alta_intencion";
+  if (messageCount > 6) return "en_progreso";
+  return null;
+}
+
+// Badge de intención con colores
+function IntentBadge({ label }: { label: IntentLabel }) {
+  if (!label) return null;
+  
+  const config = {
+    alta_intencion: {
+      text: "Alta intención",
+      className: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+    },
+    en_progreso: {
+      text: "En progreso",
+      className: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+    },
+  };
+  
+  const { text, className } = config[label];
+  
+  return (
+    <Badge variant="outline" className={cn("text-xs font-medium", className)}>
+      {text}
+    </Badge>
+  );
 }
 
 export default function Chats() {
-  const { messages, sessions, isLoading, error } = useN8nChatHistory({
+  const { messages, isLoading, error } = useN8nChatHistory({
     enableRealtime: true,
     limit: 500,
   });
   
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [botStates, setBotStates] = useState<Record<string, boolean>>({});
   
   const isMobile = useIsMobile();
+
+  // Toggle bot state for a session
+  const toggleBotState = (sessionId: string) => {
+    setBotStates(prev => ({
+      ...prev,
+      [sessionId]: prev[sessionId] === undefined ? false : !prev[sessionId],
+    }));
+  };
 
   // Process sessions from messages
   const processedSessions = useMemo(() => {
@@ -50,9 +100,13 @@ export default function Chats() {
           lastMessageAt: msgDate,
           messageCount: 1,
           contactName: `+${contactName}`,
+          intentLabel: getIntentLabel(1),
+          botEnabled: botStates[msg.session_id] ?? true,
         });
       } else {
         existing.messageCount++;
+        existing.intentLabel = getIntentLabel(existing.messageCount);
+        existing.botEnabled = botStates[msg.session_id] ?? true;
         if (msgDate > existing.lastMessageAt) {
           existing.lastMessageAt = msgDate;
           existing.lastMessage = msg.message.content || '';
@@ -63,7 +117,7 @@ export default function Chats() {
     return Array.from(sessionMap.values()).sort(
       (a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime()
     );
-  }, [messages]);
+  }, [messages, botStates]);
 
   // Filter sessions by search
   const filteredSessions = useMemo(() => {
@@ -144,11 +198,20 @@ export default function Chats() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por número o mensaje..."
+            placeholder="Buscar..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9 bg-background border-border h-10"
           />
+        </div>
+        {/* Tabs */}
+        <div className="flex gap-2">
+          <Button variant="secondary" size="sm" className="text-xs h-7">
+            Todos
+          </Button>
+          <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground">
+            Nuevos
+          </Button>
         </div>
       </div>
 
@@ -177,24 +240,26 @@ export default function Chats() {
                 selectedSessionId === session.sessionId && "bg-secondary"
               )}
             >
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 md:w-8 md:h-8 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
-                    <User className="h-5 w-5 md:h-4 md:w-4 text-green-600" />
-                  </div>
-                  <span className="font-medium text-sm text-foreground">{session.contactName}</span>
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+                  <User className="h-5 w-5 text-muted-foreground" />
                 </div>
-                <span className="text-xs text-muted-foreground shrink-0 ml-2">
-                  {format(session.lastMessageAt, "HH:mm", { locale: es })}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground line-clamp-1 mb-2 ml-10 md:ml-0">
-                {session.lastMessage || "Sin mensajes"}
-              </p>
-              <div className="flex items-center gap-2 flex-wrap ml-10 md:ml-0">
-                <Badge variant="secondary" className="text-xs">
-                  {session.messageCount} mensajes
-                </Badge>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-medium text-sm text-foreground truncate">
+                      {session.contactName}
+                    </span>
+                    <span className="text-xs text-muted-foreground shrink-0 ml-2">
+                      {format(session.lastMessageAt, "HH:mm", { locale: es })}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground line-clamp-1 mb-2">
+                    {session.lastMessage || "Sin mensajes"}
+                  </p>
+                  {session.intentLabel && (
+                    <IntentBadge label={session.intentLabel} />
+                  )}
+                </div>
               </div>
             </button>
           ))
@@ -216,6 +281,8 @@ export default function Chats() {
       );
     }
 
+    const isBotEnabled = botStates[selectedSessionId] ?? true;
+
     return (
       <div className={cn(
         "flex flex-col overflow-hidden",
@@ -234,25 +301,49 @@ export default function Chats() {
                 <ArrowLeft className="h-5 w-5" />
               </Button>
             )}
-            <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
-              <User className="h-5 w-5 text-green-600" />
+            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+              <User className="h-5 w-5 text-muted-foreground" />
             </div>
             <div className="min-w-0">
               <h3 className="font-semibold text-foreground text-sm md:text-base truncate">
                 {selectedSession.contactName}
               </h3>
               <p className="text-xs text-muted-foreground truncate">
-                {selectedSession.messageCount} mensajes
+                Session: {selectedSession.sessionId.slice(0, 12)}...
               </p>
             </div>
           </div>
           
           {/* Header Actions */}
           <div className="flex items-center gap-2 md:gap-3 shrink-0">
-            <Badge variant="outline" className="gap-1.5">
-              <Radio className="h-3 w-3 text-green-500 animate-pulse" />
-              En vivo
+            <Badge variant="outline" className="gap-1.5 bg-green-500/10 text-green-500 border-green-500/30">
+              Activo
             </Badge>
+            {selectedSession.intentLabel && (
+              <IntentBadge label={selectedSession.intentLabel} />
+            )}
+            
+            {/* Bot Toggle with Tooltip */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={isBotEnabled}
+                      onCheckedChange={() => toggleBotState(selectedSessionId)}
+                      className="data-[state=checked]:bg-primary"
+                    />
+                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  <p className="text-sm">
+                    <strong>Control del chatbot:</strong> Activa o desactiva el chatbot para esta conversación específica. 
+                    Cuando está desactivado, el bot no responderá automáticamente y un agente humano deberá atender.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
 
@@ -271,19 +362,19 @@ export default function Chats() {
                     key={msg.id}
                     className={cn(
                       "flex",
-                      isHuman ? "justify-start" : "justify-end"
+                      isHuman ? "justify-end" : "justify-start"
                     )}
                   >
                     <div
                       className={cn(
                         "max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm",
                         isHuman
-                          ? "bg-background border border-border text-foreground rounded-bl-md"
-                          : "bg-primary text-primary-foreground rounded-br-md"
+                          ? "bg-primary text-primary-foreground rounded-br-md"
+                          : "bg-card border border-border text-foreground rounded-bl-md"
                       )}
                     >
                       {!isHuman && (
-                        <div className="flex items-center gap-1 mb-1 opacity-70">
+                        <div className="flex items-center gap-1 mb-1 text-muted-foreground">
                           <Bot className="h-3 w-3" />
                           <span className="text-[10px] font-medium">VEXA</span>
                         </div>
@@ -293,7 +384,7 @@ export default function Chats() {
                       </p>
                       <p className={cn(
                         "text-[10px] mt-1",
-                        isHuman ? "text-muted-foreground" : "opacity-70"
+                        isHuman ? "opacity-70" : "text-muted-foreground"
                       )}>
                         {format(new Date(msg.created_at), "HH:mm", { locale: es })}
                       </p>
@@ -305,7 +396,7 @@ export default function Chats() {
           )}
         </ScrollArea>
 
-        {/* Input (disabled - view only) */}
+        {/* Input */}
         <div className="p-3 md:p-4 border-t border-border bg-background">
           <div className="flex gap-2">
             <Input
@@ -313,13 +404,10 @@ export default function Chats() {
               disabled
               className="bg-secondary border-border h-11"
             />
-            <Button disabled size="icon" className="h-11 w-11 shrink-0">
+            <Button size="icon" className="h-11 w-11 shrink-0 bg-primary hover:bg-primary/90">
               <Send className="h-4 w-4" />
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground mt-2 text-center">
-            Vista de solo lectura • Datos en tiempo real
-          </p>
         </div>
       </div>
     );
