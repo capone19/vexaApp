@@ -9,21 +9,48 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { fetchChats } from "@/lib/mock/data";
-import type { Chat, FunnelStage, ChatStatus } from "@/lib/types";
+import type { Chat, FunnelStage, ChatStatus, Message } from "@/lib/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { Search, User, Send, Bot, ArrowLeft, Filter, X, Info } from "lucide-react";
+import { Search, User, Send, Bot, ArrowLeft, Filter, X, Info, MessageSquare } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "@/hooks/use-auth";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Filters {
   search: string;
   status: "all" | ChatStatus;
   stage: "all" | FunnelStage;
 }
+
+// Map Supabase funnel_stage to our FunnelStage type
+const mapFunnelStage = (stage: string | null): FunnelStage => {
+  switch (stage) {
+    case 'tofu': return 'dead';
+    case 'mofu': return 'warm';
+    case 'hot': return 'hot';
+    case 'bofu': return 'hot';
+    case 'converted': return 'converted';
+    case 'lost': return 'dead';
+    default: return 'dead';
+  }
+};
+
+// Map Supabase chat_status to our ChatStatus type
+const mapChatStatus = (status: string | null): ChatStatus => {
+  switch (status) {
+    case 'active': return 'active';
+    case 'waiting': return 'active';
+    case 'resolved': return 'closed';
+    case 'escalated': return 'active';
+    case 'abandoned': return 'closed';
+    default: return 'active';
+  }
+};
 
 export default function Chats() {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -38,19 +65,70 @@ export default function Chats() {
   });
   
   const isMobile = useIsMobile();
+  const { user } = useAuth();
+  const tenantId = user?.tenantId;
 
   useEffect(() => {
-    const load = async () => {
-      const data = await fetchChats();
-      setChats(data);
-      // Don't auto-select on mobile
-      if (!isMobile && data[0]) {
-        setSelectedChat(data[0]);
+    const loadChats = async () => {
+      if (!tenantId) {
+        setLoading(false);
+        return;
       }
+
+      try {
+        // Fetch chat sessions from Supabase
+        const { data: sessions, error } = await supabase
+          .from('chat_sessions')
+          .select(`
+            *,
+            messages:chat_messages(*)
+          `)
+          .eq('tenant_id', tenantId)
+          .order('last_message_at', { ascending: false })
+          .limit(50);
+
+        if (error) {
+          console.error('Error fetching chats:', error);
+          setLoading(false);
+          return;
+        }
+
+        // Transform Supabase data to our Chat type
+        const transformedChats: Chat[] = (sessions || []).map(session => ({
+          id: session.id,
+          sessionId: session.id.slice(0, 12),
+          userName: session.contact_name || 'Sin nombre',
+          userPhone: session.contact_phone,
+          channel: 'whatsapp' as const,
+          status: mapChatStatus(session.status),
+          funnelStage: mapFunnelStage(session.funnel_stage),
+          lastMessageAt: new Date(session.last_message_at || session.created_at),
+          hasHumanIntervention: session.is_handoff || false,
+          messages: (session.messages || []).map((msg: any) => ({
+            id: msg.id,
+            chatId: session.id,
+            content: msg.content || '',
+            sender: msg.sender_type === 'user' ? 'user' : msg.sender_type === 'bot' ? 'bot' : 'human',
+            timestamp: new Date(msg.created_at),
+            read: true,
+          })).sort((a: Message, b: Message) => a.timestamp.getTime() - b.timestamp.getTime()),
+          tags: [],
+          createdAt: new Date(session.created_at),
+        }));
+
+        setChats(transformedChats);
+        if (!isMobile && transformedChats[0]) {
+          setSelectedChat(transformedChats[0]);
+        }
+      } catch (error) {
+        console.error('Error loading chats:', error);
+      }
+      
       setLoading(false);
     };
-    load();
-  }, [isMobile]);
+
+    loadChats();
+  }, [tenantId, isMobile]);
 
   const filteredChats = chats.filter((chat) => {
     if (filters.search && !chat.userName.toLowerCase().includes(filters.search.toLowerCase())) return false;
@@ -76,6 +154,32 @@ export default function Chats() {
   const handleStageChange = useCallback((value: string) => {
     setFilters((prev) => ({ ...prev, stage: value as Filters["stage"] }));
   }, []);
+
+  // Empty state
+  if (!loading && chats.length === 0) {
+    return (
+      <MainLayout>
+        <div className={cn(
+          "flex flex-col",
+          isMobile ? "h-[calc(100vh-8rem)]" : "h-[calc(100vh-8rem)]"
+        )}>
+          {!isMobile && (
+            <PageHeader title="Chats" subtitle="Gestiona tus conversaciones" className="mb-4" />
+          )}
+          <Card className="border-border flex-1">
+            <CardContent className="flex flex-col items-center justify-center h-full py-16">
+              <MessageSquare className="h-16 w-16 text-muted-foreground/30 mb-4" />
+              <h3 className="text-lg font-medium text-foreground mb-2">Sin conversaciones aún</h3>
+              <p className="text-muted-foreground text-center max-w-md">
+                Las conversaciones aparecerán aquí cuando tus clientes te escriban por WhatsApp.
+                Conecta tu número de WhatsApp para comenzar.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </MainLayout>
+    );
+  }
 
   // Chat List content rendered inline to prevent Input focus loss
   const chatListContent = (
