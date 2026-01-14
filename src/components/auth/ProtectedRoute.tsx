@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
@@ -12,38 +12,81 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hasTenant, setHasTenant] = useState<boolean | null>(null);
   const location = useLocation();
+  const initialCheckDone = useRef(false);
 
   useEffect(() => {
-    // Set up auth state listener BEFORE checking session
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setIsAuthenticated(!!session);
+    let isMounted = true;
+
+    const checkTenant = async (userId: string) => {
+      try {
+        const { data: tenantId, error } = await supabase.rpc('get_user_tenant_id');
+        if (error) {
+          console.warn('[ProtectedRoute] Error getting tenant:', error);
+        }
+        return !!tenantId;
+      } catch (e) {
+        console.error('[ProtectedRoute] Exception getting tenant:', e);
+        return false;
+      }
+    };
+
+    // Check initial session first
+    const initAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!isMounted) return;
         
         if (session?.user) {
-          // Check if user has a tenant assigned
-          const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
-          setHasTenant(!!tenantId);
+          setIsAuthenticated(true);
+          const hasTenantResult = await checkTenant(session.user.id);
+          if (isMounted) {
+            setHasTenant(hasTenantResult);
+          }
         } else {
+          setIsAuthenticated(false);
           setHasTenant(null);
         }
+      } catch (e) {
+        console.error('[ProtectedRoute] Init error:', e);
+        if (isMounted) {
+          setIsAuthenticated(false);
+          setHasTenant(null);
+        }
+      } finally {
+        if (isMounted) {
+          initialCheckDone.current = true;
+          setIsLoading(false);
+        }
+      }
+    };
+
+    initAuth();
+
+    // Set up auth state listener for subsequent changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        // Skip if initial check hasn't completed yet to avoid race condition
+        if (!initialCheckDone.current) return;
+        if (!isMounted) return;
+
+        console.log('[ProtectedRoute] Auth state changed:', event);
         
-        setIsLoading(false);
+        if (event === 'SIGNED_OUT') {
+          setIsAuthenticated(false);
+          setHasTenant(null);
+        } else if (session?.user) {
+          setIsAuthenticated(true);
+          const hasTenantResult = await checkTenant(session.user.id);
+          if (isMounted) {
+            setHasTenant(hasTenantResult);
+          }
+        }
       }
     );
 
-    // Check initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setIsAuthenticated(!!session);
-      
-      if (session?.user) {
-        const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
-        setHasTenant(!!tenantId);
-      }
-      
-      setIsLoading(false);
-    });
-
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
   }, []);
