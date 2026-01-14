@@ -6,7 +6,8 @@ import { LiveBadge } from "@/components/shared/LiveBadge";
 import { DateRangeFilter } from "@/components/shared/DateRangeFilter";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { SkeletonCard, SkeletonTable } from "@/components/shared/SkeletonCard";
-import { fetchDashboardData, mockAppointments } from "@/lib/mock/data";
+import { fetchRealDashboardData, fetchRealAppointments } from "@/lib/dashboard-data";
+import { useAuth } from "@/hooks/use-auth";
 import type { DashboardMetrics, DateRangePreset } from "@/lib/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -25,6 +26,7 @@ import {
   Zap,
   Target,
   ChevronRight,
+  Calendar,
 } from "lucide-react";
 import {
   Table,
@@ -38,47 +40,44 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+interface Appointment {
+  id: string;
+  datetime: Date;
+  clientName: string;
+  service: string;
+  status: 'pending' | 'confirmed' | 'canceled' | 'completed' | 'cancelled' | 'no_show';
+}
+
 export default function Dashboard() {
+  const { user } = useAuth();
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState<DateRangePreset>("30d");
   const isMobile = useIsMobile();
 
   useEffect(() => {
     const load = async () => {
+      if (!user?.tenantId) {
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
-      const data = await fetchDashboardData(dateRange);
-      setMetrics(data);
+      try {
+        const [metricsData, appointmentsData] = await Promise.all([
+          fetchRealDashboardData(user.tenantId, dateRange),
+          fetchRealAppointments(user.tenantId, 8),
+        ]);
+        setMetrics(metricsData);
+        setAppointments(appointmentsData);
+      } catch (error) {
+        console.error('[Dashboard] Error loading data:', error);
+      }
       setLoading(false);
     };
     load();
-  }, [dateRange]);
-
-  // Función para obtener la fecha límite según el rango seleccionado
-  const getDateRangeLimit = (): Date => {
-    const now = new Date();
-    switch (dateRange) {
-      case "today":
-        return new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      case "7d":
-        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      case "30d":
-        return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      case "90d":
-        return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-      case "ytd":
-        return new Date(now.getFullYear(), 0, 1);
-      case "all":
-      default:
-        return new Date(0); // Desde el inicio
-    }
-  };
-
-  // Filtrar appointments según el rango de fechas
-  const filteredAppointments = mockAppointments.filter(apt => {
-    const aptDate = new Date(apt.datetime);
-    return aptDate >= getDateRangeLimit();
-  });
+  }, [dateRange, user?.tenantId]);
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("es-CL", {
@@ -111,7 +110,7 @@ export default function Dashboard() {
     { 
       label: "TOFU", 
       sublabel: "Conversaciones iniciales", 
-      value: metrics.funnel.tofu || "--", 
+      value: metrics.funnel.tofu, 
       icon: Radio,
       bgColor: "bg-slate-100 border-slate-200",
       iconBg: "bg-slate-200",
@@ -153,6 +152,9 @@ export default function Dashboard() {
     { label: "Conversión", value: metrics.funnel.conversionRate, color: "bg-emerald-500", icon: Target, iconColor: "text-emerald-500" },
   ];
 
+  // Estado vacío para nuevos usuarios
+  const hasData = metrics.totalChats > 0 || metrics.totalMessages > 0 || appointments.length > 0;
+
   return (
     <MainLayout>
       <div className="space-y-4 md:space-y-6">
@@ -169,6 +171,22 @@ export default function Dashboard() {
           }
         />
 
+        {/* Empty State for new users */}
+        {!hasData && (
+          <div className="rounded-xl border border-dashed border-border bg-card/50 p-8 md:p-12 text-center">
+            <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+              <Calendar className="h-8 w-8 text-primary" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground mb-2">
+              ¡Bienvenido a VEXA!
+            </h3>
+            <p className="text-muted-foreground max-w-md mx-auto mb-4">
+              Aquí verás tus métricas cuando comiences a recibir chats y agendamientos. 
+              Configura tu agente de IA para empezar.
+            </p>
+          </div>
+        )}
+
         {/* Funnel Card */}
         <div className="rounded-xl border border-border bg-card p-4 md:p-6">
           <div className="mb-4 md:mb-6">
@@ -178,7 +196,6 @@ export default function Dashboard() {
           
           {/* Pipeline Visual - Responsive Grid/Scroll */}
           {isMobile ? (
-            // Mobile: Horizontal scrollable cards
             <ScrollArea className="w-full -mx-4 px-4 mb-4">
               <div className="flex gap-3 pb-2">
                 {funnelStages.map((stage, idx, arr) => (
@@ -204,7 +221,6 @@ export default function Dashboard() {
               <ScrollBar orientation="horizontal" />
             </ScrollArea>
           ) : (
-            // Desktop: Grid layout
             <div className="grid grid-cols-4 gap-3 mb-6">
               {funnelStages.map((stage, idx, arr) => (
                 <div key={stage.label} className="flex items-center">
@@ -228,7 +244,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Rates Bar - Responsive */}
+          {/* Rates Bar */}
           <div className={cn(
             "pt-4 border-t border-border",
             isMobile ? "space-y-4" : "flex items-center gap-6"
@@ -268,7 +284,7 @@ export default function Dashboard() {
           <p className="text-xl md:text-2xl font-semibold text-foreground">{formatCurrency(metrics.revenue)}</p>
         </div>
 
-        {/* KPI Cards - Responsive Grid */}
+        {/* KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           <KPICard
             title="Total mensajes"
@@ -296,28 +312,32 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Appointments - Responsive Table/Cards */}
+        {/* Appointments */}
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between">
             <h3 className="text-sm md:text-base font-semibold text-foreground">Últimos agendamientos</h3>
-            {isMobile && (
+            {isMobile && appointments.length > 0 && (
               <button className="text-xs text-primary font-medium flex items-center gap-1">
                 Ver todos <ChevronRight className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
           
-          {isMobile ? (
-            // Mobile: Card list
+          {appointments.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">
+              <CalendarCheck className="h-10 w-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm">No hay agendamientos aún</p>
+            </div>
+          ) : isMobile ? (
             <div className="divide-y divide-border">
-              {filteredAppointments.slice(0, 5).map((apt) => (
+              {appointments.slice(0, 5).map((apt) => (
                 <div key={apt.id} className="p-4 hover:bg-secondary/30 active:bg-secondary/50 transition-colors">
                   <div className="flex items-start justify-between mb-2">
                     <div>
                       <p className="font-medium text-foreground text-sm">{apt.clientName}</p>
                       <p className="text-xs text-muted-foreground">{apt.service}</p>
                     </div>
-                    <StatusBadge status={apt.status} />
+                    <StatusBadge status={apt.status === 'cancelled' ? 'canceled' : apt.status as any} />
                   </div>
                   <div className="flex items-center text-xs text-muted-foreground">
                     <span>{format(apt.datetime, "dd MMM, HH:mm", { locale: es })}</span>
@@ -326,7 +346,6 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            // Desktop: Table
             <Table>
               <TableHeader>
                 <TableRow className="border-border hover:bg-transparent">
@@ -337,7 +356,7 @@ export default function Dashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredAppointments.slice(0, 8).map((apt) => (
+                {appointments.slice(0, 8).map((apt) => (
                   <TableRow key={apt.id} className="border-border hover:bg-secondary/50">
                     <TableCell className="font-medium text-foreground">
                       {format(apt.datetime, "dd MMM, HH:mm", { locale: es })}
@@ -345,7 +364,7 @@ export default function Dashboard() {
                     <TableCell className="text-foreground">{apt.clientName}</TableCell>
                     <TableCell className="text-muted-foreground">{apt.service}</TableCell>
                     <TableCell>
-                      <StatusBadge status={apt.status} />
+                      <StatusBadge status={apt.status === 'cancelled' ? 'canceled' : apt.status as any} />
                     </TableCell>
                   </TableRow>
                 ))}
