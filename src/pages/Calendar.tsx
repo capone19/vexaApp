@@ -27,7 +27,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 type CalendarView = 'month' | 'week' | 'day';
 
 const CalendarContent = () => {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [view, setView] = useState<CalendarView>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -181,7 +181,8 @@ const CalendarContent = () => {
     </div>
   );
 
-  if (loading) {
+  // Show loading while auth or bookings are loading
+  if (authLoading || loading) {
     return (
       <MainLayout>
         <div className="space-y-4 md:space-y-6">

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/shared/Logo";
 import {
@@ -69,20 +69,8 @@ interface SidebarProps {
 
 export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
   const location = useLocation();
-  const navigate = useNavigate();
   const [expandedItems, setExpandedItems] = useState<string[]>(["Resultados", "Marketing"]);
   const [hasPremium, setHasPremium] = useState(isPremiumPlan());
-
-  // Handler para forzar refresh al hacer clic en una ruta activa
-  const handleNavClick = (href: string, e: React.MouseEvent) => {
-    if (isActive(href)) {
-      e.preventDefault();
-      // Navegar con un key para forzar re-render
-      navigate(href, { replace: true });
-      // Forzar refresh de la página para recargar datos
-      window.location.reload();
-    }
-  };
 
   // Listen for plan changes
   useEffect(() => {
@@ -175,7 +163,6 @@ export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
                         <li key={child.href}>
                           <NavLink
                             to={child.href}
-                            onClick={(e) => handleNavClick(child.href, e)}
                             className={({ isActive }) =>
                               cn(
                                 "block rounded-lg px-3 py-2 text-sm transition-colors",
@@ -196,7 +183,6 @@ export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
                 <NavLink
                   to={item.href}
                   end={item.href === "/"}
-                  onClick={(e) => handleNavClick(item.href, e)}
                   className={({ isActive }) =>
                     cn(
                       "flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
@@ -232,7 +218,6 @@ export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
             <li key={item.title}>
               <NavLink
                 to={item.href}
-                onClick={(e) => handleNavClick(item.href, e)}
                 className={({ isActive }) =>
                   cn(
                     "flex items-center rounded-lg px-3 py-2 text-sm transition-colors",
