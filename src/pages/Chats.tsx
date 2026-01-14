@@ -445,8 +445,8 @@ export default function Chats() {
     </div>
   );
 
-  // Chat Messages Component
-  const ChatMessages = () => {
+  // Contenido del panel de mensajes (SIN el input para evitar re-renders)
+  const chatMessagesContent = useMemo(() => {
     if (!selectedSessionId || !selectedSession) {
       return (
         <div className="flex-1 flex items-center justify-center text-muted-foreground rounded-lg border border-border bg-card">
@@ -461,10 +461,7 @@ export default function Chats() {
     const isBotEnabled = botStates[selectedSessionId] ?? true;
 
     return (
-      <div className={cn(
-        "flex flex-col overflow-hidden",
-        isMobile ? "h-full" : "flex-1 rounded-lg border border-border bg-card"
-      )}>
+      <>
         {/* Chat Header */}
         <div className="p-3 md:p-4 border-b border-border flex items-center justify-between bg-background">
           <div className="flex items-center gap-3">
@@ -578,35 +575,45 @@ export default function Chats() {
             </div>
           )}
         </ScrollArea>
+      </>
+    );
+  }, [selectedSessionId, selectedSession, selectedMessages, botStates, isMobile, isTogglingBot, toggleBotState]);
 
-        {/* Input para agente humano */}
-        <div className="p-3 md:p-4 border-t border-border bg-background">
-          <div className="flex gap-2">
-            <Input
-              placeholder="Escribe un mensaje..."
-              value={messageInput}
-              onChange={(e) => setMessageInput(e.target.value)}
-              onKeyDown={handleKeyPress}
-              disabled={isSendingMessage}
-              className="bg-secondary border-border h-11"
-            />
-            <Button 
-              size="icon" 
-              className="h-11 w-11 shrink-0 bg-primary hover:bg-primary/90"
-              onClick={sendHumanMessage}
-              disabled={isSendingMessage || !messageInput.trim()}
-            >
-              {isSendingMessage ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
+  // El panel completo de chat (wrapper + input separado)
+  const chatPanel = selectedSessionId && selectedSession ? (
+    <div className={cn(
+      "flex flex-col overflow-hidden",
+      isMobile ? "h-full" : "flex-1 rounded-lg border border-border bg-card"
+    )}>
+      {chatMessagesContent}
+      
+      {/* Input para agente humano - FUERA del useMemo para estabilidad */}
+      <div className="p-3 md:p-4 border-t border-border bg-background">
+        <div className="flex gap-2">
+          <Input
+            placeholder="Escribe un mensaje..."
+            value={messageInput}
+            onChange={(e) => setMessageInput(e.target.value)}
+            onKeyDown={handleKeyPress}
+            disabled={isSendingMessage}
+            className="bg-secondary border-border h-11"
+          />
+          <Button 
+            size="icon" 
+            className="h-11 w-11 shrink-0 bg-primary hover:bg-primary/90"
+            onClick={sendHumanMessage}
+            disabled={isSendingMessage || !messageInput.trim()}
+          >
+            {isSendingMessage ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </Button>
         </div>
       </div>
-    );
-  };
+    </div>
+  ) : chatMessagesContent;
 
   return (
     <MainLayout>
@@ -621,7 +628,7 @@ export default function Chats() {
         {isMobile ? (
           // Mobile: Full screen chat list or messages
           selectedSessionId ? (
-            <ChatMessages />
+            chatPanel
           ) : (
             chatListContent
           )
@@ -629,7 +636,7 @@ export default function Chats() {
           // Desktop: Side by side
           <div className="flex flex-1 gap-4 min-h-0">
             {chatListContent}
-            <ChatMessages />
+            {chatPanel}
           </div>
         )}
       </div>
