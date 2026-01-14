@@ -1,10 +1,11 @@
 // ============================================
-// VEXA - Hook para Dashboard Metrics (Supabase Real)
+// VEXA - Hook para Dashboard Metrics (Híbrido: n8n externo + Cloud local)
 // ============================================
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import type { DashboardMetrics, FunnelMetrics, Appointment } from '@/lib/types';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import type { DashboardMetrics, Appointment } from '@/lib/types';
 
 interface UseDashboardMetricsOptions {
   tenantId: string | null | undefined;
@@ -68,21 +69,49 @@ export function useDashboardMetrics({
       // Calcular rango de fechas (default: últimos 30 días)
       const endDate = dateRange?.endDate || new Date();
       const startDate = dateRange?.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      
-      const startDateStr = startDate.toISOString().split('T')[0];
-      const endDateStr = endDate.toISOString().split('T')[0];
 
-      // 1. Obtener métricas diarias agregadas
-      const { data: metricsData, error: metricsError } = await supabase
-        .from('metrics_daily')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .gte('date', startDateStr)
-        .lte('date', endDateStr);
+      // ============================================
+      // 1. MÉTRICAS DE MENSAJES desde DB EXTERNA (n8n_chat_histories)
+      // ============================================
+      let externalTotalMessages = 0;
+      let externalTotalSessions = 0;
+      let externalAvgPerSession = 0;
 
-      if (metricsError) throw metricsError;
+      try {
+        // Obtener todos los mensajes del rango de fechas
+        const { data: externalData, error: externalError } = await externalSupabase
+          .from('n8n_chat_histories')
+          .select('id, session_id, created_at')
+          .gte('created_at', startDate.toISOString())
+          .lte('created_at', endDate.toISOString());
 
-      // 2. Obtener bookings recientes
+        if (externalError) {
+          console.warn('[useDashboardMetrics] Error DB externa:', externalError);
+        } else if (externalData) {
+          externalTotalMessages = externalData.length;
+          
+          // Contar sesiones únicas
+          const uniqueSessions = new Set(externalData.map(m => m.session_id));
+          externalTotalSessions = uniqueSessions.size;
+          
+          // Calcular promedio
+          externalAvgPerSession = externalTotalSessions > 0 
+            ? Math.round((externalTotalMessages / externalTotalSessions) * 10) / 10
+            : 0;
+
+          console.log('[useDashboardMetrics] Métricas externas:', {
+            totalMessages: externalTotalMessages,
+            totalSessions: externalTotalSessions,
+            avgPerSession: externalAvgPerSession,
+          });
+        }
+      } catch (extErr) {
+        console.warn('[useDashboardMetrics] Error conectando DB externa:', extErr);
+      }
+
+      // ============================================
+      // 2. BOOKINGS desde DB LOCAL (Cloud)
+      // ============================================
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
         .select('*')
@@ -93,7 +122,20 @@ export function useDashboardMetrics({
 
       if (bookingsError) throw bookingsError;
 
-      // 3. Obtener conteo de sesiones por funnel_stage
+      // Contar bookings confirmados
+      const confirmedBookings = (bookingsData || []).filter(
+        b => b.status === 'confirmed' || b.status === 'completed'
+      ).length;
+
+      // Calcular revenue
+      const totalRevenue = (bookingsData || []).reduce(
+        (sum, b) => sum + (b.price || 0), 
+        0
+      );
+
+      // ============================================
+      // 3. FUNNEL desde DB LOCAL (chat_sessions)
+      // ============================================
       const { data: funnelData, error: funnelError } = await supabase
         .from('chat_sessions')
         .select('funnel_stage')
@@ -102,39 +144,7 @@ export function useDashboardMetrics({
 
       if (funnelError) throw funnelError;
 
-      // Agregar métricas
-      const aggregated = (metricsData || []).reduce(
-        (acc, day) => ({
-          totalSessions: acc.totalSessions + (day.total_sessions || 0),
-          totalMessages: acc.totalMessages + (day.total_messages || 0),
-          bookingsConfirmed: acc.bookingsConfirmed + (day.bookings_confirmed || 0),
-          revenue: acc.revenue + (day.revenue || 0),
-          avgResponseTime: acc.avgResponseTime + (day.avg_response_time_seconds || 0),
-          convertedCount: acc.convertedCount + (day.converted_count || 0),
-          tofuCount: acc.tofuCount + (day.tofu_count || 0),
-          mofuCount: acc.mofuCount + (day.mofu_count || 0),
-          hotCount: acc.hotCount + (day.hot_count || 0),
-          bofuCount: acc.bofuCount + (day.bofu_count || 0),
-          lostCount: acc.lostCount + (day.lost_count || 0),
-          daysCount: acc.daysCount + 1,
-        }),
-        {
-          totalSessions: 0,
-          totalMessages: 0,
-          bookingsConfirmed: 0,
-          revenue: 0,
-          avgResponseTime: 0,
-          convertedCount: 0,
-          tofuCount: 0,
-          mofuCount: 0,
-          hotCount: 0,
-          bofuCount: 0,
-          lostCount: 0,
-          daysCount: 0,
-        }
-      );
-
-      // Calcular funnel desde sesiones actuales
+      // Calcular funnel desde sesiones
       const funnelCounts = (funnelData || []).reduce(
         (acc, session) => {
           const stage = session.funnel_stage;
@@ -151,20 +161,25 @@ export function useDashboardMetrics({
 
       const totalFunnel = Object.values(funnelCounts).reduce((a, b) => a + b, 0) || 1;
 
-      // Construir métricas del dashboard
+      // ============================================
+      // 4. CONSTRUIR MÉTRICAS COMBINADAS
+      // ============================================
       const dashboardMetrics: DashboardMetrics = {
-        totalChats: aggregated.totalSessions,
-        totalMessages: aggregated.totalMessages,
-        avgMessagesPerChat: aggregated.totalSessions > 0 
-          ? Math.round(aggregated.totalMessages / aggregated.totalSessions) 
-          : 0,
-        botResponseRate: 0, // Calculable si tenemos datos de respuestas
-        avgFirstResponseTime: aggregated.daysCount > 0 
-          ? Math.round(aggregated.avgResponseTime / aggregated.daysCount) 
-          : 0,
-        avgConversionTime: 0, // Requiere cálculo más complejo
-        servicesBooked: aggregated.bookingsConfirmed,
-        revenue: aggregated.revenue,
+        // Métricas de mensajes desde DB EXTERNA
+        totalChats: externalTotalSessions,
+        totalMessages: externalTotalMessages,
+        avgMessagesPerChat: externalAvgPerSession,
+        
+        // Métricas pendientes de calcular
+        botResponseRate: 0,
+        avgFirstResponseTime: 0,
+        avgConversionTime: 0,
+        
+        // Métricas de negocio desde DB LOCAL
+        servicesBooked: confirmedBookings,
+        revenue: totalRevenue,
+        
+        // Funnel desde DB LOCAL
         funnel: {
           tofu: funnelCounts.tofu,
           mofu: funnelCounts.mofu,
@@ -173,8 +188,8 @@ export function useDashboardMetrics({
           deadRate: Math.round((funnelCounts.lost / totalFunnel) * 100),
           warmRate: Math.round(((funnelCounts.tofu + funnelCounts.mofu) / totalFunnel) * 100),
           hotRate: Math.round(((funnelCounts.hot + funnelCounts.bofu) / totalFunnel) * 100),
-          conversionRate: aggregated.totalSessions > 0
-            ? Math.round((aggregated.bookingsConfirmed / aggregated.totalSessions) * 100)
+          conversionRate: externalTotalSessions > 0
+            ? Math.round((confirmedBookings / externalTotalSessions) * 100)
             : 0,
         },
       };
