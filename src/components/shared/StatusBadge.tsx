@@ -22,18 +22,6 @@ const statusConfig: Record<string, { label: string; className: string }> = {
     label: "Cancelado",
     className: "bg-destructive/10 text-destructive",
   },
-  cancelled: {
-    label: "Cancelado",
-    className: "bg-destructive/10 text-destructive",
-  },
-  completed: {
-    label: "Completado",
-    className: "bg-primary/10 text-primary",
-  },
-  no_show: {
-    label: "No asistió",
-    className: "bg-muted text-muted-foreground",
-  },
   // Chat statuses
   active: {
     label: "Activo",

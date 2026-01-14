@@ -26,11 +26,10 @@ import {
   Lock,
   LogOut,
   ChevronRight,
-  ChevronDown,
 } from "lucide-react";
 import { logout } from "@/lib/auth";
 import { useAuth } from "@/hooks/use-auth";
-
+import { mockUser } from "@/lib/mock/data";
 import { isPremiumPlan, onPlanChange } from "@/lib/plan";
 
 interface NavItem {
@@ -99,7 +98,6 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
   const userProfile = getUserProfile();
   const { user: authUser } = useAuth();
   const [hasPremium, setHasPremium] = useState(isPremiumPlan());
-  const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
   // Listen for plan changes
   useEffect(() => {
@@ -109,18 +107,9 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
     return unsubscribe;
   }, []);
 
-  const toggleExpanded = (title: string) => {
-    setExpandedItems((prev) =>
-      prev.includes(title)
-        ? prev.filter((t) => t !== title)
-        : [...prev, title]
-    );
-  };
-
-  // SIEMPRE usar el usuario autenticado primero
-  const displayName = authUser?.name || userProfile?.companyName || 'Usuario';
+  const displayName = userProfile?.companyName || authUser?.name || mockUser.name;
   const displayLogo = userProfile?.logo || null;
-  const displayRole = authUser?.role || 'viewer';
+  const displayRole = authUser?.role || mockUser.role;
 
   const initials = displayName
     .split(" ")
@@ -140,8 +129,9 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
   };
 
   const handleLogout = async () => {
+    await logout();
+    navigate('/auth');
     onOpenChange(false);
-    await logout(); // logout ya hace redirect a /auth
   };
 
   return (
@@ -177,45 +167,33 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
                 <div key={item.title}>
                   {item.children ? (
                     <div className="space-y-1">
-                      <button
-                        onClick={() => toggleExpanded(item.title)}
-                        className={cn(
-                          "w-full flex items-center justify-between px-3 py-3 rounded-lg text-sm font-medium transition-colors text-left",
-                          isActive(item.href)
-                            ? "bg-primary/10 text-primary"
-                            : "text-muted-foreground active:bg-secondary"
-                        )}
-                      >
-                        <div className="flex items-center gap-3">
-                          <item.icon className="h-5 w-5 shrink-0" />
-                          <span>{item.title}</span>
-                          {item.isUpgrade && !hasPremium && <Lock className="h-4 w-4 text-warning" />}
-                        </div>
-                        {expandedItems.includes(item.title) ? (
-                          <ChevronDown className="h-4 w-4 shrink-0" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 shrink-0" />
-                        )}
-                      </button>
-                      {expandedItems.includes(item.title) && (
-                        <div className="ml-8 space-y-1">
-                          {item.children.map((child) => (
-                            <button
-                              key={child.href}
-                              onClick={() => handleNavigation(child.href)}
-                              className={cn(
-                                "w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm transition-colors text-left",
-                                location.pathname === child.href
-                                  ? "bg-primary/10 text-primary font-medium"
-                                  : "text-muted-foreground active:bg-secondary"
-                              )}
-                            >
-                              <ChevronRight className="h-3 w-3" />
-                              {child.title}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                      <div className={cn(
+                        "flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium",
+                        isActive(item.href)
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground"
+                      )}>
+                        <item.icon className="h-5 w-5 shrink-0" />
+                        <span className="flex-1">{item.title}</span>
+                        {item.isUpgrade && !hasPremium && <Lock className="h-4 w-4 text-warning" />}
+                      </div>
+                      <div className="ml-8 space-y-1">
+                        {item.children.map((child) => (
+                          <button
+                            key={child.href}
+                            onClick={() => handleNavigation(child.href)}
+                            className={cn(
+                              "w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm transition-colors text-left",
+                              location.pathname === child.href
+                                ? "bg-primary/10 text-primary font-medium"
+                                : "text-muted-foreground active:bg-secondary"
+                            )}
+                          >
+                            <ChevronRight className="h-3 w-3" />
+                            {child.title}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   ) : (
                     <button
@@ -228,7 +206,7 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
                       )}
                     >
                       <item.icon className="h-5 w-5 shrink-0" />
-                      <span>{item.title}</span>
+                      <span className="flex-1">{item.title}</span>
                       {item.isUpgrade && !hasPremium && <Lock className="h-4 w-4 text-warning" />}
                     </button>
                   )}

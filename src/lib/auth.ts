@@ -94,17 +94,7 @@ export const register = async (
 
 // Cerrar sesión
 export const logout = async (): Promise<void> => {
-  try {
-    await supabase.auth.signOut();
-  } catch (error) {
-    console.error('[logout] Error during signOut:', error);
-  }
-  // Limpiar TODOS los datos locales para evitar mezcla de sesiones
-  localStorage.removeItem('sb-ymlvklodwwvkfpnrlfsa-auth-token');
-  localStorage.removeItem('company_profile');
-  localStorage.removeItem('readNotifications');
-  // Forzar recarga limpia
-  window.location.href = '/auth';
+  await supabase.auth.signOut();
 };
 
 // Autenticación con Google

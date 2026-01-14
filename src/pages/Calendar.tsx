@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, isToday, addMonths, subMonths, startOfWeek, endOfWeek, addWeeks, subWeeks, addDays, subDays } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, addWeeks, subWeeks, addDays, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Clock, User, Phone, MapPin, Calendar as CalendarIcon, Filter, Plus, X, Lock } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -14,40 +14,16 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { SkeletonCard } from '@/components/shared/SkeletonCard';
-import type { Appointment, AppointmentSource, AppointmentStatus } from '@/lib/types';
+import { fetchAppointments, getAvailableServices } from '@/lib/mock/data';
+import type { Appointment, AppointmentSource } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { BlockingModeProvider, useBlockingMode } from '@/components/calendar/BlockingModeContext';
 import { CalendarDayCell } from '@/components/calendar/CalendarDayCell';
 import { BlockingPanel } from '@/components/calendar/BlockingPanel';
 import { BlockingModeOverlay } from '@/components/calendar/BlockingModeOverlay';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { useAuth } from '@/hooks/use-auth';
-import { supabase } from '@/integrations/supabase/client';
 
 type CalendarView = 'month' | 'week' | 'day';
-
-// Map Supabase booking status to our AppointmentStatus
-const mapBookingStatus = (status: string | null): AppointmentStatus => {
-  switch (status) {
-    case 'confirmed': return 'confirmed';
-    case 'pending': return 'pending';
-    case 'cancelled': return 'canceled';
-    case 'completed': return 'confirmed';
-    case 'no_show': return 'canceled';
-    default: return 'pending';
-  }
-};
-
-// Map Supabase booking origin to AppointmentSource
-const mapBookingSource = (origin: string | null): AppointmentSource => {
-  switch (origin) {
-    case 'chat': return 'chat';
-    case 'campaign': return 'campaign';
-    case 'manual': return 'direct';
-    case 'web': return 'direct';
-    default: return 'direct';
-  }
-};
 
 const CalendarContent = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -61,11 +37,8 @@ const CalendarContent = () => {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterService, setFilterService] = useState<string>('all');
   const [filterSource, setFilterSource] = useState<string>('all');
-  const [services, setServices] = useState<string[]>([]);
   
   const isMobile = useIsMobile();
-  const { user } = useAuth();
-  const tenantId = user?.tenantId;
 
   const { 
     isBlockingMode, 
@@ -95,55 +68,13 @@ const CalendarContent = () => {
 
   useEffect(() => {
     const loadData = async () => {
-      if (!tenantId) {
-        setLoading(false);
-        return;
-      }
-
       setLoading(true);
-      
-      try {
-        // Fetch bookings from Supabase
-        const { data: bookings, error } = await supabase
-          .from('bookings')
-          .select('*')
-          .eq('tenant_id', tenantId)
-          .order('scheduled_at', { ascending: true });
-
-        if (error) {
-          console.error('Error fetching bookings:', error);
-          setLoading(false);
-          return;
-        }
-
-        // Transform Supabase data to our Appointment type
-        const transformedAppointments: Appointment[] = (bookings || []).map(booking => ({
-          id: booking.id,
-          datetime: new Date(booking.scheduled_at),
-          clientName: booking.contact_name,
-          clientPhone: booking.contact_phone,
-          service: booking.service_name,
-          source: mapBookingSource(booking.origin),
-          status: mapBookingStatus(booking.status),
-          notes: booking.notes || undefined,
-          chatId: booking.session_id || undefined,
-          createdAt: new Date(booking.created_at || new Date()),
-        }));
-
-        setAppointments(transformedAppointments);
-        
-        // Extract unique services
-        const uniqueServices = [...new Set(transformedAppointments.map(a => a.service))];
-        setServices(uniqueServices);
-      } catch (error) {
-        console.error('Error loading calendar data:', error);
-      }
-
+      const data = await fetchAppointments();
+      setAppointments(data);
       setLoading(false);
     };
-
     loadData();
-  }, [tenantId]);
+  }, []);
 
   const filteredAppointments = appointments.filter(apt => {
     if (filterStatus !== 'all' && apt.status !== filterStatus) return false;
@@ -157,6 +88,11 @@ const CalendarContent = () => {
   };
 
   const selectedDateAppointments = getAppointmentsForDate(selectedDate);
+  // Servicios sincronizados con Ajustes del Agente
+  const configuredServices = getAvailableServices();
+  const appointmentServices = [...new Set(appointments.map(a => a.service))];
+  // Combinar servicios configurados + servicios de citas existentes (sin duplicados)
+  const services = [...new Set([...configuredServices, ...appointmentServices])];
   const hasActiveFilters = filterStatus !== 'all' || filterService !== 'all' || filterSource !== 'all';
 
   const navigatePrevious = () => {
@@ -482,212 +418,364 @@ const CalendarContent = () => {
                   <TabsList className={cn("bg-secondary", isMobile && "h-8")}>
                     <TabsTrigger value="month" className={cn(isMobile && "text-xs px-2 py-1")}>Mes</TabsTrigger>
                     <TabsTrigger value="week" className={cn(isMobile && "text-xs px-2 py-1")}>Semana</TabsTrigger>
-                    <TabsTrigger value="day" className={cn(isMobile && "text-xs px-2 py-1")}>Día</TabsTrigger>
+                    {!isMobile && <TabsTrigger value="day">Día</TabsTrigger>}
                   </TabsList>
                 </Tabs>
               </div>
             </CardHeader>
             <CardContent className={cn(isMobile && "px-2")}>
-              {/* Day Headers */}
-              <div className="grid grid-cols-7 mb-2">
-                {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day) => (
-                  <div key={day} className="text-center text-xs md:text-sm font-medium text-muted-foreground py-2">
-                    {isMobile ? day.charAt(0) : day}
-                  </div>
-                ))}
-              </div>
+              {/* Blocking mode overlay message */}
+              <BlockingModeOverlay />
 
-              {/* Calendar Grid */}
               {view === 'month' && (
-                <div className="grid grid-cols-7 gap-1">
-                  {getDaysForMonth().map((date) => (
-                    <CalendarDayCell
-                      key={date.toISOString()}
-                      day={date}
-                      isCurrentMonth={isSameMonth(date, currentDate)}
-                      isToday={isToday(date)}
-                      isSelected={isSameDay(date, selectedDate)}
-                      appointments={getAppointmentsForDate(date)}
-                      onSelect={handleDateSelect}
-                    />
-                  ))}
+                <div className="space-y-1 md:space-y-2">
+                  {/* Weekday headers */}
+                  <div className="grid grid-cols-7 gap-0.5 md:gap-1">
+                    {(isMobile ? ['L', 'M', 'X', 'J', 'V', 'S', 'D'] : ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']).map(day => (
+                      <div key={day} className="text-center text-[10px] md:text-xs text-muted-foreground py-1 md:py-2 font-medium">
+                        {day}
+                      </div>
+                    ))}
+                  </div>
+                  {/* Days grid */}
+                  <div className="grid grid-cols-7 gap-0.5 md:gap-1">
+                    {getDaysForMonth().map((day, idx) => {
+                      const dayAppointments = getAppointmentsForDate(day);
+                      const isCurrentMonth = day.getMonth() === currentDate.getMonth();
+                      const isToday = isSameDay(day, new Date());
+                      const isSelected = isSameDay(day, selectedDate);
+
+                      if (isMobile) {
+                        const blocked = isDateBlocked(day);
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => handleDateSelect(day)}
+                            disabled={blocked}
+                            className={cn(
+                              "aspect-square p-1 rounded-lg text-center transition-all relative",
+                              !isCurrentMonth && "opacity-40",
+                              blocked && "bg-slate-100 cursor-default",
+                              !blocked && "active:bg-secondary",
+                              isToday && !blocked && "ring-1 ring-primary",
+                              isSelected && !blocked && "bg-primary/10"
+                            )}
+                          >
+                            <span className={cn(
+                              "text-sm font-medium",
+                              isSelected && !blocked && "text-primary",
+                              blocked && "text-slate-400"
+                            )}>
+                              {format(day, 'd')}
+                            </span>
+                            {!blocked && dayAppointments.length > 0 && (
+                              <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5">
+                                {dayAppointments.slice(0, 3).map((apt, i) => (
+                                  <div
+                                    key={i}
+                                    className={cn(
+                                      "w-1 h-1 rounded-full",
+                                      apt.status === 'confirmed' && "bg-success",
+                                      apt.status === 'pending' && "bg-warning",
+                                      apt.status === 'canceled' && "bg-destructive"
+                                    )}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                          </button>
+                        );
+                      }
+
+                      return (
+                        <CalendarDayCell
+                          key={idx}
+                          day={day}
+                          isCurrentMonth={isCurrentMonth}
+                          isToday={isToday}
+                          isSelected={isSelected}
+                          appointments={dayAppointments}
+                          onSelect={handleDateSelect}
+                        />
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
               {view === 'week' && (
-                <div className="grid grid-cols-7 gap-1">
-                  {getDaysForWeek().map((date) => (
-                    <CalendarDayCell
-                      key={date.toISOString()}
-                      day={date}
-                      isCurrentMonth={isSameMonth(date, currentDate)}
-                      isToday={isToday(date)}
-                      isSelected={isSameDay(date, selectedDate)}
-                      appointments={getAppointmentsForDate(date)}
-                      onSelect={handleDateSelect}
-                    />
-                  ))}
+                <div className="space-y-2">
+                  <div className={cn(
+                    "grid gap-1 md:gap-2",
+                    isMobile ? "grid-cols-7" : "grid-cols-7"
+                  )}>
+                    {getDaysForWeek().map((day, idx) => {
+                      const dayAppointments = getAppointmentsForDate(day);
+                      const isToday = isSameDay(day, new Date());
+                      const isSelected = isSameDay(day, selectedDate);
+                      const blocked = isDateBlocked(day);
+
+                      return (
+                        <button
+                          key={idx}
+                          onClick={() => !blocked && handleDateSelect(day)}
+                          className={cn(
+                            "p-2 md:p-3 rounded-lg text-center transition-all flex flex-col",
+                            isMobile ? "min-h-[80px]" : "min-h-[120px]",
+                            "focus:outline-none focus:ring-2 focus:ring-primary/50",
+                            "border border-border",
+                            blocked 
+                              ? "bg-slate-100 dark:bg-slate-800 cursor-default"
+                              : "hover:bg-secondary active:bg-secondary",
+                            isToday && !blocked && "ring-1 ring-primary",
+                            isSelected && !blocked && "bg-primary/10 border-primary"
+                          )}
+                          disabled={blocked}
+                        >
+                          <div className="text-[10px] md:text-xs text-muted-foreground capitalize">
+                            {format(day, isMobile ? 'EEEEE' : 'EEE', { locale: es })}
+                          </div>
+                          <div className={cn(
+                            "text-base md:text-lg font-semibold",
+                            blocked && "text-slate-400 dark:text-slate-500",
+                            isSelected && !blocked && "text-primary"
+                          )}>
+                            {format(day, 'd')}
+                          </div>
+                          {blocked ? (
+                            <div className="flex-1 mt-1 flex items-center justify-center">
+                              <Lock className="h-3 w-3 md:h-4 md:w-4 text-slate-300 dark:text-slate-600" />
+                            </div>
+                          ) : (
+                            <div className="flex-1 mt-1 space-y-0.5">
+                              {dayAppointments.slice(0, isMobile ? 2 : 3).map((apt, i) => (
+                                <div
+                                  key={i}
+                                  className={cn(
+                                    "text-[8px] md:text-[10px] px-1 py-0.5 rounded truncate",
+                                    apt.status === 'confirmed' && "bg-success/10 text-success",
+                                    apt.status === 'pending' && "bg-warning/10 text-warning",
+                                    apt.status === 'canceled' && "bg-destructive/10 text-destructive"
+                                  )}
+                                >
+                                  {format(apt.datetime, 'HH:mm')}
+                                </div>
+                              ))}
+                              {dayAppointments.length > (isMobile ? 2 : 3) && (
+                                <div className="text-[8px] md:text-[10px] text-muted-foreground">
+                                  +{dayAppointments.length - (isMobile ? 2 : 3)} más
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
-              {view === 'day' && (
+              {view === 'day' && !isMobile && (
                 <div className="space-y-2">
-                  {selectedDateAppointments.length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground">
-                      <CalendarIcon className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                      <p>No hay citas para hoy</p>
+                  <div className="text-center mb-4">
+                    <div className="text-xl font-semibold capitalize text-foreground">
+                      {format(currentDate, "EEEE d 'de' MMMM", { locale: es })}
                     </div>
-                  ) : (
-                    selectedDateAppointments.map(apt => (
-                      <button
-                        key={apt.id}
-                        onClick={() => setSelectedAppointment(apt)}
-                        className="w-full text-left p-3 rounded-lg border border-border bg-background hover:bg-secondary transition-colors"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="font-medium">{apt.clientName}</div>
-                            <div className="text-sm text-muted-foreground">{apt.service}</div>
+                    {isDateBlocked(currentDate) && (
+                      <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-sm">
+                        <Lock className="h-3 w-3" />
+                        Día bloqueado
+                      </div>
+                    )}
+                  </div>
+                  {/* Time slots */}
+                  <ScrollArea className="h-[400px]">
+                    <div className="space-y-1">
+                      {Array.from({ length: 12 }, (_, i) => i + 8).map(hour => {
+                        const hourAppointments = filteredAppointments.filter(apt => 
+                          isSameDay(apt.datetime, currentDate) && apt.datetime.getHours() === hour
+                        );
+                        const blocked = isDateBlocked(currentDate);
+                        
+                        return (
+                          <div key={hour} className="flex gap-3 py-2 border-b border-border">
+                            <div className="w-16 text-sm text-muted-foreground shrink-0">
+                              {String(hour).padStart(2, '0')}:00
+                            </div>
+                            <div className="flex-1 min-h-[40px]">
+                              {blocked ? (
+                                <div className="h-10 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center">
+                                  <span className="text-xs text-slate-400 dark:text-slate-500">Bloqueado</span>
+                                </div>
+                              ) : hourAppointments.length > 0 ? (
+                                <div className="space-y-1">
+                                  {hourAppointments.map(apt => (
+                                    <button
+                                      key={apt.id}
+                                      onClick={() => setSelectedAppointment(apt)}
+                                      className={cn(
+                                        "w-full text-left px-3 py-2 rounded-lg text-sm transition-all",
+                                        "hover:opacity-80",
+                                        apt.status === 'confirmed' && "bg-success/10 border border-success/20",
+                                        apt.status === 'pending' && "bg-warning/10 border border-warning/20",
+                                        apt.status === 'canceled' && "bg-destructive/10 border border-destructive/20 line-through opacity-60"
+                                      )}
+                                    >
+                                      <div className="font-medium text-foreground">{apt.clientName}</div>
+                                      <div className="text-xs text-muted-foreground">{apt.service}</div>
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="h-10 border border-dashed border-border rounded-lg flex items-center justify-center text-xs text-muted-foreground">
+                                  Disponible
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <div className="text-sm font-medium">{format(apt.datetime, 'HH:mm')}</div>
-                            <StatusBadge status={apt.status} />
-                          </div>
-                        </div>
-                      </button>
-                    ))
-                  )}
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Sidebar - Selected Day Details (Desktop only) */}
+          {/* Right Panel - Desktop only */}
           {!isMobile && (
             <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <CardTitle className="text-base flex items-center gap-2 text-foreground">
                   <CalendarIcon className="h-4 w-4 text-primary" />
                   {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[500px]">
-                  {isDateBlocked(selectedDate) ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Lock className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                      <p className="font-medium">Día bloqueado</p>
-                      <p className="text-sm">No hay citas disponibles</p>
-                    </div>
-                  ) : selectedDateAppointments.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <CalendarIcon className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                      <p>No hay citas para este día</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {selectedDateAppointments
-                        .sort((a, b) => a.datetime.getTime() - b.datetime.getTime())
-                        .map(apt => (
-                          <button
-                            key={apt.id}
-                            onClick={() => setSelectedAppointment(apt)}
-                            className="w-full text-left p-3 rounded-lg border border-border bg-background hover:bg-secondary transition-colors space-y-2"
-                          >
-                            <div className="flex items-start justify-between">
-                              <div>
-                                <div className="font-medium text-foreground">{apt.clientName}</div>
-                                <div className="text-sm text-muted-foreground">{apt.service}</div>
+                {/* Show blocking panel when in blocking mode or viewing blocked day */}
+                <BlockingPanel 
+                  selectedDate={selectedDate} 
+                  onSelectDate={setSelectedDate} 
+                />
+                
+                {/* Show normal appointments list when not in blocking mode and day is not blocked */}
+                {!isBlockingMode && !isDateBlocked(selectedDate) && (
+                  <ScrollArea className="h-[500px]">
+                    {selectedDateAppointments.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <CalendarIcon className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                        <p>No hay citas para este día</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {selectedDateAppointments
+                          .sort((a, b) => a.datetime.getTime() - b.datetime.getTime())
+                          .map(apt => (
+                            <button
+                              key={apt.id}
+                              onClick={() => setSelectedAppointment(apt)}
+                              className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-secondary transition-all space-y-2"
+                            >
+                              <div className="flex items-start justify-between">
+                                <div>
+                                  <div className="font-medium text-foreground">{apt.clientName}</div>
+                                  <div className="text-sm text-muted-foreground">{apt.service}</div>
+                                </div>
+                                <StatusBadge status={apt.status} />
                               </div>
-                              <StatusBadge status={apt.status} />
-                            </div>
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                {format(apt.datetime, 'HH:mm')}
-                              </span>
-                              <Badge variant="outline" className="text-[10px]">
-                                {sourceLabels[apt.source]}
-                              </Badge>
-                            </div>
-                          </button>
-                        ))}
-                    </div>
-                  )}
-                </ScrollArea>
+                              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  {format(apt.datetime, 'HH:mm')}
+                                </span>
+                                <Badge variant="outline" className="text-[10px]">
+                                  {sourceLabels[apt.source]}
+                                </Badge>
+                              </div>
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </ScrollArea>
+                )}
               </CardContent>
             </Card>
           )}
         </div>
+      </div>
 
-        {/* Appointment Detail Dialog */}
-        <Dialog open={!!selectedAppointment} onOpenChange={() => setSelectedAppointment(null)}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Detalle de Cita</DialogTitle>
-            </DialogHeader>
-            {selectedAppointment && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center">
-                    <User className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-foreground">{selectedAppointment.clientName}</div>
-                    <div className="text-sm text-muted-foreground">{selectedAppointment.clientPhone}</div>
-                  </div>
+      {/* Mobile Sheets */}
+      {isMobile && (
+        <>
+          <FilterSheet />
+          <DayDetailSheet />
+        </>
+      )}
+
+      {/* Appointment Details Modal */}
+      <Dialog open={!!selectedAppointment} onOpenChange={() => setSelectedAppointment(null)}>
+        <DialogContent className={cn("border-border", isMobile && "w-[calc(100%-2rem)] rounded-2xl")}>
+          <DialogHeader>
+            <DialogTitle>Detalles de la cita</DialogTitle>
+          </DialogHeader>
+          {selectedAppointment && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">{selectedAppointment.clientName}</h3>
+                  <p className="text-muted-foreground">{selectedAppointment.service}</p>
                 </div>
+                <StatusBadge status={selectedAppointment.status} />
+              </div>
 
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 text-sm">
-                    <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                    <span>{format(selectedAppointment.datetime, "EEEE d 'de' MMMM, yyyy", { locale: es })}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    <span>{format(selectedAppointment.datetime, 'HH:mm')} hrs</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
-                    <span>{selectedAppointment.service}</span>
-                  </div>
+              <div className="space-y-3 py-4 border-t border-b border-border">
+                <div className="flex items-center gap-3 text-sm">
+                  <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-foreground">{format(selectedAppointment.datetime, "EEEE d 'de' MMMM, yyyy", { locale: es })}</span>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <StatusBadge status={selectedAppointment.status} />
-                  <Badge variant="outline">{sourceLabels[selectedAppointment.source]}</Badge>
+                <div className="flex items-center gap-3 text-sm">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-foreground">{format(selectedAppointment.datetime, 'HH:mm')} hrs</span>
                 </div>
-
-                {selectedAppointment.notes && (
-                  <div className="p-3 rounded-lg bg-secondary">
-                    <div className="text-xs font-medium text-muted-foreground mb-1">Notas</div>
-                    <p className="text-sm">{selectedAppointment.notes}</p>
+                {selectedAppointment.clientPhone && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <Phone className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-foreground">{selectedAppointment.clientPhone}</span>
                   </div>
                 )}
+                <div className="flex items-center gap-3 text-sm">
+                  <MapPin className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-foreground">Sede Providencia</span>
+                </div>
               </div>
-            )}
-          </DialogContent>
-        </Dialog>
 
-        {/* Mobile Sheets */}
-        {isMobile && (
-          <>
-            <FilterSheet />
-            <DayDetailSheet />
-          </>
-        )}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Origen:</span>
+                <Badge variant="outline">{sourceLabels[selectedAppointment.source]}</Badge>
+              </div>
 
-        {/* Blocking Mode Overlay */}
-        <BlockingModeOverlay />
-      </div>
+              <div className="flex gap-2 pt-2">
+                <Button variant="outline" className={cn("flex-1", isMobile && "h-12")} disabled>
+                  Reagendar
+                </Button>
+                <Button variant="outline" className={cn("flex-1 text-destructive hover:text-destructive", isMobile && "h-12")} disabled>
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 };
 
-const Calendar = () => (
-  <BlockingModeProvider>
-    <CalendarContent />
-  </BlockingModeProvider>
-);
+const Calendar = () => {
+  return (
+    <BlockingModeProvider>
+      <CalendarContent />
+    </BlockingModeProvider>
+  );
+};
 
 export default Calendar;
