@@ -371,13 +371,16 @@ export default function Chats() {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 bg-secondary/50 rounded-full px-2 py-1">
+                    <Bot className={cn(
+                      "h-4 w-4 transition-colors",
+                      isBotEnabled ? "text-primary" : "text-muted-foreground"
+                    )} />
                     <Switch
                       checked={isBotEnabled}
                       onCheckedChange={() => toggleBotState(selectedSessionId)}
                       className="data-[state=checked]:bg-primary"
                     />
-                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs">
