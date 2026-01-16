@@ -75,8 +75,8 @@ export function CustomInstructionsSection({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Header - Always visible */}
-        <div className="grid grid-cols-[1fr_140px_40px] gap-3 px-1">
+        {/* Header - Hidden on mobile, visible on tablet+ */}
+        <div className="hidden sm:grid grid-cols-[1fr_140px_40px] gap-3 px-1">
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
             Indicación personalizada
           </span>
@@ -93,35 +93,47 @@ export function CustomInstructionsSection({
             {instructions.map((inst) => (
               <div
                 key={inst.id}
-                className="grid grid-cols-[1fr_140px_40px] gap-3 items-start p-3 rounded-lg border border-border bg-muted/10 hover:border-primary/30 transition-colors"
+                className="flex flex-col gap-3 p-3 rounded-lg border border-border bg-muted/10 hover:border-primary/30 transition-colors sm:grid sm:grid-cols-[1fr_140px_40px] sm:items-start"
               >
-                <Textarea
-                  value={inst.instruction}
-                  onChange={(e) => handleUpdateInstruction(inst.id, "instruction", e.target.value)}
-                  placeholder="Escribe la indicación..."
-                  className="min-h-[80px] bg-background border-border resize-none text-sm"
-                />
-                <Select
-                  value={inst.priority}
-                  onValueChange={(value) => handleUpdateInstruction(inst.id, "priority", value as InstructionPriority)}
-                >
-                  <SelectTrigger className={cn("bg-background border-border", priorityColors[inst.priority])}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="alta" className="text-destructive">Alta</SelectItem>
-                    <SelectItem value="media" className="text-warning">Media</SelectItem>
-                    <SelectItem value="baja" className="text-muted-foreground">Baja</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleDeleteInstruction(inst.id)}
-                  className="h-10 w-10 text-destructive hover:text-destructive hover:bg-destructive/10"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="w-full">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 block sm:hidden">
+                    Indicación
+                  </span>
+                  <Textarea
+                    value={inst.instruction}
+                    onChange={(e) => handleUpdateInstruction(inst.id, "instruction", e.target.value)}
+                    placeholder="Escribe la indicación..."
+                    className="min-h-[80px] bg-background border-border resize-none text-sm w-full"
+                  />
+                </div>
+                <div className="flex items-center gap-2 sm:contents">
+                  <div className="flex-1 sm:flex-none">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 block sm:hidden">
+                      Prioridad
+                    </span>
+                    <Select
+                      value={inst.priority}
+                      onValueChange={(value) => handleUpdateInstruction(inst.id, "priority", value as InstructionPriority)}
+                    >
+                      <SelectTrigger className={cn("bg-background border-border w-full sm:w-auto", priorityColors[inst.priority])}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="alta" className="text-destructive">Alta</SelectItem>
+                        <SelectItem value="media" className="text-warning">Media</SelectItem>
+                        <SelectItem value="baja" className="text-muted-foreground">Baja</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleDeleteInstruction(inst.id)}
+                    className="h-10 w-10 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
@@ -129,27 +141,37 @@ export function CustomInstructionsSection({
 
         {/* Add new instruction */}
         <div className={cn(instructions.length > 0 && "pt-2 border-t border-border")}>
-          <div className="grid grid-cols-[1fr_140px_40px] gap-3 items-start">
-            <Textarea
-              value={newInstruction}
-              onChange={(e) => setNewInstruction(e.target.value)}
-              placeholder="Escribe una nueva indicación..."
-              className="min-h-[80px] bg-muted/30 border-border border-dashed resize-none text-sm"
-            />
-            <Select
-              value={newPriority}
-              onValueChange={(value) => setNewPriority(value as InstructionPriority)}
-            >
-              <SelectTrigger className="bg-muted/30 border-border border-dashed">
-                <SelectValue placeholder="Prioridad" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="alta" className="text-destructive">Alta</SelectItem>
-                <SelectItem value="media" className="text-warning">Media</SelectItem>
-                <SelectItem value="baja" className="text-muted-foreground">Baja</SelectItem>
-              </SelectContent>
-            </Select>
-            <div></div>
+          <div className="flex flex-col gap-3 sm:grid sm:grid-cols-[1fr_140px_40px] sm:items-start">
+            <div className="w-full">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 block sm:hidden">
+                Nueva indicación
+              </span>
+              <Textarea
+                value={newInstruction}
+                onChange={(e) => setNewInstruction(e.target.value)}
+                placeholder="Escribe una nueva indicación..."
+                className="min-h-[80px] bg-muted/30 border-border border-dashed resize-none text-sm w-full"
+              />
+            </div>
+            <div className="w-full sm:w-auto">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 block sm:hidden">
+                Prioridad
+              </span>
+              <Select
+                value={newPriority}
+                onValueChange={(value) => setNewPriority(value as InstructionPriority)}
+              >
+                <SelectTrigger className="bg-muted/30 border-border border-dashed w-full sm:w-auto">
+                  <SelectValue placeholder="Prioridad" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="alta" className="text-destructive">Alta</SelectItem>
+                  <SelectItem value="media" className="text-warning">Media</SelectItem>
+                  <SelectItem value="baja" className="text-muted-foreground">Baja</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="hidden sm:block"></div>
           </div>
           
           <Button
