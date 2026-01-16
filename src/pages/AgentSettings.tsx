@@ -59,11 +59,19 @@ export default function AgentSettings() {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const isMobile = useIsMobile();
-  const { user } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const { toast } = useToast();
+  
+  // El usuario no está listo hasta que auth termine y tengamos tenantId
+  const isUserReady = !isAuthLoading && !!user?.tenantId;
 
   // Cargar datos guardados de todas las secciones al montar
   const loadAllSections = useCallback(async () => {
+    // Esperar a que auth termine antes de intentar cargar
+    if (isAuthLoading) {
+      return;
+    }
+    
     if (!user?.tenantId) {
       setIsLoading(false);
       return;
@@ -110,9 +118,9 @@ export default function AgentSettings() {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.tenantId]);
+  }, [user?.tenantId, isAuthLoading]);
 
-  // Cargar datos al montar y cuando cambie el tenant
+  // Cargar datos al montar y cuando cambie el tenant o cuando auth termine
   useEffect(() => {
     loadAllSections();
   }, [loadAllSections]);
@@ -175,11 +183,14 @@ export default function AgentSettings() {
     }
 
     // No permitir guardar si aún no tenemos tenantId (evita usar DEV_CLIENT_ID y que falle RLS)
-    if (!user?.tenantId) {
-      console.warn("[AgentSettings] tenantId no disponible:", { user, tenantId: user?.tenantId });
+    if (!isUserReady) {
+      console.warn("[AgentSettings] Usuario no listo:", { isAuthLoading, tenantId: user?.tenantId });
       toast({
-        title: "Cargando sesión...",
-        description: "Espera un momento mientras se carga tu sesión.",
+        title: "Espera un momento",
+        description: isAuthLoading 
+          ? "Verificando tu sesión..." 
+          : "No se pudo verificar tu cuenta. Intenta recargar la página.",
+        variant: isAuthLoading ? "default" : "destructive",
       });
       return;
     }
@@ -361,6 +372,7 @@ export default function AgentSettings() {
               hasUnsavedChanges={hasUnsavedChanges}
               isSaving={isSaving}
               tenantId={user?.tenantId}
+              isReady={isUserReady}
             />
 
             {/* Contenido de la sección */}
