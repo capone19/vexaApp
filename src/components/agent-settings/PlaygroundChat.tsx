@@ -40,15 +40,13 @@ export function PlaygroundChat({ tenantId }: PlaygroundChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Auto-scroll al último mensaje
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isLoading]);
 
   // Focus en input cuando se abre, reset cuando se cierra
   useEffect(() => {
@@ -235,10 +233,7 @@ export function PlaygroundChat({ tenantId }: PlaygroundChatProps) {
         </SheetHeader>
 
         {/* Área de mensajes */}
-        <ScrollArea 
-          ref={scrollRef}
-          className="flex-1 px-4 py-4"
-        >
+        <ScrollArea className="flex-1 px-4 py-4">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full py-12 text-center">
               <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
@@ -332,6 +327,9 @@ export function PlaygroundChat({ tenantId }: PlaygroundChatProps) {
                   </div>
                 </div>
               )}
+              
+              {/* Anchor para auto-scroll */}
+              <div ref={messagesEndRef} />
             </div>
           )}
         </ScrollArea>
