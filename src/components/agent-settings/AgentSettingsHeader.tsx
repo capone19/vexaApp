@@ -20,7 +20,6 @@ interface AgentSettingsHeaderProps {
   hasUnsavedChanges: boolean;
   isSaving?: boolean;
   tenantId?: string;
-  isReady?: boolean;
 }
 
 export function AgentSettingsHeader({
@@ -29,12 +28,8 @@ export function AgentSettingsHeader({
   hasUnsavedChanges,
   isSaving = false,
   tenantId,
-  isReady = true,
 }: AgentSettingsHeaderProps) {
   const isMobile = useIsMobile();
-  
-  // El botón está deshabilitado si está guardando O si el usuario no está listo
-  const isButtonDisabled = isSaving || !isReady;
 
   return (
     <div className={cn(
@@ -96,7 +91,7 @@ export function AgentSettingsHeader({
             size={isMobile ? "sm" : "sm"} 
             className={cn("gap-2", isMobile && "px-3")} 
             onClick={onSave}
-            disabled={isButtonDisabled}
+            disabled={isSaving}
           >
             {isSaving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
