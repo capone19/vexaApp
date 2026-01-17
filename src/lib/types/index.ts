@@ -260,18 +260,25 @@ export interface Message {
 // Appointments
 export type AppointmentStatus = 'confirmed' | 'pending' | 'canceled';
 export type AppointmentSource = 'chat' | 'campaign' | 'direct' | 'referral';
+export type AppointmentType = 'service' | 'product';
 
 export interface Appointment {
   id: string;
   datetime: Date;
   clientName: string;
   clientPhone?: string;
+  clientEmail?: string;
   service: string;
   source: AppointmentSource;
   status: AppointmentStatus;
   notes?: string;
   chatId?: string;
   createdAt: Date;
+  // Nuevos campos para diferenciar servicios y productos
+  type: AppointmentType;
+  time?: string;        // Solo para servicios (ej: "10:30")
+  price?: number;
+  currency?: string;
 }
 
 // Templates (Marketing)

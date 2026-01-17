@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, addWeeks, subWeeks, addDays, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Clock, User, Phone, MapPin, Calendar as CalendarIcon, Filter, Plus, X, Lock, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, User, Phone, MapPin, Calendar as CalendarIcon, Filter, Plus, X, Lock, Loader2, ShoppingBag, DollarSign } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -14,9 +14,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { SkeletonCard } from '@/components/shared/SkeletonCard';
-import { useBookings, useTenantServices } from '@/hooks/use-bookings';
+import { useExternalBookings } from '@/hooks/use-external-bookings';
 import { useAuth } from '@/hooks/use-auth';
-import type { Appointment, AppointmentSource, AppointmentStatus } from '@/lib/types';
+import type { Appointment, AppointmentSource, AppointmentStatus, AppointmentType } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { BlockingModeProvider, useBlockingMode } from '@/components/calendar/BlockingModeContext';
 import { CalendarDayCell } from '@/components/calendar/CalendarDayCell';
@@ -35,7 +35,7 @@ const CalendarContent = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [showDayDetail, setShowDayDetail] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterService, setFilterService] = useState<string>('all');
+  const [filterType, setFilterType] = useState<'all' | 'service' | 'product'>('all');
   const [filterSource, setFilterSource] = useState<string>('all');
   
   const isMobile = useIsMobile();
@@ -47,29 +47,20 @@ const CalendarContent = () => {
       endDate: addMonths(endOfMonth(currentDate), 1),
     };
   }, [currentDate]);
-  // Usar hook de bookings reales
+  
+  // Usar hook de bookings externos (tu Supabase)
   const { 
     bookings: appointments, 
-    services: bookingServices, 
+    items, 
     isLoading: loading, 
     error 
-  } = useBookings({
+  } = useExternalBookings({
     tenantId: user?.tenantId,
     startDate,
     endDate,
-    status: filterStatus === 'all' ? 'all' : filterStatus as AppointmentStatus,
-    service: filterService,
+    type: filterType,
     enableRealtime: true,
   });
-
-  // Servicios del tenant (desde tabla services)
-  const { services: tenantServices } = useTenantServices(user?.tenantId);
-
-  // Combinar servicios de bookings + servicios configurados
-  const services = [...new Set([
-    ...bookingServices,
-    ...tenantServices.map(s => s.name),
-  ])];
 
   const { 
     isBlockingMode, 
@@ -99,6 +90,7 @@ const CalendarContent = () => {
 
   const filteredAppointments = appointments.filter(apt => {
     if (filterSource !== 'all' && apt.source !== filterSource) return false;
+    if (filterStatus !== 'all' && apt.status !== filterStatus) return false;
     return true;
   });
 
@@ -107,7 +99,7 @@ const CalendarContent = () => {
   };
 
   const selectedDateAppointments = getAppointmentsForDate(selectedDate);
-  const hasActiveFilters = filterStatus !== 'all' || filterService !== 'all' || filterSource !== 'all';
+  const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || filterSource !== 'all';
 
   const navigatePrevious = () => {
     if (view === 'month') setCurrentDate(subMonths(currentDate, 1));
@@ -167,8 +159,17 @@ const CalendarContent = () => {
 
   const clearFilters = () => {
     setFilterStatus('all');
-    setFilterService('all');
+    setFilterType('all');
     setFilterSource('all');
+  };
+
+  // Formatear precio
+  const formatPrice = (price?: number, currency?: string) => {
+    if (!price) return null;
+    return new Intl.NumberFormat('es-MX', {
+      style: 'currency',
+      currency: currency || 'MXN',
+    }).format(price);
   };
 
   // Empty State
@@ -239,16 +240,15 @@ const CalendarContent = () => {
             </Select>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Servicio</label>
-            <Select value={filterService} onValueChange={setFilterService}>
+            <label className="text-sm font-medium">Tipo</label>
+            <Select value={filterType} onValueChange={(v) => setFilterType(v as 'all' | 'service' | 'product')}>
               <SelectTrigger className="w-full h-12">
-                <SelectValue placeholder="Servicio" />
+                <SelectValue placeholder="Tipo" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos los servicios</SelectItem>
-                {services.map(s => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="service">Servicios</SelectItem>
+                <SelectItem value="product">Productos</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -316,19 +316,36 @@ const CalendarContent = () => {
                     className="w-full text-left p-4 rounded-xl border border-border bg-background active:bg-secondary transition-all space-y-2"
                   >
                     <div className="flex items-start justify-between">
-                      <div>
-                        <div className="font-medium text-foreground">{apt.clientName}</div>
-                        <div className="text-sm text-muted-foreground">{apt.service}</div>
+                      <div className="flex items-start gap-2">
+                        {apt.type === 'product' ? (
+                          <ShoppingBag className="h-4 w-4 text-primary mt-0.5" />
+                        ) : (
+                          <CalendarIcon className="h-4 w-4 text-primary mt-0.5" />
+                        )}
+                        <div>
+                          <div className="font-medium text-foreground">{apt.clientName}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {apt.type === 'product' ? `Compró: ${apt.service}` : apt.service}
+                          </div>
+                        </div>
                       </div>
                       <StatusBadge status={apt.status} />
                     </div>
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {format(apt.datetime, 'HH:mm')}
-                      </span>
+                      {apt.type === 'service' && apt.time && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {apt.time}
+                        </span>
+                      )}
+                      {apt.price && (
+                        <span className="flex items-center gap-1 text-success font-medium">
+                          <DollarSign className="h-3 w-3" />
+                          {formatPrice(apt.price, apt.currency)}
+                        </span>
+                      )}
                       <Badge variant="outline" className="text-[10px]">
-                        {sourceLabels[apt.source]}
+                        {apt.type === 'product' ? 'Producto' : 'Servicio'}
                       </Badge>
                     </div>
                   </button>
@@ -386,7 +403,7 @@ const CalendarContent = () => {
               Filtros
               {hasActiveFilters && (
                 <span className="bg-primary text-primary-foreground text-xs rounded-full px-1.5">
-                  {[filterStatus, filterService, filterSource].filter(f => f !== 'all').length}
+                  {[filterStatus, filterType, filterSource].filter(f => f !== 'all').length}
                 </span>
               )}
             </Button>
@@ -407,19 +424,14 @@ const CalendarContent = () => {
                   <SelectItem value="canceled">Cancelado</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={filterService} onValueChange={setFilterService}>
-                <SelectTrigger className="w-[180px] bg-background border-border">
-                  <SelectValue placeholder="Servicio" />
+              <Select value={filterType} onValueChange={(v) => setFilterType(v as 'all' | 'service' | 'product')}>
+                <SelectTrigger className="w-[140px] bg-background border-border">
+                  <SelectValue placeholder="Tipo" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos los servicios</SelectItem>
-                  {services.length === 0 ? (
-                    <SelectItem value="none" disabled>Sin servicios configurados</SelectItem>
-                  ) : (
-                    services.map(s => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
-                    ))
-                  )}
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="service">Servicios</SelectItem>
+                  <SelectItem value="product">Productos</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={filterSource} onValueChange={setFilterSource}>
@@ -727,19 +739,36 @@ const CalendarContent = () => {
                               className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-secondary transition-all space-y-2"
                             >
                               <div className="flex items-start justify-between">
-                                <div>
-                                  <div className="font-medium text-foreground">{apt.clientName}</div>
-                                  <div className="text-sm text-muted-foreground">{apt.service}</div>
+                                <div className="flex items-start gap-2">
+                                  {apt.type === 'product' ? (
+                                    <ShoppingBag className="h-4 w-4 text-primary mt-0.5" />
+                                  ) : (
+                                    <CalendarIcon className="h-4 w-4 text-primary mt-0.5" />
+                                  )}
+                                  <div>
+                                    <div className="font-medium text-foreground">{apt.clientName}</div>
+                                    <div className="text-sm text-muted-foreground">
+                                      {apt.type === 'product' ? `Compró: ${apt.service}` : apt.service}
+                                    </div>
+                                  </div>
                                 </div>
                                 <StatusBadge status={apt.status} />
                               </div>
                               <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                <span className="flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  {format(apt.datetime, 'HH:mm')}
-                                </span>
+                                {apt.type === 'service' && apt.time && (
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {apt.time}
+                                  </span>
+                                )}
+                                {apt.price && (
+                                  <span className="flex items-center gap-1 text-success font-medium">
+                                    <DollarSign className="h-3 w-3" />
+                                    {formatPrice(apt.price, apt.currency)}
+                                  </span>
+                                )}
                                 <Badge variant="outline" className="text-[10px]">
-                                  {sourceLabels[apt.source]}
+                                  {apt.type === 'product' ? 'Producto' : 'Servicio'}
                                 </Badge>
                               </div>
                             </button>
@@ -766,31 +795,62 @@ const CalendarContent = () => {
       <Dialog open={!!selectedAppointment} onOpenChange={() => setSelectedAppointment(null)}>
         <DialogContent className={cn("border-border", isMobile && "w-[calc(100%-2rem)] rounded-2xl")}>
           <DialogHeader>
-            <DialogTitle>Detalles de la cita</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedAppointment?.type === 'product' ? (
+                <ShoppingBag className="h-5 w-5 text-primary" />
+              ) : (
+                <CalendarIcon className="h-5 w-5 text-primary" />
+              )}
+              {selectedAppointment?.type === 'product' ? 'Detalles de la compra' : 'Detalles de la cita'}
+            </DialogTitle>
           </DialogHeader>
           {selectedAppointment && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">{selectedAppointment.clientName}</h3>
-                  <p className="text-muted-foreground">{selectedAppointment.service}</p>
+                  <p className="text-muted-foreground">
+                    {selectedAppointment.type === 'product' 
+                      ? `Compró: ${selectedAppointment.service}` 
+                      : selectedAppointment.service}
+                  </p>
                 </div>
-                <StatusBadge status={selectedAppointment.status} />
+                <Badge variant={selectedAppointment.type === 'product' ? 'secondary' : 'default'}>
+                  {selectedAppointment.type === 'product' ? 'Producto' : 'Servicio'}
+                </Badge>
               </div>
 
               <div className="space-y-3 py-4 border-t border-b border-border">
                 <div className="flex items-center gap-3 text-sm">
                   <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-foreground">{format(selectedAppointment.datetime, "EEEE d 'de' MMMM, yyyy", { locale: es })}</span>
+                  <span className="text-foreground">
+                    {selectedAppointment.type === 'product' ? 'Fecha de compra: ' : ''}
+                    {format(selectedAppointment.datetime, "EEEE d 'de' MMMM, yyyy", { locale: es })}
+                  </span>
                 </div>
-                <div className="flex items-center gap-3 text-sm">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-foreground">{format(selectedAppointment.datetime, 'HH:mm')} hrs</span>
-                </div>
+                
+                {/* Solo mostrar hora para servicios */}
+                {selectedAppointment.type === 'service' && selectedAppointment.time && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-foreground">{selectedAppointment.time} hrs</span>
+                  </div>
+                )}
+                
                 {selectedAppointment.clientPhone && (
                   <div className="flex items-center gap-3 text-sm">
                     <Phone className="h-4 w-4 text-muted-foreground" />
                     <span className="text-foreground">{selectedAppointment.clientPhone}</span>
+                  </div>
+                )}
+                
+                {/* Mostrar precio */}
+                {selectedAppointment.price && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <DollarSign className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-foreground font-medium text-success">
+                      {formatPrice(selectedAppointment.price, selectedAppointment.currency)}
+                    </span>
                   </div>
                 )}
               </div>
@@ -800,14 +860,17 @@ const CalendarContent = () => {
                 <Badge variant="outline">{sourceLabels[selectedAppointment.source]}</Badge>
               </div>
 
-              <div className="flex gap-2 pt-2">
-                <Button variant="outline" className={cn("flex-1", isMobile && "h-12")} disabled>
-                  Reagendar
-                </Button>
-                <Button variant="outline" className={cn("flex-1 text-destructive hover:text-destructive", isMobile && "h-12")} disabled>
-                  Cancelar
-                </Button>
-              </div>
+              {/* Solo mostrar botones de acción para servicios */}
+              {selectedAppointment.type === 'service' && (
+                <div className="flex gap-2 pt-2">
+                  <Button variant="outline" className={cn("flex-1", isMobile && "h-12")} disabled>
+                    Reagendar
+                  </Button>
+                  <Button variant="outline" className={cn("flex-1 text-destructive hover:text-destructive", isMobile && "h-12")} disabled>
+                    Cancelar
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>
