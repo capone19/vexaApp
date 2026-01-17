@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 export interface PendingUser {
   id: string;
   fullName: string | null;
+  email: string | null;
   createdAt: string;
 }
 
@@ -17,35 +18,18 @@ export function usePendingUsers() {
       setIsLoading(true);
       setError(null);
 
-      // Get all profiles
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('user_id, full_name, created_at');
+      // Call the edge function that bypasses RLS and filters out admin
+      const { data, error: invokeError } = await supabase.functions.invoke('admin-list-pending-users');
 
-      if (profilesError) {
-        throw profilesError;
+      if (invokeError) {
+        throw invokeError;
       }
 
-      // Get user_ids that already have a tenant
-      const { data: assignedUsers, error: assignedError } = await supabase
-        .from('user_roles')
-        .select('user_id');
-
-      if (assignedError) {
-        throw assignedError;
+      if (data?.error) {
+        throw new Error(data.error);
       }
 
-      // Filter profiles that don't have a tenant
-      const assignedUserIds = new Set(assignedUsers?.map(u => u.user_id) || []);
-      const pending = (profiles || [])
-        .filter(p => !assignedUserIds.has(p.user_id))
-        .map(p => ({
-          id: p.user_id,
-          fullName: p.full_name,
-          createdAt: p.created_at || new Date().toISOString(),
-        }));
-
-      setPendingUsers(pending);
+      setPendingUsers(data?.pendingUsers || []);
     } catch (err) {
       console.error('[usePendingUsers] Error:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar usuarios pendientes');
