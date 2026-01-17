@@ -1,16 +1,18 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Nota: algunos proxies/rutas requieren trailing slash; lo normalizamos.
-const RAW_N8N_WEBHOOK_URL =
+// Webhook por defecto para tenants sin configuración específica
+const DEFAULT_WEBHOOK_URL =
   "https://n8n-growthpartners-n8n.q7anmx.easypanel.host/webhook/50e5fdf6-62a3-4484-b889-e5eb7e4207cf";
-const N8N_WEBHOOK_URL = RAW_N8N_WEBHOOK_URL.endsWith("/")
-  ? RAW_N8N_WEBHOOK_URL
-  : `${RAW_N8N_WEBHOOK_URL}/`;
+
+function normalizeWebhookUrl(url: string): string {
+  return url.endsWith("/") ? url : `${url}/`;
+}
 
 function toQueryParams(payload: Record<string, unknown>) {
   const params = new URLSearchParams();
@@ -43,13 +45,59 @@ serve(async (req) => {
       );
     }
 
+    const tenantId = payload.tenant_id as string | undefined;
+    
     console.log(
       "[human-message-proxy] Forwarding message for session:",
-      payload.session_id
+      payload.session_id,
+      "tenant:",
+      tenantId || "none"
     );
 
+    // Determinar el webhook URL basado en el tenant
+    let webhookUrl = DEFAULT_WEBHOOK_URL;
+
+    if (tenantId) {
+      // Crear cliente Supabase con service role para bypasear RLS
+      const supabaseUrl = Deno.env.get("SUPABASE_URL");
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+      if (supabaseUrl && supabaseServiceKey) {
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+        // Buscar webhook específico para este tenant
+        const { data: webhookConfig, error: webhookError } = await supabase
+          .from("tenant_webhooks")
+          .select("webhook_url")
+          .eq("tenant_id", tenantId)
+          .eq("webhook_type", "human_message")
+          .eq("is_active", true)
+          .single();
+
+        if (webhookError) {
+          console.log(
+            "[human-message-proxy] No specific webhook found for tenant, using default:",
+            webhookError.message
+          );
+        }
+
+        if (webhookConfig?.webhook_url) {
+          webhookUrl = webhookConfig.webhook_url;
+          console.log(
+            "[human-message-proxy] Using tenant-specific webhook:",
+            webhookUrl
+          );
+        }
+      } else {
+        console.warn("[human-message-proxy] Missing Supabase env vars, using default webhook");
+      }
+    }
+
+    const normalizedUrl = normalizeWebhookUrl(webhookUrl);
+    console.log("[human-message-proxy] Final webhook URL:", normalizedUrl);
+
     // 1) Intentar POST (ideal)
-    let n8nResponse = await fetch(N8N_WEBHOOK_URL, {
+    let n8nResponse = await fetch(normalizedUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -65,7 +113,7 @@ serve(async (req) => {
       n8nResponse.status === 404 &&
       responseText.includes("not registered for POST")
     ) {
-      const url = `${N8N_WEBHOOK_URL}?${toQueryParams(payload).toString()}`;
+      const url = `${normalizedUrl}?${toQueryParams(payload).toString()}`;
       console.log("[human-message-proxy] POST not allowed, retrying with GET");
 
       n8nResponse = await fetch(url, {

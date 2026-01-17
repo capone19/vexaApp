@@ -10,6 +10,7 @@ import { useN8nChatHistory } from "@/hooks/use-n8n-chat-history";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 import { WEBHOOKS } from "@/lib/constants";
 import { useAuth } from "@/hooks/use-auth";
+import { useChatTenant } from "@/hooks/use-chat-tenant";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio } from "lucide-react";
@@ -75,7 +76,7 @@ export default function Chats() {
     limit: 500,
   });
   const { user } = useAuth();
-  const tenantId = user?.tenantId;
+  const { getTenantForSession } = useChatTenant();
   
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -103,6 +104,12 @@ export default function Chats() {
     setIsSendingMessage(true);
     
     try {
+      // Obtener el tenant_id del chat seleccionado (desde tenant_channels externo)
+      // Esto permite enrutar el mensaje al webhook correcto según el tenant del chat
+      const chatTenantId = await getTenantForSession(selectedSessionId);
+      
+      console.log("[Chats] Sending message to tenant:", chatTenantId || "default");
+      
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/human-message-proxy`,
         {
@@ -115,7 +122,7 @@ export default function Chats() {
           body: JSON.stringify({
             message: messageContent,
             session_id: selectedSessionId,
-            tenant_id: tenantId,
+            tenant_id: chatTenantId, // Usar el tenant del chat, no el del usuario logueado
             source: "human_agent",
             timestamp: new Date().toISOString(),
           }),
@@ -141,7 +148,7 @@ export default function Chats() {
     } finally {
       setIsSendingMessage(false);
     }
-  }, [messageInput, selectedSessionId, tenantId, isSendingMessage, refetch]);
+  }, [messageInput, selectedSessionId, isSendingMessage, refetch, getTenantForSession]);
 
   // Manejar Enter para enviar
   const handleKeyPress = (e: React.KeyboardEvent) => {
