@@ -131,6 +131,11 @@ export function useBookings({
         notes: booking.notes || undefined,
         chatId: booking.session_id || undefined,
         createdAt: new Date(booking.created_at || Date.now()),
+        // Campos adicionales - por defecto es servicio desde Lovable Cloud
+        type: 'service' as const,
+        time: new Date(booking.scheduled_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+        price: booking.price || undefined,
+        currency: booking.currency || undefined,
       }));
 
       // Extraer servicios únicos

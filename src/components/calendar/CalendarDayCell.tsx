@@ -145,9 +145,12 @@ export const CalendarDayCell = ({
               key={i}
               className={cn(
                 "w-1.5 h-1.5 rounded-full",
-                apt.status === 'confirmed' && "bg-success",
-                apt.status === 'pending' && "bg-warning",
-                apt.status === 'canceled' && "bg-destructive"
+                // Diferentes colores según tipo y status
+                apt.type === 'product' 
+                  ? "bg-primary" // Productos en color primario
+                  : apt.status === 'confirmed' && "bg-success",
+                apt.type === 'service' && apt.status === 'pending' && "bg-warning",
+                apt.type === 'service' && apt.status === 'canceled' && "bg-destructive"
               )}
             />
           ))}

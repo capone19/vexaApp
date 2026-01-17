@@ -18,6 +18,27 @@ export interface N8nChatMessage {
   created_at: string;
 }
 
+// Interfaz para bookings externos
+export interface ExternalBooking {
+  id: string;
+  tenant_id: string;
+  session_id: string | null;
+  contact_name: string;
+  contact_phone: string | null;
+  contact_email: string | null;
+  type: 'product' | 'service';
+  item_name: string;
+  price: number;
+  currency: string;
+  event_date: string;       // "YYYY-MM-DD"
+  event_time: string | null; // "HH:MM:SS" o null para productos
+  origin: string;
+  notes: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
 export const externalSupabase = createClient(
   EXTERNAL_SUPABASE_URL,
   EXTERNAL_SUPABASE_ANON_KEY,
