@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { AdminRoute } from "@/components/auth/AdminRoute";
 import Dashboard from "./pages/Dashboard";
 import Chats from "./pages/Chats";
 import AgentSettings from "./pages/AgentSettings";
@@ -21,6 +22,8 @@ import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
 import PendingSetup from "./pages/PendingSetup";
 import NotFound from "./pages/NotFound";
+import AdminClients from "./pages/admin/AdminClients";
+import AdminOnboarding from "./pages/admin/AdminOnboarding";
 
 const queryClient = new QueryClient();
 
@@ -52,6 +55,11 @@ const App = () => (
           <Route path="/notificaciones" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
           <Route path="/soporte" element={<ProtectedRoute><Support /></ProtectedRoute>} />
           <Route path="/configuracion" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+          
+          {/* Admin routes */}
+          <Route path="/admin" element={<AdminRoute><AdminClients /></AdminRoute>} />
+          <Route path="/admin/clientes" element={<AdminRoute><AdminClients /></AdminRoute>} />
+          <Route path="/admin/onboarding" element={<AdminRoute><AdminOnboarding /></AdminRoute>} />
           
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

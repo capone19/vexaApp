@@ -2,3 +2,15 @@ project_id = "ymlvklodwwvkfpnrlfsa"
 
 [functions.save-agent-settings]
 verify_jwt = false
+
+[functions.admin-list-tenants]
+verify_jwt = false
+
+[functions.admin-onboarding]
+verify_jwt = false
+
+[functions.webhook-n8n-proxy]
+verify_jwt = false
+
+[functions.human-message-proxy]
+verify_jwt = false

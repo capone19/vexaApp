@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { login, register, signInWithGoogle } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/shared/Logo";
+import { isAdminEmail } from "@/lib/admin-config";
 
 type AuthMode = "login" | "register";
 
@@ -34,7 +35,12 @@ export default function Auth() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (session) {
-          navigate("/");
+          const email = session.user.email || '';
+          if (isAdminEmail(email)) {
+            navigate("/admin");
+          } else {
+            navigate("/");
+          }
         }
       }
     );
@@ -42,7 +48,12 @@ export default function Auth() {
     // Then check current session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        navigate("/");
+        const email = session.user.email || '';
+        if (isAdminEmail(email)) {
+          navigate("/admin");
+        } else {
+          navigate("/");
+        }
       }
     });
 
