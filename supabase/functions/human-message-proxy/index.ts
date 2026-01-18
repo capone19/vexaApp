@@ -8,7 +8,7 @@ const corsHeaders = {
 
 // Webhook por defecto para tenants sin configuración específica
 const DEFAULT_WEBHOOK_URL =
-  "https://n8n-growthpartners-n8n.q7anmx.easypanel.host/webhook/50e5fdf6-62a3-4484-b889-e5eb7e4207cf";
+  "https://n8n-growthpartners-n8n.q7anmx.easypanel.host/webhook/estetica_online";
 
 function normalizeWebhookUrl(url: string): string {
   return url.endsWith("/") ? url : `${url}/`;
@@ -96,6 +96,19 @@ serve(async (req) => {
     const normalizedUrl = normalizeWebhookUrl(webhookUrl);
     console.log("[human-message-proxy] Final webhook URL:", normalizedUrl);
 
+    // Construir payload completo con todos los campos requeridos por n8n
+    const fullPayload = {
+      message: payload.message,
+      session_id: payload.session_id,
+      tenant_id: payload.tenant_id || null,
+      source: payload.source || "human_agent",
+      timestamp: payload.timestamp || new Date().toISOString(),
+      webhookUrl: normalizedUrl,
+      executionMode: "production",
+    };
+
+    console.log("[human-message-proxy] Sending payload:", JSON.stringify(fullPayload));
+
     // 1) Intentar POST (ideal)
     let n8nResponse = await fetch(normalizedUrl, {
       method: "POST",
@@ -103,7 +116,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
         Accept: "application/json, text/plain, */*",
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(fullPayload),
     });
 
     let responseText = await n8nResponse.text();
@@ -113,7 +126,7 @@ serve(async (req) => {
       n8nResponse.status === 404 &&
       responseText.includes("not registered for POST")
     ) {
-      const url = `${normalizedUrl}?${toQueryParams(payload).toString()}`;
+      const url = `${normalizedUrl}?${toQueryParams(fullPayload).toString()}`;
       console.log("[human-message-proxy] POST not allowed, retrying with GET");
 
       n8nResponse = await fetch(url, {
