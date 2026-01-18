@@ -12,6 +12,7 @@ import {
   Info,
   ChevronRight,
   ArrowLeft,
+  Ticket,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +35,7 @@ import { es } from "date-fns/locale";
 import { logout } from "@/lib/auth";
 import { useAuth } from "@/hooks/use-auth";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useNotifications } from "@/hooks/use-notifications";
 
 // Función para obtener el perfil del usuario desde localStorage
 const getUserProfile = () => {
@@ -68,7 +70,7 @@ const pageTitles: Record<string, string> = {
 };
 
 // Tipos de notificación
-type NotificationType = 'appointment' | 'message' | 'alert' | 'system' | 'success';
+type NotificationType = 'appointment' | 'message' | 'alert' | 'system' | 'success' | 'ticket';
 
 interface Notification {
   id: string;
@@ -79,35 +81,10 @@ interface Notification {
   read: boolean;
   metadata?: {
     clientName?: string;
+    ticket_id?: string;
+    ticket_title?: string;
   };
 }
-
-// Lista vacía para producción - Se llenará con datos reales
-const initialNotifications: Notification[] = [];
-
-// Función para obtener IDs de notificaciones leídas desde localStorage
-const getReadNotificationIds = (): Set<string> => {
-  try {
-    const stored = localStorage.getItem('readNotifications');
-    return stored ? new Set(JSON.parse(stored)) : new Set();
-  } catch {
-    return new Set();
-  }
-};
-
-// Función para guardar IDs de notificaciones leídas en localStorage
-const saveReadNotificationIds = (ids: Set<string>) => {
-  localStorage.setItem('readNotifications', JSON.stringify([...ids]));
-};
-
-// Aplicar estado de lectura desde localStorage
-const getNotificationsWithReadState = (): Notification[] => {
-  const readIds = getReadNotificationIds();
-  return initialNotifications.map(n => ({
-    ...n,
-    read: readIds.has(n.id)
-  }));
-};
 
 const getNotificationIcon = (type: NotificationType) => {
   switch (type) {
@@ -121,6 +98,8 @@ const getNotificationIcon = (type: NotificationType) => {
       return CheckCircle;
     case 'system':
       return Info;
+    case 'ticket':
+      return Ticket;
     default:
       return Bell;
   }
@@ -138,6 +117,8 @@ const getNotificationColor = (type: NotificationType) => {
       return 'text-emerald-500 bg-emerald-500/10';
     case 'system':
       return 'text-muted-foreground bg-muted';
+    case 'ticket':
+      return 'text-blue-500 bg-blue-500/10';
     default:
       return 'text-muted-foreground bg-muted';
   }
@@ -150,15 +131,47 @@ const notificationRoutes: Record<NotificationType, string> = {
   success: '/calendario',
   message: '/chats',
   system: '/configuracion',
+  ticket: '/soporte',
 };
 
 export function TopBar() {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
-  const [notifications, setNotifications] = useState<Notification[]>(getNotificationsWithReadState);
   const [isOpen, setIsOpen] = useState(false);
   const [userProfile, setUserProfile] = useState(getUserProfile());
+  
+  // Obtener notificaciones desde Supabase
+  const { notifications: dbNotifications, unreadCount, markAsRead, isLoading: isLoadingNotifications, error: notificationsError } = useNotifications();
+  
+  // Debug: Log notifications
+  useEffect(() => {
+    if (dbNotifications.length > 0) {
+      console.log('[TopBar] Notifications received:', dbNotifications);
+    }
+    if (notificationsError) {
+      console.error('[TopBar] Notifications error:', notificationsError);
+    }
+  }, [dbNotifications, notificationsError]);
+  
+  // Convertir notificaciones de la BD al formato del componente
+  const notifications: Notification[] = dbNotifications.map(n => {
+    // Asegurar que el tipo 'ticket' sea reconocido
+    const notificationType: NotificationType = n.type === 'ticket' ? 'ticket' : (n.type as NotificationType);
+    
+    return {
+      id: n.id,
+      type: notificationType,
+      title: n.title,
+      description: n.message || '',
+      timestamp: n.timestamp,
+      read: n.read,
+      metadata: n.data ? {
+        ticket_id: n.data.ticket_id,
+        ticket_title: n.data.ticket_title,
+      } : undefined,
+    };
+  });
   
   // Get current page title
   const currentPageTitle = pageTitles[location.pathname] || "VEXA";
@@ -181,8 +194,6 @@ export function TopBar() {
     };
   }, []);
   
-  const unreadCount = notifications.filter(n => !n.read).length;
-  
   // Obtener usuario autenticado
   const { user: authUser } = useAuth();
   
@@ -201,14 +212,8 @@ export function TopBar() {
         .slice(0, 2)
     : '?';
 
-  const markAsRead = (id: string) => {
-    setNotifications(prev => 
-      prev.map(n => n.id === id ? { ...n, read: true } : n)
-    );
-    
-    const readIds = getReadNotificationIds();
-    readIds.add(id);
-    saveReadNotificationIds(readIds);
+  const handleMarkAsRead = async (id: string) => {
+    await markAsRead(id);
   };
 
   const getRouteForNotification = (notification: Notification): string => {
@@ -221,8 +226,8 @@ export function TopBar() {
     return notificationRoutes[notification.type] || '/';
   };
 
-  const handleNotificationClick = (notification: Notification) => {
-    markAsRead(notification.id);
+  const handleNotificationClick = async (notification: Notification) => {
+    await handleMarkAsRead(notification.id);
     setIsOpen(false);
     const route = getRouteForNotification(notification);
     navigate(route);

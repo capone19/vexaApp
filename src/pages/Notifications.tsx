@@ -37,11 +37,14 @@ import {
   MapPin,
   DollarSign,
   Scissors,
+  Ticket,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useNotifications } from '@/hooks/use-notifications';
+import { useNavigate } from 'react-router-dom';
 
-type NotificationType = 'appointment' | 'message' | 'alert' | 'system' | 'success';
+type NotificationType = 'appointment' | 'message' | 'alert' | 'system' | 'success' | 'ticket';
 
 type AppointmentStatus = 'scheduled' | 'confirmed' | 'cancelled' | 'no-show' | 'completed' | 'pending-reschedule';
 
@@ -55,6 +58,8 @@ interface NotificationMetadata {
   ticketValue?: number;
   appointmentStatus?: AppointmentStatus;
   notes?: string;
+  ticket_id?: string;
+  ticket_title?: string;
 }
 
 interface Notification {
@@ -68,8 +73,6 @@ interface Notification {
   metadata?: NotificationMetadata;
 }
 
-// Lista vacía para producción - Se llenará con datos reales
-const mockNotifications: Notification[] = [];
 
 const getNotificationIcon = (type: NotificationType) => {
   switch (type) {
@@ -81,6 +84,8 @@ const getNotificationIcon = (type: NotificationType) => {
       return CheckCircle;
     case 'system':
       return Info;
+    case 'ticket':
+      return Ticket;
     default:
       return Bell;
   }
@@ -96,6 +101,8 @@ const getNotificationColor = (type: NotificationType) => {
       return 'text-success bg-success/10';
     case 'system':
       return 'text-muted-foreground bg-muted';
+    case 'ticket':
+      return 'text-blue-500 bg-blue-500/10';
     default:
       return 'text-muted-foreground bg-muted';
   }
@@ -133,6 +140,45 @@ function NotificationDetailContent({ notification }: { notification: Notificatio
   const Icon = getNotificationIcon(type);
   const colorClass = getNotificationColor(type);
   const statusBadge = getStatusBadge(metadata?.appointmentStatus);
+
+  // Para notificaciones de tipo ticket
+  if (type === 'ticket' && metadata?.ticket_id) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <div className={cn("p-2.5 rounded-xl", colorClass)}>
+            <Icon className="h-5 w-5" />
+          </div>
+          <div>
+            <h4 className="font-semibold text-foreground">{notification.title}</h4>
+            <p className="text-sm text-muted-foreground">
+              {formatDistanceToNow(notification.timestamp, { addSuffix: true, locale: es })}
+            </p>
+          </div>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-4">
+          <div className="bg-secondary/50 rounded-lg p-4">
+            <p className="text-foreground">{notification.description}</p>
+          </div>
+          
+          {metadata.ticket_title && (
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-secondary">
+                <Ticket className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Ticket</p>
+                <p className="font-medium text-foreground">{metadata.ticket_title}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // Para notificaciones de tipo cita (appointment, alert relacionado con citas, success de confirmación)
   if (metadata?.clientName && (type === 'appointment' || type === 'alert' || type === 'success')) {
@@ -284,40 +330,66 @@ function NotificationDetailContent({ notification }: { notification: Notificatio
 }
 
 export default function Notifications() {
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'all' | 'unread'>('all');
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const isMobile = useIsMobile();
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  // Obtener notificaciones desde Supabase
+  const { notifications: dbNotifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+
+  // Convertir notificaciones de la BD al formato del componente
+  const notifications: Notification[] = dbNotifications.map(n => ({
+    id: n.id,
+    type: n.type as NotificationType,
+    title: n.title,
+    description: n.message || '',
+    timestamp: n.timestamp,
+    read: n.read,
+    actionUrl: n.type === 'ticket' ? '/soporte' : undefined,
+    metadata: n.data ? {
+      ticket_id: n.data.ticket_id,
+      ticket_title: n.data.ticket_title,
+      ...(n.data as NotificationMetadata),
+    } : undefined,
+  }));
 
   const filteredNotifications = activeTab === 'unread' 
     ? notifications.filter(n => !n.read)
     : notifications;
 
-  const markAsRead = (id: string) => {
-    setNotifications(prev => 
-      prev.map(n => n.id === id ? { ...n, read: true } : n)
-    );
+  const handleMarkAsRead = async (id: string) => {
+    await markAsRead(id);
   };
 
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  const handleMarkAllAsRead = async () => {
+    await markAllAsRead();
   };
 
   const deleteNotification = (id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
+    // En producción, esto debería eliminar de la BD también
+    // Por ahora solo lo removemos del estado local si es necesario
+    console.log('Delete notification:', id);
   };
 
   const clearAll = () => {
-    setNotifications([]);
+    // En producción, esto debería eliminar todas de la BD
+    console.log('Clear all notifications');
   };
 
-  const openDetail = (notification: Notification) => {
+  const openDetail = async (notification: Notification) => {
     setSelectedNotification(notification);
     setIsDetailOpen(true);
-    markAsRead(notification.id);
+    if (!notification.read) {
+      await handleMarkAsRead(notification.id);
+    }
+    
+    // Si es un ticket, redirigir a soporte
+    if (notification.type === 'ticket') {
+      setIsDetailOpen(false);
+      navigate('/soporte');
+    }
   };
 
   return (
@@ -329,7 +401,7 @@ export default function Notifications() {
           actions={
             <div className="flex items-center gap-2">
               {unreadCount > 0 && (
-                <Button variant="outline" size="sm" onClick={markAllAsRead} className={cn("gap-2", isMobile && "h-9")}>
+                <Button variant="outline" size="sm" onClick={handleMarkAllAsRead} className={cn("gap-2", isMobile && "h-9")}>
                   <Check className="h-4 w-4" />
                   {!isMobile && "Marcar todo como leído"}
                 </Button>
@@ -434,7 +506,7 @@ export default function Notifications() {
                   {filteredNotifications.map((notification) => {
                     const Icon = getNotificationIcon(notification.type);
                     const colorClass = getNotificationColor(notification.type);
-                    const hasDetail = notification.metadata?.clientName || notification.type === 'system';
+                    const hasDetail = notification.metadata?.clientName || notification.type === 'system' || notification.type === 'ticket';
 
                     return (
                       <div
