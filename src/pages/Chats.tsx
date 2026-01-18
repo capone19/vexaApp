@@ -10,7 +10,7 @@ import { useN8nChatHistory } from "@/hooks/use-n8n-chat-history";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 import { WEBHOOKS } from "@/lib/constants";
 import { useAuth } from "@/hooks/use-auth";
-import { useChatTenant } from "@/hooks/use-chat-tenant";
+
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio } from "lucide-react";
@@ -72,7 +72,6 @@ function IntentBadge({ label }: { label: IntentLabel }) {
 
 export default function Chats() {
   const { user, isLoading: authLoading } = useAuth();
-  const { getTenantForSession } = useChatTenant();
   
   // Determinar si el usuario es admin (ve todos los chats)
   const isAdmin = user?.role === 'admin';
@@ -102,6 +101,15 @@ export default function Chats() {
     }
   }, [selectedSessionId, messages]);
 
+  // Obtener el tenant_id de los mensajes de la sesión seleccionada
+  const selectedSessionTenantId = useMemo(() => {
+    if (!selectedSessionId) return null;
+    const sessionMessages = messages.filter(m => m.session_id === selectedSessionId);
+    // Buscar el primer mensaje que tenga tenant_id
+    const messageWithTenant = sessionMessages.find(m => m.tenant_id);
+    return messageWithTenant?.tenant_id || null;
+  }, [messages, selectedSessionId]);
+
   // Enviar mensaje de agente humano via edge function proxy
   const sendHumanMessage = useCallback(async () => {
     if (!messageInput.trim() || !selectedSessionId || isSendingMessage) return;
@@ -110,11 +118,8 @@ export default function Chats() {
     setIsSendingMessage(true);
     
     try {
-      // Obtener el tenant_id del chat seleccionado (desde tenant_channels externo)
-      // Esto permite enrutar el mensaje al webhook correcto según el tenant del chat
-      const chatTenantId = await getTenantForSession(selectedSessionId);
-      
-      console.log("[Chats] Sending message to tenant:", chatTenantId || "default");
+      // Usar el tenant_id directamente de los mensajes del chat
+      console.log("[Chats] Sending message to tenant:", selectedSessionTenantId || "none");
       
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/human-message-proxy`,
@@ -122,13 +127,12 @@ export default function Chats() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            // Nota: la función no requiere JWT, pero enviamos el publishable key como header estándar.
             "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           },
           body: JSON.stringify({
             message: messageContent,
             session_id: selectedSessionId,
-            tenant_id: chatTenantId, // Usar el tenant del chat, no el del usuario logueado
+            tenant_id: selectedSessionTenantId, // Usar el tenant_id de los mensajes del chat
             source: "human_agent",
             timestamp: new Date().toISOString(),
           }),
@@ -154,7 +158,7 @@ export default function Chats() {
     } finally {
       setIsSendingMessage(false);
     }
-  }, [messageInput, selectedSessionId, isSendingMessage, refetch, getTenantForSession]);
+  }, [messageInput, selectedSessionId, isSendingMessage, refetch, selectedSessionTenantId]);
 
   // Manejar Enter para enviar
   const handleKeyPress = (e: React.KeyboardEvent) => {
