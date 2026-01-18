@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { UserPlus, Users, LogOut, Menu, X } from 'lucide-react';
+import { UserPlus, Users, LogOut, Menu, X, Ticket } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -13,6 +13,7 @@ interface AdminLayoutProps {
 const navItems = [
   { path: '/admin/onboarding', label: 'Onboarding', icon: UserPlus },
   { path: '/admin/clientes', label: 'Clientes', icon: Users },
+  { path: '/admin/tickets', label: 'Tickets', icon: Ticket },
 ];
 
 export function AdminLayout({ children }: AdminLayoutProps) {

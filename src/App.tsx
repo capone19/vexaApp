@@ -24,6 +24,8 @@ import PendingSetup from "./pages/PendingSetup";
 import NotFound from "./pages/NotFound";
 import AdminClients from "./pages/admin/AdminClients";
 import AdminOnboarding from "./pages/admin/AdminOnboarding";
+import AdminTickets from "./pages/admin/AdminTickets";
+import AdminTicketDetail from "./pages/admin/AdminTicketDetail";
 
 const queryClient = new QueryClient();
 
@@ -60,6 +62,8 @@ const App = () => (
           <Route path="/admin" element={<AdminRoute><AdminClients /></AdminRoute>} />
           <Route path="/admin/clientes" element={<AdminRoute><AdminClients /></AdminRoute>} />
           <Route path="/admin/onboarding" element={<AdminRoute><AdminOnboarding /></AdminRoute>} />
+          <Route path="/admin/tickets" element={<AdminRoute><AdminTickets /></AdminRoute>} />
+          <Route path="/admin/tickets/:ticketId" element={<AdminRoute><AdminTicketDetail /></AdminRoute>} />
           
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
