@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,9 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useAuth } from '@/hooks/use-auth';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import {
   Headphones,
   MessageSquare,
@@ -46,44 +49,34 @@ import {
   Send,
   User,
   Headset,
+  Loader2,
+  Plus,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // Tipos
-type TicketStatus = 'open' | 'in-progress' | 'resolved';
-type TicketPriority = 'low' | 'medium' | 'high';
-type MessageSender = 'user' | 'support';
+type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+type TicketPriority = 'low' | 'medium' | 'high' | 'urgent';
+type MessageSender = 'client' | 'admin';
 
 interface TicketMessage {
   id: string;
-  sender: MessageSender;
-  senderName: string;
+  sender_type: MessageSender;
   content: string;
-  timestamp: Date;
+  created_at: string;
 }
 
 interface Ticket {
   id: string;
   title: string;
-  description: string;
+  description: string | null;
   status: TicketStatus;
   priority: TicketPriority;
-  createdAt: Date;
-  updatedAt: Date;
-  hasAttachments: boolean;
-  attachmentCount?: number;
-  messages: TicketMessage[];
+  created_at: string;
+  updated_at: string;
+  tenant_id: string;
 }
-
-interface AttachedFile {
-  id: string;
-  name: string;
-  size: number;
-}
-
-// Lista vacía para producción - Los tickets se crean por el usuario
-const mockTickets: Ticket[] = [];
 
 // Helpers
 const getStatusConfig = (status: TicketStatus) => {
@@ -94,7 +87,7 @@ const getStatusConfig = (status: TicketStatus) => {
         className: 'bg-blue-100 text-blue-700 border-blue-200',
         icon: AlertCircle,
       };
-    case 'in-progress':
+    case 'in_progress':
       return {
         label: 'En proceso',
         className: 'bg-amber-100 text-amber-700 border-amber-200',
@@ -105,6 +98,18 @@ const getStatusConfig = (status: TicketStatus) => {
         label: 'Resuelto',
         className: 'bg-emerald-100 text-emerald-700 border-emerald-200',
         icon: CheckCircle,
+      };
+    case 'closed':
+      return {
+        label: 'Cerrado',
+        className: 'bg-gray-100 text-gray-700 border-gray-200',
+        icon: CheckCircle,
+      };
+    default:
+      return {
+        label: status,
+        className: 'bg-gray-100 text-gray-700 border-gray-200',
+        icon: AlertCircle,
       };
   }
 };
@@ -126,118 +131,171 @@ const getPriorityConfig = (priority: TicketPriority) => {
         label: 'Alta',
         className: 'bg-red-100 text-red-700 border-red-200',
       };
+    case 'urgent':
+      return {
+        label: 'Urgente',
+        className: 'bg-red-200 text-red-800 border-red-300',
+      };
+    default:
+      return {
+        label: priority,
+        className: 'bg-slate-100 text-slate-700 border-slate-200',
+      };
   }
 };
 
-const formatFileSize = (bytes: number) => {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-};
-
 export default function Support() {
-  const [tickets, setTickets] = useState<Ticket[]>(mockTickets);
+  const { user } = useAuth();
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const [messages, setMessages] = useState<TicketMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [newTicket, setNewTicket] = useState({
     title: '',
     description: '',
     priority: 'medium' as TicketPriority,
   });
-  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const isMobile = useIsMobile();
+
+  // Fetch tickets from database
+  const fetchTickets = async () => {
+    if (!user?.tenantId) return;
+    
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('tenant_id', user.tenantId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setTickets((data || []) as Ticket[]);
+    } catch (error) {
+      console.error('Error fetching tickets:', error);
+      toast.error('Error al cargar los tickets');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch messages for selected ticket
+  const fetchMessages = async (ticketId: string) => {
+    setIsLoadingMessages(true);
+    try {
+      const { data, error } = await supabase
+        .from('ticket_messages')
+        .select('*')
+        .eq('ticket_id', ticketId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setMessages((data || []) as TicketMessage[]);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      toast.error('Error al cargar los mensajes');
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTickets();
+  }, [user?.tenantId]);
+
+  useEffect(() => {
+    if (selectedTicket) {
+      fetchMessages(selectedTicket.id);
+    }
+  }, [selectedTicket?.id]);
 
   // Métricas
   const openTickets = tickets.filter(t => t.status === 'open').length;
-  const inProgressTickets = tickets.filter(t => t.status === 'in-progress').length;
-  const resolvedTickets = tickets.filter(t => t.status === 'resolved').length;
+  const inProgressTickets = tickets.filter(t => t.status === 'in_progress').length;
+  const resolvedTickets = tickets.filter(t => t.status === 'resolved' || t.status === 'closed').length;
 
-  const handleFileAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
+  const handleCreateTicket = async () => {
+    if (!newTicket.title.trim() || !newTicket.description.trim() || !user?.tenantId) return;
 
-    const newFiles: AttachedFile[] = [];
-    const maxFiles = 5;
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    setIsSubmitting(true);
+    try {
+      const { data, error } = await supabase
+        .from('tickets')
+        .insert({
+          tenant_id: user.tenantId,
+          title: newTicket.title.trim(),
+          description: newTicket.description.trim(),
+          priority: newTicket.priority,
+          status: 'open',
+          created_by: user.id,
+        })
+        .select()
+        .single();
 
-    for (let i = 0; i < files.length && attachedFiles.length + newFiles.length < maxFiles; i++) {
-      const file = files[i];
-      if (file.size <= maxSize) {
-        newFiles.push({
-          id: `file-${Date.now()}-${i}`,
-          name: file.name,
-          size: file.size,
-        });
-      }
+      if (error) throw error;
+
+      setTickets(prev => [data as Ticket, ...prev]);
+      setNewTicket({ title: '', description: '', priority: 'medium' });
+      setIsModalOpen(false);
+      toast.success('Ticket creado exitosamente');
+    } catch (error) {
+      console.error('Error creating ticket:', error);
+      toast.error('Error al crear el ticket');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setAttachedFiles(prev => [...prev, ...newFiles]);
-    e.target.value = '';
-  };
-
-  const removeFile = (fileId: string) => {
-    setAttachedFiles(prev => prev.filter(f => f.id !== fileId));
-  };
-
-  const handleCreateTicket = () => {
-    if (!newTicket.title.trim() || !newTicket.description.trim()) return;
-
-    const ticket: Ticket = {
-      id: `ticket-${Date.now()}`,
-      title: newTicket.title,
-      description: newTicket.description,
-      status: 'open',
-      priority: newTicket.priority,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      hasAttachments: attachedFiles.length > 0,
-      attachmentCount: attachedFiles.length || undefined,
-      messages: [],
-    };
-
-    setTickets(prev => [ticket, ...prev]);
-    setNewTicket({ title: '', description: '', priority: 'medium' });
-    setAttachedFiles([]);
-    setIsModalOpen(false);
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
     setNewTicket({ title: '', description: '', priority: 'medium' });
-    setAttachedFiles([]);
   };
 
-  const handleSendMessage = () => {
-    if (!newMessage.trim() || !selectedTicket) return;
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !selectedTicket || !user?.tenantId) return;
 
-    const message: TicketMessage = {
-      id: `msg-${Date.now()}`,
-      sender: 'user',
-      senderName: 'Patricio Araya',
-      content: newMessage,
-      timestamp: new Date(),
-    };
+    setIsSendingMessage(true);
+    try {
+      const { data, error } = await supabase
+        .from('ticket_messages')
+        .insert({
+          ticket_id: selectedTicket.id,
+          tenant_id: user.tenantId,
+          sender_type: 'client',
+          sender_id: user.id,
+          content: newMessage.trim(),
+        })
+        .select()
+        .single();
 
-    setTickets(prev => prev.map(t => {
-      if (t.id === selectedTicket.id) {
-        return {
-          ...t,
-          messages: [...t.messages, message],
-          updatedAt: new Date(),
-        };
-      }
-      return t;
-    }));
+      if (error) throw error;
 
-    // Actualizar el ticket seleccionado
-    setSelectedTicket(prev => prev ? {
-      ...prev,
-      messages: [...prev.messages, message],
-      updatedAt: new Date(),
-    } : null);
+      // Update ticket updated_at
+      await supabase
+        .from('tickets')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', selectedTicket.id);
 
-    setNewMessage('');
+      setMessages(prev => [...prev, data as TicketMessage]);
+      setNewMessage('');
+      
+      // Update the ticket in the list
+      setTickets(prev => prev.map(t => 
+        t.id === selectedTicket.id 
+          ? { ...t, updated_at: new Date().toISOString() }
+          : t
+      ));
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast.error('Error al enviar el mensaje');
+    } finally {
+      setIsSendingMessage(false);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -261,7 +319,10 @@ export default function Support() {
               variant="ghost"
               size="sm"
               className={cn("gap-2", isMobile && "h-9 -ml-2")}
-              onClick={() => setSelectedTicket(null)}
+              onClick={() => {
+                setSelectedTicket(null);
+                setMessages([]);
+              }}
             >
               <ArrowLeft className="h-4 w-4" />
               Volver
@@ -290,7 +351,7 @@ export default function Support() {
                     </Badge>
                   </div>
                   <p className="text-xs md:text-sm text-muted-foreground mt-2">
-                    Creado el {format(selectedTicket.createdAt, "dd/MM/yyyy HH:mm", { locale: es })}
+                    Creado el {format(new Date(selectedTicket.created_at), "dd/MM/yyyy HH:mm", { locale: es })}
                   </p>
                 </div>
 
@@ -303,8 +364,8 @@ export default function Support() {
                   <span className={cn(
                     "text-xs md:text-sm font-medium",
                     selectedTicket.status === 'open' && "text-blue-600",
-                    selectedTicket.status === 'in-progress' && "text-amber-600",
-                    selectedTicket.status === 'resolved' && "text-emerald-600",
+                    selectedTicket.status === 'in_progress' && "text-amber-600",
+                    (selectedTicket.status === 'resolved' || selectedTicket.status === 'closed') && "text-emerald-600",
                   )}>
                     {statusConfig.label}
                   </span>
@@ -312,10 +373,12 @@ export default function Support() {
               </div>
 
               {/* Descripción */}
-              <div className="mt-4 md:mt-6">
-                <h4 className="text-sm font-medium text-foreground mb-2">Descripción</h4>
-                <p className="text-xs md:text-sm text-muted-foreground">{selectedTicket.description}</p>
-              </div>
+              {selectedTicket.description && (
+                <div className="mt-4 md:mt-6">
+                  <h4 className="text-sm font-medium text-foreground mb-2">Descripción</h4>
+                  <p className="text-xs md:text-sm text-muted-foreground">{selectedTicket.description}</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -333,30 +396,34 @@ export default function Support() {
             <CardContent className="p-0">
               {/* Lista de mensajes */}
               <ScrollArea className={cn(isMobile ? "h-[calc(100vh-480px)] min-h-[200px]" : "h-[350px]", "px-4 md:px-6")}>
-                {selectedTicket.messages.length === 0 ? (
+                {isLoadingMessages ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-8 md:py-12 text-muted-foreground">
                     <MessageSquare className={cn("mb-3 opacity-20", isMobile ? "h-8 w-8" : "h-10 w-10")} />
                     <p className="text-xs md:text-sm text-center">No hay mensajes aún. Sé el primero en escribir.</p>
                   </div>
                 ) : (
                   <div className="space-y-3 md:space-y-4 py-4">
-                    {selectedTicket.messages.map((message) => (
+                    {messages.map((message) => (
                       <div
                         key={message.id}
                         className={cn(
                           "flex gap-2 md:gap-3",
-                          message.sender === 'user' && "flex-row-reverse"
+                          message.sender_type === 'client' && "flex-row-reverse"
                         )}
                       >
                         {/* Avatar */}
                         <div className={cn(
                           "flex-shrink-0 rounded-full flex items-center justify-center",
                           isMobile ? "w-7 h-7" : "w-8 h-8",
-                          message.sender === 'support' 
+                          message.sender_type === 'admin' 
                             ? "bg-primary/10" 
                             : "bg-secondary"
                         )}>
-                          {message.sender === 'support' ? (
+                          {message.sender_type === 'admin' ? (
                             <Headset className={cn("text-primary", isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
                           ) : (
                             <User className={cn("text-muted-foreground", isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
@@ -367,7 +434,7 @@ export default function Support() {
                         <div className={cn(
                           "flex-1",
                           isMobile ? "max-w-[85%]" : "max-w-[80%]",
-                          message.sender === 'user' && "flex flex-col items-end"
+                          message.sender_type === 'client' && "flex flex-col items-end"
                         )}>
                           <div className={cn(
                             "flex items-center gap-2 mb-1",
@@ -375,17 +442,17 @@ export default function Support() {
                           )}>
                             <span className={cn(
                               "text-xs font-medium",
-                              message.sender === 'support' ? "text-primary" : "text-foreground"
+                              message.sender_type === 'admin' ? "text-primary" : "text-foreground"
                             )}>
-                              {isMobile && message.sender === 'support' ? 'Soporte' : message.senderName}
+                              {message.sender_type === 'admin' ? 'Soporte VEXA' : 'Tú'}
                             </span>
                             <span className="text-[10px] md:text-xs text-muted-foreground">
-                              {format(message.timestamp, isMobile ? "dd/MM HH:mm" : "dd/MM/yyyy HH:mm", { locale: es })}
+                              {format(new Date(message.created_at), isMobile ? "dd/MM HH:mm" : "dd/MM/yyyy HH:mm", { locale: es })}
                             </span>
                           </div>
                           <div className={cn(
                             "rounded-xl px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm whitespace-pre-wrap",
-                            message.sender === 'support' 
+                            message.sender_type === 'admin' 
                               ? "bg-primary/5 text-foreground border border-primary/10" 
                               : "bg-secondary text-foreground"
                           )}>
@@ -406,6 +473,7 @@ export default function Support() {
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
                     onKeyDown={handleKeyPress}
+                    disabled={isSendingMessage}
                     className={cn(
                       "resize-none border-border",
                       isMobile ? "min-h-[50px] max-h-[100px]" : "min-h-[60px] max-h-[120px]"
@@ -415,9 +483,13 @@ export default function Support() {
                     size="icon"
                     className={cn("shrink-0", isMobile ? "h-10 w-10" : "h-10 w-10")}
                     onClick={handleSendMessage}
-                    disabled={!newMessage.trim()}
+                    disabled={!newMessage.trim() || isSendingMessage}
                   >
-                    <Send className="h-4 w-4" />
+                    {isSendingMessage ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
               </div>
@@ -485,58 +557,44 @@ export default function Support() {
           </Card>
         </div>
 
-        {/* CTA - ¿Necesitas ayuda? */}
-        <Card className="border-primary/20 bg-primary/5">
-          <CardContent className={cn("p-4 md:p-6")}>
-            <div className={cn("flex", isMobile ? "flex-col gap-4" : "items-center justify-between")}>
-              <div className="flex items-center gap-3 md:gap-4">
-                <div className={cn("rounded-xl bg-primary/10", isMobile ? "p-2" : "p-3")}>
-                  <HelpCircle className={cn("text-primary", isMobile ? "h-5 w-5" : "h-6 w-6")} />
-                </div>
-                <div>
-                  <h3 className={cn("font-semibold text-foreground", isMobile ? "text-base" : "text-lg")}>¿Necesitas ayuda?</h3>
-                  <p className="text-xs md:text-sm text-muted-foreground">
-                    {isMobile ? "Crea un ticket de soporte" : "Crea un nuevo ticket y nuestro equipo te responderá lo antes posible"}
-                  </p>
-                </div>
-              </div>
-              <Button 
-                onClick={() => setIsModalOpen(true)}
-                className={cn("gap-2", isMobile && "w-full h-11")}
-              >
-                <MessageSquare className="h-4 w-4" />
-                Nuevo Ticket
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Action button */}
+        <div className="flex justify-end">
+          <Button onClick={() => setIsModalOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Nuevo Ticket
+          </Button>
+        </div>
 
-        {/* Listado de Tickets */}
+        {/* Lista de tickets */}
         <Card className="border-border">
-          <CardHeader className={cn("pb-4", isMobile && "px-4 pb-3")}>
-            <CardTitle className="text-sm md:text-base flex items-center gap-2">
-              <Headphones className="h-4 w-4" />
+          <CardHeader className={cn(isMobile && "px-4")}>
+            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+              <Headphones className={cn(isMobile ? "h-4 w-4" : "h-5 w-5")} />
               Mis Tickets
             </CardTitle>
-            <p className="text-xs md:text-sm text-muted-foreground">
-              {isMobile ? "Tus solicitudes" : "Historial y estado de tus solicitudes"}
-            </p>
           </CardHeader>
-          <CardContent className="p-0">
-            {tickets.length === 0 ? (
+          <CardContent className={cn(isMobile && "px-4")}>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : tickets.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 md:py-12 text-muted-foreground">
-                <Headphones className={cn("mb-4 opacity-20", isMobile ? "h-10 w-10" : "h-12 w-12")} />
-                <p className="text-xs md:text-sm">No tienes tickets creados</p>
+                <Headphones className={cn("mb-3 opacity-20", isMobile ? "h-10 w-10" : "h-12 w-12")} />
+                <p className="text-sm md:text-base font-medium">No tienes tickets</p>
+                <p className="text-xs md:text-sm text-center mt-1">
+                  Crea un nuevo ticket si necesitas ayuda
+                </p>
                 <Button 
-                  variant="link" 
-                  className="mt-2 text-sm"
+                  className="mt-4 gap-2" 
                   onClick={() => setIsModalOpen(true)}
                 >
-                  Crear tu primer ticket
+                  <Plus className="h-4 w-4" />
+                  Crear Ticket
                 </Button>
               </div>
             ) : (
-              <div className="divide-y divide-border">
+              <div className="space-y-2 md:space-y-3">
                 {tickets.map((ticket) => {
                   const statusConfig = getStatusConfig(ticket.status);
                   const priorityConfig = getPriorityConfig(ticket.priority);
@@ -545,62 +603,36 @@ export default function Support() {
                     <div
                       key={ticket.id}
                       className={cn(
-                        "hover:bg-secondary/30 active:bg-secondary transition-colors cursor-pointer",
-                        isMobile ? "p-3" : "p-4"
+                        "p-3 md:p-4 border border-border rounded-lg cursor-pointer transition-colors hover:bg-secondary/50",
                       )}
                       onClick={() => setSelectedTicket(ticket)}
                     >
-                      {/* Badges */}
-                      <div className="flex items-center gap-1.5 md:gap-2 mb-2 flex-wrap">
-                        <Badge 
-                          variant="outline" 
-                          className={cn("text-[10px] md:text-xs font-medium gap-1", statusConfig.className)}
-                        >
-                          <statusConfig.icon className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                          {statusConfig.label}
-                        </Badge>
-                        <Badge 
-                          variant="outline" 
-                          className={cn("text-[10px] md:text-xs font-medium", priorityConfig.className)}
-                        >
-                          {priorityConfig.label}
-                        </Badge>
-                        {ticket.hasAttachments && (
-                          <Badge variant="outline" className="text-[10px] md:text-xs font-medium gap-1 bg-secondary">
-                            <Paperclip className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                            {ticket.attachmentCount}
-                          </Badge>
-                        )}
-                        {ticket.messages.length > 0 && (
-                          <Badge variant="outline" className="text-[10px] md:text-xs font-medium gap-1 bg-secondary">
-                            <MessageSquare className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                            {ticket.messages.length}
-                          </Badge>
-                        )}
-                      </div>
-
-                      {/* Título y descripción */}
-                      <h4 className={cn("font-medium text-foreground", isMobile ? "text-sm" : "text-base")}>{ticket.title}</h4>
-                      <p className={cn("text-muted-foreground mt-1", isMobile ? "text-xs line-clamp-1" : "text-sm line-clamp-2")}>
-                        {ticket.description}
-                      </p>
-
-                      {/* Fechas */}
-                      <div className={cn(
-                        "flex items-center mt-2 md:mt-3 text-[10px] md:text-xs text-muted-foreground",
-                        isMobile ? "gap-2" : "gap-4"
-                      )}>
-                        <span>
-                          {isMobile ? format(ticket.createdAt, "dd/MM/yy", { locale: es }) : `Creado: ${format(ticket.createdAt, "dd/MM/yyyy HH:mm", { locale: es })}`}
-                        </span>
-                        {!isMobile && (
-                          <>
-                            <span>•</span>
-                            <span>
-                              Actualizado: {format(ticket.updatedAt, "dd/MM/yyyy HH:mm", { locale: es })}
-                            </span>
-                          </>
-                        )}
+                      <div className={cn("flex", isMobile ? "flex-col gap-2" : "items-center justify-between")}>
+                        <div className="flex-1 min-w-0">
+                          <h3 className={cn("font-medium text-foreground truncate", isMobile ? "text-sm" : "text-base")}>
+                            {ticket.title}
+                          </h3>
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            <Badge 
+                              variant="outline" 
+                              className={cn("text-[10px] md:text-xs font-medium gap-1", statusConfig.className)}
+                            >
+                              <statusConfig.icon className="h-2.5 w-2.5 md:h-3 md:w-3" />
+                              {statusConfig.label}
+                            </Badge>
+                            <Badge 
+                              variant="outline" 
+                              className={cn("text-[10px] md:text-xs font-medium", priorityConfig.className)}
+                            >
+                              {priorityConfig.label}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className={cn("text-muted-foreground", isMobile && "self-end")}>
+                          <span className="text-[10px] md:text-xs">
+                            {format(new Date(ticket.updated_at), isMobile ? "dd/MM" : "dd/MM/yyyy HH:mm", { locale: es })}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   );
@@ -609,263 +641,170 @@ export default function Support() {
             )}
           </CardContent>
         </Card>
-      </div>
 
-      {/* Modal - Crear Nuevo Ticket - Sheet en móvil, Dialog en desktop */}
-      {isMobile ? (
-        <Sheet open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <SheetContent side="bottom" className="h-[90vh] rounded-t-2xl">
-            <SheetHeader className="text-left mb-4">
-              <SheetTitle className="text-lg font-semibold">Crear Nuevo Ticket</SheetTitle>
-              <p className="text-xs text-muted-foreground">
-                Describe tu problema y te responderemos pronto
-              </p>
-            </SheetHeader>
+        {/* Modal para crear ticket */}
+        {isMobile ? (
+          <Sheet open={isModalOpen} onOpenChange={setIsModalOpen}>
+            <SheetContent side="bottom" className="h-[85vh] rounded-t-xl">
+              <SheetHeader className="pb-4 border-b border-border">
+                <SheetTitle className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-primary" />
+                  Nuevo Ticket
+                </SheetTitle>
+              </SheetHeader>
 
-            <ScrollArea className="h-[calc(100%-160px)]">
-              <div className="space-y-4 pb-4 pr-2">
-                {/* Título */}
+              <ScrollArea className="h-[calc(100%-120px)] py-4">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="title-mobile" className="text-sm font-medium">
+                      Título del ticket *
+                    </Label>
+                    <Input
+                      id="title-mobile"
+                      placeholder="Ej: Problema con integración WhatsApp"
+                      value={newTicket.title}
+                      onChange={(e) => setNewTicket(prev => ({ ...prev, title: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="priority-mobile" className="text-sm font-medium">
+                      Prioridad
+                    </Label>
+                    <Select
+                      value={newTicket.priority}
+                      onValueChange={(value: TicketPriority) => setNewTicket(prev => ({ ...prev, priority: value }))}
+                    >
+                      <SelectTrigger id="priority-mobile">
+                        <SelectValue placeholder="Selecciona prioridad" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Baja</SelectItem>
+                        <SelectItem value="medium">Media</SelectItem>
+                        <SelectItem value="high">Alta</SelectItem>
+                        <SelectItem value="urgent">Urgente</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="description-mobile" className="text-sm font-medium">
+                      Descripción *
+                    </Label>
+                    <Textarea
+                      id="description-mobile"
+                      placeholder="Describe tu problema o solicitud con el mayor detalle posible..."
+                      value={newTicket.description}
+                      onChange={(e) => setNewTicket(prev => ({ ...prev, description: e.target.value }))}
+                      className="min-h-[120px]"
+                    />
+                  </div>
+                </div>
+              </ScrollArea>
+
+              <SheetFooter className="pt-4 border-t border-border gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={closeModal}
+                  className="flex-1"
+                  disabled={isSubmitting}
+                >
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={handleCreateTicket}
+                  className="flex-1"
+                  disabled={!newTicket.title.trim() || !newTicket.description.trim() || isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Creando...
+                    </>
+                  ) : (
+                    'Crear Ticket'
+                  )}
+                </Button>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
+        ) : (
+          <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-primary" />
+                  Nuevo Ticket de Soporte
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="title-mobile" className="text-sm font-medium">
-                    Título <span className="text-destructive">*</span>
-                  </Label>
+                  <Label htmlFor="title">Título del ticket *</Label>
                   <Input
-                    id="title-mobile"
-                    placeholder="Resumen breve del problema"
+                    id="title"
+                    placeholder="Ej: Problema con integración WhatsApp"
                     value={newTicket.title}
                     onChange={(e) => setNewTicket(prev => ({ ...prev, title: e.target.value }))}
-                    className="border-border focus:border-primary h-11"
                   />
                 </div>
 
-                {/* Descripción */}
                 <div className="space-y-2">
-                  <Label htmlFor="description-mobile" className="text-sm font-medium">
-                    Descripción <span className="text-destructive">*</span>
-                  </Label>
-                  <Textarea
-                    id="description-mobile"
-                    placeholder="Describe detalladamente tu problema"
-                    value={newTicket.description}
-                    onChange={(e) => setNewTicket(prev => ({ ...prev, description: e.target.value }))}
-                    className="min-h-[100px] border-border focus:border-primary resize-none"
-                  />
-                </div>
-
-                {/* Prioridad */}
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Prioridad</Label>
+                  <Label htmlFor="priority">Prioridad</Label>
                   <Select
                     value={newTicket.priority}
-                    onValueChange={(value: TicketPriority) => 
-                      setNewTicket(prev => ({ ...prev, priority: value }))
-                    }
+                    onValueChange={(value: TicketPriority) => setNewTicket(prev => ({ ...prev, priority: value }))}
                   >
-                    <SelectTrigger className="border-border h-11">
-                      <SelectValue />
+                    <SelectTrigger id="priority">
+                      <SelectValue placeholder="Selecciona prioridad" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="low">Baja</SelectItem>
                       <SelectItem value="medium">Media</SelectItem>
                       <SelectItem value="high">Alta</SelectItem>
+                      <SelectItem value="urgent">Urgente</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                {/* Archivos adjuntos */}
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">
-                    Archivos <span className="text-muted-foreground">(opcional)</span>
-                  </Label>
-                  
-                  <div className="space-y-3">
-                    <label className="flex items-center justify-center gap-2 px-4 py-4 border-2 border-dashed border-border rounded-lg cursor-pointer active:bg-secondary/30 transition-colors">
-                      <Upload className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">
-                        Adjuntar ({attachedFiles.length}/5)
-                      </span>
-                      <input
-                        type="file"
-                        multiple
-                        className="hidden"
-                        onChange={handleFileAttach}
-                        accept="image/*,.pdf,.doc,.docx,.txt"
-                      />
-                    </label>
-
-                    {attachedFiles.length > 0 && (
-                      <div className="space-y-2">
-                        {attachedFiles.map((file) => (
-                          <div
-                            key={file.id}
-                            className="flex items-center justify-between p-2 bg-secondary/50 rounded-lg"
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                              <span className="text-xs text-foreground truncate">
-                                {file.name}
-                              </span>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-                              onClick={() => removeFile(file.id)}
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <Label htmlFor="description">Descripción *</Label>
+                  <Textarea
+                    id="description"
+                    placeholder="Describe tu problema o solicitud con el mayor detalle posible..."
+                    value={newTicket.description}
+                    onChange={(e) => setNewTicket(prev => ({ ...prev, description: e.target.value }))}
+                    className="min-h-[150px]"
+                  />
                 </div>
               </div>
-            </ScrollArea>
 
-            <SheetFooter className="flex-row gap-3 pt-4 border-t border-border mt-2">
-              <Button variant="outline" className="flex-1 h-12" onClick={closeModal}>
-                Cancelar
-              </Button>
-              <Button 
-                className="flex-1 h-12"
-                onClick={handleCreateTicket}
-                disabled={!newTicket.title.trim() || !newTicket.description.trim()}
-              >
-                Crear Ticket
-              </Button>
-            </SheetFooter>
-          </SheetContent>
-        </Sheet>
-      ) : (
-        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <DialogContent className="sm:max-w-lg bg-white">
-            <DialogHeader>
-              <DialogTitle className="text-lg font-semibold">Crear Nuevo Ticket</DialogTitle>
-              <p className="text-sm text-muted-foreground">
-                Describe tu problema o consulta y nuestro equipo te responderá pronto
-              </p>
-            </DialogHeader>
-
-            <div className="space-y-4 py-4">
-              {/* Título */}
-              <div className="space-y-2">
-                <Label htmlFor="title" className="text-sm font-medium">
-                  Título <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="title"
-                  placeholder="Resumen breve del problema"
-                  value={newTicket.title}
-                  onChange={(e) => setNewTicket(prev => ({ ...prev, title: e.target.value }))}
-                  className="border-border focus:border-primary"
-                />
-              </div>
-
-              {/* Descripción */}
-              <div className="space-y-2">
-                <Label htmlFor="description" className="text-sm font-medium">
-                  Descripción <span className="text-destructive">*</span>
-                </Label>
-                <Textarea
-                  id="description"
-                  placeholder="Describe detalladamente tu problema o consulta"
-                  value={newTicket.description}
-                  onChange={(e) => setNewTicket(prev => ({ ...prev, description: e.target.value }))}
-                  className="min-h-[100px] border-border focus:border-primary resize-none"
-                />
-              </div>
-
-              {/* Prioridad */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Prioridad</Label>
-                <Select
-                  value={newTicket.priority}
-                  onValueChange={(value: TicketPriority) => 
-                    setNewTicket(prev => ({ ...prev, priority: value }))
-                  }
+              <DialogFooter className="gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={closeModal}
+                  disabled={isSubmitting}
                 >
-                  <SelectTrigger className="border-border">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Baja</SelectItem>
-                    <SelectItem value="medium">Media</SelectItem>
-                    <SelectItem value="high">Alta</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Archivos adjuntos */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">
-                  Archivos adjuntos <span className="text-muted-foreground">(opcional)</span>
-                </Label>
-                
-                <div className="space-y-3">
-                  <label className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-secondary/30 transition-colors">
-                    <Upload className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      Adjuntar archivos ({attachedFiles.length}/5)
-                    </span>
-                    <input
-                      type="file"
-                      multiple
-                      className="hidden"
-                      onChange={handleFileAttach}
-                      accept="image/*,.pdf,.doc,.docx,.txt"
-                    />
-                  </label>
-                  <p className="text-xs text-muted-foreground">
-                    Máximo 5 archivos, 10MB por archivo
-                  </p>
-
-                  {attachedFiles.length > 0 && (
-                    <div className="space-y-2">
-                      {attachedFiles.map((file) => (
-                        <div
-                          key={file.id}
-                          className="flex items-center justify-between p-2 bg-secondary/50 rounded-lg"
-                        >
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm text-foreground truncate max-w-[200px]">
-                              {file.name}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              ({formatFileSize(file.size)})
-                            </span>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                            onClick={() => removeFile(file.id)}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={handleCreateTicket}
+                  disabled={!newTicket.title.trim() || !newTicket.description.trim() || isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Creando...
+                    </>
+                  ) : (
+                    'Crear Ticket'
                   )}
-                </div>
-              </div>
-            </div>
-
-            <DialogFooter className="gap-2">
-              <Button variant="outline" onClick={closeModal}>
-                Cancelar
-              </Button>
-              <Button 
-                onClick={handleCreateTicket}
-                disabled={!newTicket.title.trim() || !newTicket.description.trim()}
-              >
-                Crear Ticket
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+      </div>
     </MainLayout>
   );
 }
