@@ -606,30 +606,43 @@ export default function Chats() {
       {chatMessagesContent}
       
       {/* Input para agente humano - FUERA del useMemo para estabilidad */}
-      <div className="p-3 md:p-4 border-t border-border bg-background">
-        <div className="flex gap-2">
-          <Input
-            placeholder="Escribe un mensaje..."
-            value={messageInput}
-            onChange={(e) => setMessageInput(e.target.value)}
-            onKeyDown={handleKeyPress}
-            disabled={isSendingMessage}
-            className="bg-secondary border-border h-11"
-          />
-          <Button 
-            size="icon" 
-            className="h-11 w-11 shrink-0 bg-primary hover:bg-primary/90"
-            onClick={sendHumanMessage}
-            disabled={isSendingMessage || !messageInput.trim()}
-          >
-            {isSendingMessage ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
-      </div>
+      {/* Se bloquea cuando el bot está activo */}
+      {(() => {
+        const isBotActive = botStates[selectedSessionId] ?? true;
+        const isInputDisabled = isBotActive || isSendingMessage;
+        return (
+          <div className="p-3 md:p-4 border-t border-border bg-background">
+            <div className="flex gap-2">
+              <Input
+                placeholder={isBotActive ? "Desactiva el bot para escribir..." : "Escribe un mensaje..."}
+                value={messageInput}
+                onChange={(e) => setMessageInput(e.target.value)}
+                onKeyDown={handleKeyPress}
+                disabled={isInputDisabled}
+                className={cn(
+                  "bg-secondary border-border h-11",
+                  isInputDisabled && "opacity-50 cursor-not-allowed"
+                )}
+              />
+              <Button 
+                size="icon" 
+                className={cn(
+                  "h-11 w-11 shrink-0 bg-primary hover:bg-primary/90",
+                  isInputDisabled && "opacity-50 cursor-not-allowed"
+                )}
+                onClick={sendHumanMessage}
+                disabled={isInputDisabled || !messageInput.trim()}
+              >
+                {isSendingMessage ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   ) : chatMessagesContent;
 
