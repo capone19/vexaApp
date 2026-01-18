@@ -71,12 +71,18 @@ function IntentBadge({ label }: { label: IntentLabel }) {
 }
 
 export default function Chats() {
+  const { user, isLoading: authLoading } = useAuth();
+  const { getTenantForSession } = useChatTenant();
+  
+  // Determinar si el usuario es admin (ve todos los chats)
+  const isAdmin = user?.role === 'admin';
+  
+  // Filtrar por tenant: admins ven todo, otros usuarios solo su tenant
   const { messages, isLoading, error, refetch } = useN8nChatHistory({
     enableRealtime: true,
     limit: 500,
+    tenantId: isAdmin ? undefined : user?.tenantId || undefined,
   });
-  const { user } = useAuth();
-  const { getTenantForSession } = useChatTenant();
   
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -88,6 +94,17 @@ export default function Chats() {
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
+  
+  // Mostrar loading mientras se obtiene la autenticación
+  if (authLoading) {
+    return (
+      <MainLayout>
+        <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </MainLayout>
+    );
+  }
 
   // Auto-scroll al último mensaje cuando cambia la selección o llegan nuevos mensajes
   useEffect(() => {
