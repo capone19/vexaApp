@@ -4,6 +4,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface UseN8nChatHistoryOptions {
   sessionId?: string;
+  tenantId?: string; // Filtrar por tenant del usuario logueado
   limit?: number;
   enableRealtime?: boolean;
   pollingIntervalMs?: number;
@@ -52,6 +53,7 @@ function deduplicateMessages(messages: N8nChatMessage[]): N8nChatMessage[] {
 export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
   const { 
     sessionId, 
+    tenantId,
     limit = 100, 
     enableRealtime = true,
     pollingIntervalMs = 3000
@@ -78,10 +80,17 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
   // Fetch all unique sessions
   const fetchSessions = useCallback(async () => {
     try {
-      const { data, error: fetchError } = await externalSupabase
+      let query = externalSupabase
         .from('n8n_chat_histories')
         .select('session_id')
         .order('created_at', { ascending: false });
+
+      // Filtrar por tenant si se proporciona
+      if (tenantId) {
+        query = query.eq('tenant_id', tenantId);
+      }
+
+      const { data, error: fetchError } = await query;
 
       if (fetchError) throw fetchError;
       if (!isMountedRef.current) return;
@@ -92,7 +101,7 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
     } catch (err) {
       console.error('[useN8nChatHistory] Error fetching sessions:', err);
     }
-  }, []);
+  }, [tenantId]);
 
   // Fetch messages for a specific session or all
   const fetchMessages = useCallback(async (silent = false) => {
@@ -107,6 +116,11 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
         .select('*')
         .order('created_at', { ascending: true })
         .limit(limit);
+
+      // Filtrar por tenant si se proporciona
+      if (tenantId) {
+        query = query.eq('tenant_id', tenantId);
+      }
 
       if (sessionId) {
         query = query.eq('session_id', sessionId);
@@ -150,7 +164,7 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
         setIsLoading(false);
       }
     }
-  }, [sessionId, limit]);
+  }, [sessionId, tenantId, limit]);
 
   // Polling para nuevos mensajes (fallback cuando realtime no está disponible)
   const fetchNewMessages = useCallback(async () => {
@@ -161,6 +175,11 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
         .from('n8n_chat_histories')
         .select('*')
         .order('created_at', { ascending: true });
+
+      // Filtrar por tenant si se proporciona
+      if (tenantId) {
+        query = query.eq('tenant_id', tenantId);
+      }
 
       if (sessionId) {
         query = query.eq('session_id', sessionId);
@@ -196,22 +215,30 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
     } catch (err) {
       console.error('[useN8nChatHistory] Polling error:', err);
     }
-  }, [sessionId, fetchSessions]);
+  }, [sessionId, tenantId, fetchSessions]);
 
   // Subscribe to realtime changes
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
 
     if (enableRealtime) {
+      // Construir filtro para realtime (solo soporta un filtro)
+      // Priorizamos tenantId si está presente
+      const realtimeFilter = tenantId 
+        ? `tenant_id=eq.${tenantId}` 
+        : sessionId 
+          ? `session_id=eq.${sessionId}` 
+          : undefined;
+
       channel = externalSupabase
-        .channel('n8n_chat_histories_realtime')
+        .channel(`n8n_chat_histories_realtime_${tenantId || 'all'}`)
         .on(
           'postgres_changes',
           {
             event: '*',
             schema: 'public',
             table: 'n8n_chat_histories',
-            ...(sessionId ? { filter: `session_id=eq.${sessionId}` } : {}),
+            ...(realtimeFilter ? { filter: realtimeFilter } : {}),
           },
           (payload) => {
             if (!isMountedRef.current) return;
@@ -220,6 +247,11 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
             
             if (payload.eventType === 'INSERT') {
               const newMessage = payload.new as N8nChatMessage;
+              
+              // Verificar que el mensaje pertenece al tenant (doble check)
+              if (tenantId && newMessage.tenant_id !== tenantId) {
+                return; // Ignorar mensajes de otros tenants
+              }
               
               // Actualizar último ID
               if (newMessage.id > (lastMessageIdRef.current || 0)) {
@@ -267,7 +299,7 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
         externalSupabase.removeChannel(channel);
       }
     };
-  }, [sessionId, enableRealtime]);
+  }, [sessionId, tenantId, enableRealtime]);
 
   // Polling fallback - siempre activo para garantizar sincronización
   useEffect(() => {

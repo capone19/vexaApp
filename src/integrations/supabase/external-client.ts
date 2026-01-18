@@ -8,6 +8,7 @@ const EXTERNAL_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3M
 export interface N8nChatMessage {
   id: number;
   session_id: string;
+  tenant_id: string; // UUID del tenant para filtrar por cuenta
   message: {
     type: 'human' | 'ai';
     content: string;
