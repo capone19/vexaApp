@@ -168,12 +168,8 @@ export default function Chats() {
     }
   };
 
-  // Cargar estados iniciales de bot_activado desde la DB externa - SOLO UNA VEZ al montar
-  const initialBotStatesLoaded = useRef(false);
-  
+  // Cargar estados iniciales de bot_activado desde la DB externa
   useEffect(() => {
-    if (initialBotStatesLoaded.current) return;
-    
     const loadBotStates = async () => {
       try {
         // Obtener el estado más reciente de bot_activado para cada session_id
@@ -196,14 +192,13 @@ export default function Chats() {
         });
         
         setBotStates(statesMap);
-        initialBotStatesLoaded.current = true;
       } catch (err) {
         console.error('[Chats] Error loading bot states:', err);
       }
     };
     
     loadBotStates();
-  }, []); // Solo al montar - el estado del switch se controla manualmente
+  }, [messages]); // Re-cargar cuando llegan nuevos mensajes
 
   // Toggle bot state for a session - actualiza en DB externa
   const toggleBotState = useCallback(async (sessionId: string) => {
