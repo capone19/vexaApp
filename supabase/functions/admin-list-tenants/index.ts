@@ -117,56 +117,34 @@ Deno.serve(async (req) => {
       }
     });
 
-    // Fetch tenant_channels to map phone numbers to tenant_ids
-    const { data: tenantChannels, error: channelsError } = await externalSupabase
-      .from('tenant_channels')
-      .select('tenant_id, phone_number');
-    
-    if (channelsError) {
-      console.error('[admin-list-tenants] Error fetching tenant_channels:', channelsError);
-    }
-
-    // Create phone -> tenant_id map (handle different formats)
-    const phoneToTenant: Record<string, string> = {};
-    tenantChannels?.forEach(channel => {
-      if (channel.phone_number && channel.tenant_id) {
-        // Store with and without country code
-        const phone = channel.phone_number.replace(/\D/g, '');
-        phoneToTenant[phone] = channel.tenant_id;
-        // Also store with 52 prefix if it's a Mexican number
-        if (phone.length === 10) {
-          phoneToTenant[`52${phone}`] = channel.tenant_id;
-          phoneToTenant[`521${phone}`] = channel.tenant_id;
-        }
-      }
-    });
-
-    // Fetch all unique sessions from external DB and count per tenant
+    // Count unique sessions per tenant directly from n8n_chat_histories
+    // The table has tenant_id column directly!
     const { data: chatSessions, error: sessionsError } = await externalSupabase
       .from('n8n_chat_histories')
-      .select('session_id');
+      .select('session_id, tenant_id');
     
     if (sessionsError) {
       console.error('[admin-list-tenants] Error fetching chat sessions:', sessionsError);
     }
 
-    // Count unique sessions per tenant
+    console.log('[admin-list-tenants] Total chat messages:', chatSessions?.length || 0);
+
+    // Count unique sessions per tenant using the tenant_id from the messages
     const tenantChatCounts: Record<string, number> = {};
     const processedSessions = new Set<string>();
     
     chatSessions?.forEach(row => {
-      if (processedSessions.has(row.session_id)) return;
-      processedSessions.add(row.session_id);
+      // Create unique key per tenant+session
+      const key = `${row.tenant_id}:${row.session_id}`;
+      if (processedSessions.has(key)) return;
+      processedSessions.add(key);
       
-      // Extract phone from session_id (format: 521234567890@s.whatsapp.net)
-      const phone = row.session_id?.split('@')[0] || '';
-      const tenantId = phoneToTenant[phone];
-      
-      if (tenantId) {
-        tenantChatCounts[tenantId] = (tenantChatCounts[tenantId] || 0) + 1;
+      if (row.tenant_id) {
+        tenantChatCounts[row.tenant_id] = (tenantChatCounts[row.tenant_id] || 0) + 1;
       }
     });
 
+    console.log('[admin-list-tenants] Unique sessions processed:', processedSessions.size);
     console.log('[admin-list-tenants] Chat counts per tenant:', tenantChatCounts);
 
     // Enrich tenants with email and chat counts
