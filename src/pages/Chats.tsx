@@ -177,8 +177,13 @@ export default function Chats() {
     }
   };
 
-  // Cargar estados iniciales de bot_activado desde la DB externa
+  // Flag para evitar múltiples cargas iniciales
+  const botStatesLoadedRef = useRef(false);
+
+  // Cargar estados iniciales de bot_activado desde la DB externa (solo una vez)
   useEffect(() => {
+    if (botStatesLoadedRef.current) return;
+    
     const loadBotStates = async () => {
       try {
         // Obtener el estado más reciente de bot_activado para cada session_id
@@ -201,13 +206,62 @@ export default function Chats() {
         });
         
         setBotStates(statesMap);
+        botStatesLoadedRef.current = true;
       } catch (err) {
         console.error('[Chats] Error loading bot states:', err);
       }
     };
     
     loadBotStates();
-  }, [messages]); // Re-cargar cuando llegan nuevos mensajes
+  }, []); // Solo cargar una vez al montar
+
+  // Actualizar estados de bot solo para sesiones nuevas que no conocemos
+  useEffect(() => {
+    if (!botStatesLoadedRef.current) return;
+    
+    // Obtener sesiones únicas de los mensajes actuales
+    const currentSessions = new Set(messages.map(m => m.session_id));
+    
+    // Encontrar sesiones que no tenemos en botStates
+    const unknownSessions = Array.from(currentSessions).filter(
+      sessionId => !(sessionId in botStates)
+    );
+    
+    if (unknownSessions.length === 0) return;
+    
+    // Solo cargar estados para las sesiones nuevas
+    const loadNewBotStates = async () => {
+      try {
+        const { data, error } = await externalSupabase
+          .from('n8n_chat_histories')
+          .select('session_id, bot_activado')
+          .in('session_id', unknownSessions)
+          .order('created_at', { ascending: false });
+        
+        if (error) {
+          console.error('[Chats] Error loading new bot states:', error);
+          return;
+        }
+        
+        // Crear mapa solo para las sesiones nuevas
+        const newStatesMap: Record<string, boolean> = {};
+        data?.forEach(row => {
+          if (!(row.session_id in newStatesMap)) {
+            newStatesMap[row.session_id] = row.bot_activado ?? true;
+          }
+        });
+        
+        // Merge con estados existentes
+        if (Object.keys(newStatesMap).length > 0) {
+          setBotStates(prev => ({ ...prev, ...newStatesMap }));
+        }
+      } catch (err) {
+        console.error('[Chats] Error loading new bot states:', err);
+      }
+    };
+    
+    loadNewBotStates();
+  }, [messages, botStates]);
 
   // Toggle bot state for a session - actualiza en DB externa
   const toggleBotState = useCallback(async (sessionId: string) => {

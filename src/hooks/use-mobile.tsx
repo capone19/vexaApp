@@ -1,27 +1,43 @@
+// ============================================
+// VEXA - Hooks de Breakpoints (standalone)
+// ============================================
+
 import * as React from "react";
 
 // Breakpoints consistentes con Tailwind
 const MOBILE_BREAKPOINT = 768;  // md
 const TABLET_BREAKPOINT = 1024; // lg
 
+/**
+ * Hook para detectar si es móvil.
+ * Usa estado local con matchMedia.
+ */
 export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);
+  const [isMobile, setIsMobile] = React.useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < MOBILE_BREAKPOINT;
+  });
 
   React.useEffect(() => {
     const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    };
+    const onChange = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
     mql.addEventListener("change", onChange);
     setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
     return () => mql.removeEventListener("change", onChange);
   }, []);
 
-  return !!isMobile;
+  return isMobile;
 }
 
+/**
+ * Hook para detectar si es tablet.
+ */
 export function useIsTablet() {
-  const [isTablet, setIsTablet] = React.useState<boolean | undefined>(undefined);
+  const [isTablet, setIsTablet] = React.useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const width = window.innerWidth;
+    return width >= MOBILE_BREAKPOINT && width < TABLET_BREAKPOINT;
+  });
 
   React.useEffect(() => {
     const checkTablet = () => {
@@ -35,11 +51,20 @@ export function useIsTablet() {
     return () => mql.removeEventListener("change", checkTablet);
   }, []);
 
-  return !!isTablet;
+  return isTablet;
 }
 
+/**
+ * Hook que retorna información completa del breakpoint.
+ */
 export function useBreakpoint() {
-  const [breakpoint, setBreakpoint] = React.useState<'mobile' | 'tablet' | 'desktop'>('desktop');
+  const [breakpoint, setBreakpoint] = React.useState<'mobile' | 'tablet' | 'desktop'>(() => {
+    if (typeof window === 'undefined') return 'desktop';
+    const width = window.innerWidth;
+    if (width < MOBILE_BREAKPOINT) return 'mobile';
+    if (width < TABLET_BREAKPOINT) return 'tablet';
+    return 'desktop';
+  });
 
   React.useEffect(() => {
     const checkBreakpoint = () => {

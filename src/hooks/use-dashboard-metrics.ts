@@ -1,10 +1,9 @@
 // ============================================
-// VEXA - Hook para Dashboard Metrics (Híbrido: n8n externo + Cloud local)
+// VEXA - Hook para Dashboard Metrics (con React Query)
 // ============================================
 
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase, type N8nChatMessage, type ExternalBooking } from '@/integrations/supabase/external-client';
+import { useQuery } from '@tanstack/react-query';
+import { externalSupabase, type ExternalBooking } from '@/integrations/supabase/external-client';
 import type { DashboardMetrics, Appointment } from '@/lib/types';
 import { format } from 'date-fns';
 
@@ -46,251 +45,195 @@ const emptyMetrics: DashboardMetrics = {
   },
 };
 
-// Clasificar sesiones según cantidad de mensajes (igual que en Chats.tsx)
+// Clasificar sesiones según cantidad de mensajes
 function classifySessionByMessageCount(messageCount: number): 'tofu' | 'mofu' | 'hot' | null {
-  if (messageCount > 10) return 'hot';     // Alta intención
-  if (messageCount > 6) return 'mofu';     // En progreso
-  if (messageCount >= 1) return 'tofu';    // Conversación inicial
+  if (messageCount > 10) return 'hot';
+  if (messageCount > 6) return 'mofu';
+  if (messageCount >= 1) return 'tofu';
   return null;
+}
+
+// Función de fetch separada para usar con React Query
+async function fetchDashboardMetrics(
+  tenantId: string,
+  startDate: Date,
+  endDate: Date
+): Promise<{ metrics: DashboardMetrics; appointments: Appointment[] }> {
+  // ============================================
+  // 1. MÉTRICAS DE MENSAJES desde DB EXTERNA
+  // ============================================
+  let externalTotalMessages = 0;
+  let externalTotalSessions = 0;
+  let externalAvgPerSession = 0;
+  let funnelFromRealtime = { tofu: 0, mofu: 0, hot: 0 };
+
+  try {
+    const { data: externalData, error: externalError } = await externalSupabase
+      .from('n8n_chat_histories')
+      .select('id, session_id, created_at, tenant_id')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', startDate.toISOString())
+      .lte('created_at', endDate.toISOString());
+
+    if (externalError) {
+      console.warn('[useDashboardMetrics] Error DB externa (chats):', externalError);
+    } else if (externalData) {
+      externalTotalMessages = externalData.length;
+      
+      const sessionMessageCounts = new Map<string, number>();
+      externalData.forEach(msg => {
+        const currentCount = sessionMessageCounts.get(msg.session_id) || 0;
+        sessionMessageCounts.set(msg.session_id, currentCount + 1);
+      });
+      
+      externalTotalSessions = sessionMessageCounts.size;
+      
+      sessionMessageCounts.forEach((msgCount) => {
+        const stage = classifySessionByMessageCount(msgCount);
+        if (stage === 'tofu') funnelFromRealtime.tofu++;
+        else if (stage === 'mofu') funnelFromRealtime.mofu++;
+        else if (stage === 'hot') funnelFromRealtime.hot++;
+      });
+      
+      externalAvgPerSession = externalTotalSessions > 0 
+        ? Math.round((externalTotalMessages / externalTotalSessions) * 10) / 10
+        : 0;
+    }
+  } catch (extErr) {
+    console.warn('[useDashboardMetrics] Error conectando DB externa (chats):', extErr);
+  }
+
+  // ============================================
+  // 2. BOOKINGS desde DB EXTERNA
+  // ============================================
+  let totalServicesBooked = 0;
+  let confirmedBookings = 0;
+  let totalRevenue = 0;
+  let externalBookingsData: ExternalBooking[] = [];
+
+  try {
+    const startDateStr = format(startDate, 'yyyy-MM-dd');
+    const endDateStr = format(endDate, 'yyyy-MM-dd');
+
+    const { data: bookingsData, error: bookingsError } = await externalSupabase
+      .from('bookings')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .gte('event_date', startDateStr)
+      .lte('event_date', endDateStr)
+      .order('event_date', { ascending: false });
+
+    if (bookingsError) {
+      console.warn('[useDashboardMetrics] Error DB externa (bookings):', bookingsError);
+    } else if (bookingsData) {
+      externalBookingsData = bookingsData as ExternalBooking[];
+      totalServicesBooked = externalBookingsData.length;
+      confirmedBookings = totalServicesBooked;
+      totalRevenue = externalBookingsData.reduce((sum, b) => sum + (b.price || 0), 0);
+    }
+  } catch (extErr) {
+    console.warn('[useDashboardMetrics] Error conectando DB externa (bookings):', extErr);
+  }
+
+  // ============================================
+  // 3. CALCULAR TASAS DEL FUNNEL
+  // ============================================
+  const totalFunnelSessions = funnelFromRealtime.tofu + funnelFromRealtime.mofu + funnelFromRealtime.hot;
+  
+  const conversionRate = externalTotalSessions > 0
+    ? Math.round((confirmedBookings / externalTotalSessions) * 100)
+    : 0;
+  
+  const deadRate = totalFunnelSessions > 0
+    ? Math.round((funnelFromRealtime.tofu / totalFunnelSessions) * 100)
+    : 0;
+  
+  const warmRate = totalFunnelSessions > 0
+    ? Math.round((funnelFromRealtime.mofu / totalFunnelSessions) * 100)
+    : 0;
+  
+  const hotRate = totalFunnelSessions > 0
+    ? Math.round((funnelFromRealtime.hot / totalFunnelSessions) * 100)
+    : 0;
+
+  // ============================================
+  // 4. CONSTRUIR MÉTRICAS COMBINADAS
+  // ============================================
+  const dashboardMetrics: DashboardMetrics = {
+    totalChats: externalTotalSessions,
+    totalMessages: externalTotalMessages,
+    avgMessagesPerChat: externalAvgPerSession,
+    botResponseRate: 0,
+    avgFirstResponseTime: 0,
+    avgConversionTime: 0,
+    servicesBooked: totalServicesBooked,
+    revenue: totalRevenue,
+    funnel: {
+      tofu: funnelFromRealtime.tofu,
+      mofu: funnelFromRealtime.mofu,
+      hotLeads: funnelFromRealtime.hot,
+      bofu: confirmedBookings,
+      deadRate,
+      warmRate,
+      hotRate,
+      conversionRate,
+    },
+  };
+
+  // Mapear bookings externos a appointments
+  const appointments: Appointment[] = externalBookingsData.slice(0, 10).map(booking => {
+    let datetime: Date;
+    if (booking.event_time) {
+      datetime = new Date(`${booking.event_date}T${booking.event_time}`);
+    } else {
+      datetime = new Date(`${booking.event_date}T00:00:00`);
+    }
+
+    return {
+      id: booking.id,
+      datetime,
+      clientName: booking.contact_name || 'Sin nombre',
+      clientPhone: booking.contact_phone || undefined,
+      clientEmail: booking.contact_email || undefined,
+      service: booking.item_name || 'Servicio',
+      source: (booking.origin as any) || 'chat',
+      status: 'confirmed' as const,
+      notes: booking.notes || undefined,
+      chatId: booking.session_id || undefined,
+      createdAt: new Date(booking.created_at || Date.now()),
+      type: (booking.type as 'service' | 'product') || 'service',
+      time: booking.event_time 
+        ? format(new Date(`2000-01-01T${booking.event_time}`), 'HH:mm')
+        : undefined,
+      price: booking.price || undefined,
+      currency: booking.currency || undefined,
+    };
+  });
+
+  return { metrics: dashboardMetrics, appointments };
 }
 
 export function useDashboardMetrics({
   tenantId,
   dateRange,
 }: UseDashboardMetricsOptions): UseDashboardMetricsReturn {
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
-  const [recentAppointments, setRecentAppointments] = useState<Appointment[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Calcular fechas con defaults
+  const endDate = dateRange?.endDate || new Date();
+  const startDate = dateRange?.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-  const fetchMetrics = useCallback(async () => {
-    if (!tenantId) {
-      setMetrics(emptyMetrics);
-      setRecentAppointments([]);
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Calcular rango de fechas (default: últimos 30 días)
-      const endDate = dateRange?.endDate || new Date();
-      const startDate = dateRange?.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
-      // ============================================
-      // 1. MÉTRICAS DE MENSAJES desde DB EXTERNA (n8n_chat_histories)
-      // ============================================
-      let externalTotalMessages = 0;
-      let externalTotalSessions = 0;
-      let externalAvgPerSession = 0;
-      let funnelFromRealtime = { tofu: 0, mofu: 0, hot: 0 };
-
-      try {
-        // Obtener todos los mensajes del rango de fechas para el tenant
-        const { data: externalData, error: externalError } = await externalSupabase
-          .from('n8n_chat_histories')
-          .select('id, session_id, created_at, tenant_id')
-          .eq('tenant_id', tenantId)
-          .gte('created_at', startDate.toISOString())
-          .lte('created_at', endDate.toISOString());
-
-        if (externalError) {
-          console.warn('[useDashboardMetrics] Error DB externa (chats):', externalError);
-        } else if (externalData) {
-          externalTotalMessages = externalData.length;
-          
-          // Agrupar mensajes por sesión y contar
-          const sessionMessageCounts = new Map<string, number>();
-          externalData.forEach(msg => {
-            const currentCount = sessionMessageCounts.get(msg.session_id) || 0;
-            sessionMessageCounts.set(msg.session_id, currentCount + 1);
-          });
-          
-          externalTotalSessions = sessionMessageCounts.size;
-          
-          // Clasificar cada sesión según cantidad de mensajes
-          sessionMessageCounts.forEach((msgCount, sessionId) => {
-            const stage = classifySessionByMessageCount(msgCount);
-            if (stage === 'tofu') funnelFromRealtime.tofu++;
-            else if (stage === 'mofu') funnelFromRealtime.mofu++;
-            else if (stage === 'hot') funnelFromRealtime.hot++;
-          });
-          
-          // Calcular promedio
-          externalAvgPerSession = externalTotalSessions > 0 
-            ? Math.round((externalTotalMessages / externalTotalSessions) * 10) / 10
-            : 0;
-
-          console.log('[useDashboardMetrics] Métricas chats externos:', {
-            totalMessages: externalTotalMessages,
-            totalSessions: externalTotalSessions,
-            avgPerSession: externalAvgPerSession,
-            funnel: funnelFromRealtime,
-          });
-        }
-      } catch (extErr) {
-        console.warn('[useDashboardMetrics] Error conectando DB externa (chats):', extErr);
-      }
-
-      // ============================================
-      // 2. BOOKINGS desde DB EXTERNA (misma que usa el Calendario)
-      // ============================================
-      let totalServicesBooked = 0;
-      let confirmedBookings = 0;
-      let totalRevenue = 0;
-      let externalBookingsData: ExternalBooking[] = [];
-
-      try {
-        const startDateStr = format(startDate, 'yyyy-MM-dd');
-        const endDateStr = format(endDate, 'yyyy-MM-dd');
-
-        const { data: bookingsData, error: bookingsError } = await externalSupabase
-          .from('bookings')
-          .select('*')
-          .eq('tenant_id', tenantId)
-          .gte('event_date', startDateStr)
-          .lte('event_date', endDateStr)
-          .order('event_date', { ascending: false });
-
-        if (bookingsError) {
-          console.warn('[useDashboardMetrics] Error DB externa (bookings):', bookingsError);
-        } else if (bookingsData) {
-          externalBookingsData = bookingsData as ExternalBooking[];
-          
-          // Total de servicios/productos agendados
-          totalServicesBooked = externalBookingsData.length;
-          
-          // Todos los bookings externos son "confirmed" por defecto (no hay campo status)
-          confirmedBookings = totalServicesBooked;
-          
-          // Calcular revenue total
-          totalRevenue = externalBookingsData.reduce(
-            (sum, b) => sum + (b.price || 0), 
-            0
-          );
-
-          console.log('[useDashboardMetrics] Métricas bookings externos:', {
-            totalServicesBooked,
-            confirmedBookings,
-            totalRevenue,
-            bookingsCount: externalBookingsData.length,
-          });
-        }
-      } catch (extErr) {
-        console.warn('[useDashboardMetrics] Error conectando DB externa (bookings):', extErr);
-      }
-
-      // ============================================
-      // 3. CALCULAR TASAS DEL FUNNEL
-      // ============================================
-      const totalFunnelSessions = funnelFromRealtime.tofu + funnelFromRealtime.mofu + funnelFromRealtime.hot;
-      
-      // Tasa de conversión: bookings / total sesiones
-      const conversionRate = externalTotalSessions > 0
-        ? Math.round((confirmedBookings / externalTotalSessions) * 100)
-        : 0;
-      
-      // Tasa "sin respuesta": sesiones con pocos mensajes (TOFU) / total
-      const deadRate = totalFunnelSessions > 0
-        ? Math.round((funnelFromRealtime.tofu / totalFunnelSessions) * 100)
-        : 0;
-      
-      // Tasa "en progreso": MOFU / total
-      const warmRate = totalFunnelSessions > 0
-        ? Math.round((funnelFromRealtime.mofu / totalFunnelSessions) * 100)
-        : 0;
-      
-      // Tasa "alta intención": HOT / total
-      const hotRate = totalFunnelSessions > 0
-        ? Math.round((funnelFromRealtime.hot / totalFunnelSessions) * 100)
-        : 0;
-
-      // ============================================
-      // 4. CONSTRUIR MÉTRICAS COMBINADAS
-      // ============================================
-      const dashboardMetrics: DashboardMetrics = {
-        // Métricas de mensajes desde DB EXTERNA (realtime)
-        totalChats: externalTotalSessions,
-        totalMessages: externalTotalMessages,
-        avgMessagesPerChat: externalAvgPerSession,
-        
-        // Métricas pendientes de calcular
-        botResponseRate: 0,
-        avgFirstResponseTime: 0,
-        avgConversionTime: 0,
-        
-        // Métricas de negocio desde DB EXTERNA (bookings del calendario)
-        servicesBooked: totalServicesBooked,
-        revenue: totalRevenue,
-        
-        // Funnel combinado: TOFU/MOFU/HOT desde realtime, BOFU desde bookings
-        funnel: {
-          tofu: funnelFromRealtime.tofu,       // Conversaciones iniciales (1-6 msgs)
-          mofu: funnelFromRealtime.mofu,       // En progreso (7-10 msgs)
-          hotLeads: funnelFromRealtime.hot,    // Alta intención (>10 msgs)
-          bofu: confirmedBookings,              // Ventas (bookings confirmados)
-          deadRate,                             // % sin respuesta
-          warmRate,                             // % en progreso
-          hotRate,                              // % alta intención
-          conversionRate,                       // % conversión (bookings/sesiones)
-        },
-      };
-
-      // Mapear bookings externos a appointments
-      const appointments: Appointment[] = externalBookingsData.slice(0, 10).map(booking => {
-        // Combinar event_date + event_time para crear datetime
-        let datetime: Date;
-        if (booking.event_time) {
-          datetime = new Date(`${booking.event_date}T${booking.event_time}`);
-        } else {
-          datetime = new Date(`${booking.event_date}T00:00:00`);
-        }
-
-        return {
-          id: booking.id,
-          datetime,
-          clientName: booking.contact_name || 'Sin nombre',
-          clientPhone: booking.contact_phone || undefined,
-          clientEmail: booking.contact_email || undefined,
-          service: booking.item_name || 'Servicio',
-          source: (booking.origin as any) || 'chat',
-          status: 'confirmed' as const,
-          notes: booking.notes || undefined,
-          chatId: booking.session_id || undefined,
-          createdAt: new Date(booking.created_at || Date.now()),
-          type: (booking.type as 'service' | 'product') || 'service',
-          time: booking.event_time 
-            ? format(new Date(`2000-01-01T${booking.event_time}`), 'HH:mm')
-            : undefined,
-          price: booking.price || undefined,
-          currency: booking.currency || undefined,
-        };
-      });
-
-      setMetrics(dashboardMetrics);
-      setRecentAppointments(appointments);
-    } catch (err) {
-      console.error('[useDashboardMetrics] Error:', err);
-      setError(err instanceof Error ? err.message : 'Error cargando métricas');
-      setMetrics(emptyMetrics);
-      setRecentAppointments([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [tenantId, dateRange?.startDate, dateRange?.endDate]);
-
-  useEffect(() => {
-    fetchMetrics();
-  }, [fetchMetrics]);
+  // Usar React Query para cache automático
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['dashboard-metrics', tenantId, startDate.toISOString(), endDate.toISOString()],
+    queryFn: () => fetchDashboardMetrics(tenantId!, startDate, endDate),
+    enabled: !!tenantId,
+    staleTime: 1000 * 60 * 2, // 2 minutos para dashboard (datos más frescos)
+  });
 
   return {
-    metrics,
-    recentAppointments,
-    isLoading,
-    error,
-    refetch: fetchMetrics,
+    metrics: data?.metrics ?? (tenantId ? null : emptyMetrics),
+    recentAppointments: data?.appointments ?? [],
+    isLoading: tenantId ? isLoading : false,
+    error: error ? (error as Error).message : null,
+    refetch: async () => { await refetch(); },
   };
 }
-

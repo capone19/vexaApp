@@ -1,10 +1,8 @@
-import { Navigate } from 'react-router-dom';
-import { useSubscription } from '@/hooks/use-subscription';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { Loader2, Lock, Zap } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import type { PlanId } from '@/lib/plan';
 
 interface PremiumRouteProps {
   children: React.ReactNode;
@@ -16,7 +14,7 @@ interface PremiumRouteProps {
  * Muestra una pantalla de upgrade para usuarios con plan básico
  */
 export function PremiumRoute({ children, feature = 'esta función' }: PremiumRouteProps) {
-  const { subscription, isLoading } = useSubscription();
+  const { isLoading, isPremium } = useAuthContext();
   
   // Mientras carga, mostrar loader
   if (isLoading) {
@@ -28,9 +26,6 @@ export function PremiumRoute({ children, feature = 'esta función' }: PremiumRou
       </MainLayout>
     );
   }
-  
-  const currentPlan: PlanId = (subscription?.plan as PlanId) || 'basic';
-  const isPremium = currentPlan === 'pro' || currentPlan === 'enterprise';
   
   // Si tiene plan premium, mostrar el contenido
   if (isPremium) {

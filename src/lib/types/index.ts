@@ -142,8 +142,8 @@ export interface Service {
 }
 
 export type ServiceActionType = 'agendar' | 'cotizar' | 'informar' | 'derivar_humano';
-export type RequiredDataType = 'nombre' | 'telefono' | 'email' | 'servicio' | 'fecha_preferida' | 'medio_pago' | 'observaciones' | 'otros';
-export type NoAvailabilityActionType = 'lista_espera' | 'sugerir_horario' | 'derivar_humano' | 'solicitar_flexibilidad';
+export type RequiredDataType = 'nombre' | 'telefono' | 'email' | 'servicio' | 'fecha_preferida' | 'horario' | 'medio_pago' | 'observaciones' | 'otros';
+export type NoAvailabilityActionType = 'lista_espera' | 'sugerir_horario' | 'derivar_humano' | 'solicitar_flexibilidad' | 'no_aplica';
 
 export interface ReschedulingSettings {
   allowRescheduling: boolean;

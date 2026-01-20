@@ -50,6 +50,7 @@ const requiredDataLabels: Record<RequiredDataType, string> = {
   email: "Email",
   servicio: "Servicio",
   fecha_preferida: "Fecha preferida",
+  horario: "Horario",
   medio_pago: "Medio de pago",
   observaciones: "Observaciones",
   otros: "Otros (especificar)",
@@ -60,6 +61,7 @@ const noAvailabilityLabels: Record<NoAvailabilityActionType, string> = {
   sugerir_horario: "Sugerir otro horario",
   derivar_humano: "Derivar a humano",
   solicitar_flexibilidad: "Solicitar flexibilidad al cliente",
+  no_aplica: "No aplica",
 };
 
 const emptyService: Omit<Service, "id"> = {
@@ -341,7 +343,7 @@ export function ServicesSection({ settings, onChange }: ServicesSectionProps) {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Descripción breve</Label>
+                      <Label>Descripción</Label>
                       <Textarea
                         value={serviceForm.description}
                         onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })}

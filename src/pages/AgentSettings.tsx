@@ -58,13 +58,20 @@ export default function AgentSettings() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadedSections, setLoadedSections] = useState<Set<AgentSettingsSectionId>>(new Set());
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const { toast } = useToast();
 
-  // Cargar datos guardados de todas las secciones al montar
-  const loadAllSections = useCallback(async () => {
+  // Cargar solo la sección activa (lazy loading)
+  const loadSection = useCallback(async (sectionId: AgentSettingsSectionId) => {
     if (!user?.tenantId) {
+      setIsLoading(false);
+      return;
+    }
+
+    // Si ya está cargada, no volver a cargar
+    if (loadedSections.has(sectionId)) {
       setIsLoading(false);
       return;
     }
@@ -72,50 +79,36 @@ export default function AgentSettings() {
     setIsLoading(true);
     
     try {
-      const sectionIds: AgentSettingsSectionId[] = [
-        "personality", "business", "policies", "services", 
-        "rescheduling", "payments", "intervention", "faq", "limits"
-      ];
+      const data = await loadAgentSection(sectionId, user.tenantId!);
 
-      // Cargar todas las secciones en paralelo
-      const loadPromises = sectionIds.map(async (sectionId) => {
-        const data = await loadAgentSection(sectionId, user.tenantId!);
-        return { sectionId, data };
-      });
-
-      const results = await Promise.all(loadPromises);
-
-      // Aplicar los datos cargados al estado
-      setSettings(prev => {
-        const updated = { ...prev };
-        
-        for (const { sectionId, data } of results) {
-          if (data) {
-            // Merge con los datos existentes para mantener estructura
-            const emptyDefaults = getEmptyAgentSettings();
-            (updated as any)[sectionId] = {
+      if (data) {
+        setSettings(prev => {
+          const emptyDefaults = getEmptyAgentSettings();
+          return {
+            ...prev,
+            [sectionId]: {
               ...emptyDefaults[sectionId as keyof typeof emptyDefaults],
               ...data,
               lastModified: data.lastModified ? new Date(data.lastModified as string) : new Date(),
-            };
-          }
-        }
-        
-        return updated;
-      });
+            },
+          };
+        });
+      }
 
-      console.log("[AgentSettings] Datos cargados desde DB:", results.filter(r => r.data).length, "secciones");
+      // Marcar como cargada
+      setLoadedSections(prev => new Set(prev).add(sectionId));
+      console.log("[AgentSettings] Sección cargada:", sectionId);
     } catch (error) {
-      console.error("[AgentSettings] Error cargando datos:", error);
+      console.error("[AgentSettings] Error cargando sección:", sectionId, error);
     } finally {
       setIsLoading(false);
     }
-  }, [user?.tenantId]);
+  }, [user?.tenantId, loadedSections]);
 
-  // Cargar datos al montar y cuando cambie el tenant
+  // Cargar la sección activa cuando cambie
   useEffect(() => {
-    loadAllSections();
-  }, [loadAllSections]);
+    loadSection(activeSection);
+  }, [activeSection, loadSection]);
 
   const handleSectionChange = (sectionId: AgentSettingsSectionId) => {
     setSearchParams({ section: sectionId });
