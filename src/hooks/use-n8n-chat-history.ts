@@ -15,14 +15,19 @@ function deduplicateMessages(messages: N8nChatMessage[]): N8nChatMessage[] {
   const seen = new Map<string, N8nChatMessage>();
   const TIME_WINDOW_MS = 10000; // 10 segundos de ventana
   
+  // Filtrar mensajes con estructura inválida
+  const validMessages = messages.filter(msg => msg.message && typeof msg.message === 'object');
+  
   // Ordenar por fecha primero
-  const sorted = [...messages].sort(
+  const sorted = [...validMessages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
   
   for (const msg of sorted) {
     // Crear clave única: session + tipo + contenido normalizado
-    const contentKey = `${msg.session_id}|${msg.message.type}|${(msg.message.content || '').trim().toLowerCase()}`;
+    const msgType = msg.message?.type || 'unknown';
+    const msgContent = msg.message?.content || '';
+    const contentKey = `${msg.session_id}|${msgType}|${msgContent.trim().toLowerCase()}`;
     
     const existing = seen.get(contentKey);
     if (existing) {
