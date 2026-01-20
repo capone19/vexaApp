@@ -4,8 +4,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase, type N8nChatMessage } from '@/integrations/supabase/external-client';
+import { externalSupabase, type N8nChatMessage, type ExternalBooking } from '@/integrations/supabase/external-client';
 import type { DashboardMetrics, Appointment } from '@/lib/types';
+import { format } from 'date-fns';
 
 interface UseDashboardMetricsOptions {
   tenantId: string | null | undefined;
@@ -96,7 +97,7 @@ export function useDashboardMetrics({
           .lte('created_at', endDate.toISOString());
 
         if (externalError) {
-          console.warn('[useDashboardMetrics] Error DB externa:', externalError);
+          console.warn('[useDashboardMetrics] Error DB externa (chats):', externalError);
         } else if (externalData) {
           externalTotalMessages = externalData.length;
           
@@ -122,7 +123,7 @@ export function useDashboardMetrics({
             ? Math.round((externalTotalMessages / externalTotalSessions) * 10) / 10
             : 0;
 
-          console.log('[useDashboardMetrics] Métricas externas:', {
+          console.log('[useDashboardMetrics] Métricas chats externos:', {
             totalMessages: externalTotalMessages,
             totalSessions: externalTotalSessions,
             avgPerSession: externalAvgPerSession,
@@ -130,42 +131,63 @@ export function useDashboardMetrics({
           });
         }
       } catch (extErr) {
-        console.warn('[useDashboardMetrics] Error conectando DB externa:', extErr);
+        console.warn('[useDashboardMetrics] Error conectando DB externa (chats):', extErr);
       }
 
       // ============================================
-      // 2. BOOKINGS desde DB LOCAL (Cloud) para BOFU y servicios agendados
+      // 2. BOOKINGS desde DB EXTERNA (misma que usa el Calendario)
       // ============================================
-      const { data: bookingsData, error: bookingsError } = await supabase
-        .from('bookings')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .gte('scheduled_at', startDate.toISOString())
-        .order('scheduled_at', { ascending: false })
-        .limit(50);
+      let totalServicesBooked = 0;
+      let confirmedBookings = 0;
+      let totalRevenue = 0;
+      let externalBookingsData: ExternalBooking[] = [];
 
-      if (bookingsError) throw bookingsError;
+      try {
+        const startDateStr = format(startDate, 'yyyy-MM-dd');
+        const endDateStr = format(endDate, 'yyyy-MM-dd');
 
-      // Contar bookings confirmados (esto es BOFU - ventas)
-      const confirmedBookings = (bookingsData || []).filter(
-        b => b.status === 'confirmed' || b.status === 'completed'
-      ).length;
+        const { data: bookingsData, error: bookingsError } = await externalSupabase
+          .from('bookings')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .gte('event_date', startDateStr)
+          .lte('event_date', endDateStr)
+          .order('event_date', { ascending: false });
 
-      // Total de servicios agendados (cualquier status)
-      const totalServicesBooked = (bookingsData || []).length;
+        if (bookingsError) {
+          console.warn('[useDashboardMetrics] Error DB externa (bookings):', bookingsError);
+        } else if (bookingsData) {
+          externalBookingsData = bookingsData as ExternalBooking[];
+          
+          // Total de servicios/productos agendados
+          totalServicesBooked = externalBookingsData.length;
+          
+          // Todos los bookings externos son "confirmed" por defecto (no hay campo status)
+          confirmedBookings = totalServicesBooked;
+          
+          // Calcular revenue total
+          totalRevenue = externalBookingsData.reduce(
+            (sum, b) => sum + (b.price || 0), 
+            0
+          );
 
-      // Calcular revenue
-      const totalRevenue = (bookingsData || []).reduce(
-        (sum, b) => sum + (b.price || 0), 
-        0
-      );
+          console.log('[useDashboardMetrics] Métricas bookings externos:', {
+            totalServicesBooked,
+            confirmedBookings,
+            totalRevenue,
+            bookingsCount: externalBookingsData.length,
+          });
+        }
+      } catch (extErr) {
+        console.warn('[useDashboardMetrics] Error conectando DB externa (bookings):', extErr);
+      }
 
       // ============================================
       // 3. CALCULAR TASAS DEL FUNNEL
       // ============================================
       const totalFunnelSessions = funnelFromRealtime.tofu + funnelFromRealtime.mofu + funnelFromRealtime.hot;
       
-      // Tasa de conversión: bookings confirmados / total sesiones
+      // Tasa de conversión: bookings / total sesiones
       const conversionRate = externalTotalSessions > 0
         ? Math.round((confirmedBookings / externalTotalSessions) * 100)
         : 0;
@@ -199,7 +221,7 @@ export function useDashboardMetrics({
         avgFirstResponseTime: 0,
         avgConversionTime: 0,
         
-        // Métricas de negocio desde DB LOCAL (bookings)
+        // Métricas de negocio desde DB EXTERNA (bookings del calendario)
         servicesBooked: totalServicesBooked,
         revenue: totalRevenue,
         
@@ -216,24 +238,36 @@ export function useDashboardMetrics({
         },
       };
 
-      // Mapear bookings a appointments
-      const appointments: Appointment[] = (bookingsData || []).map(booking => ({
-        id: booking.id,
-        datetime: new Date(booking.scheduled_at),
-        clientName: booking.contact_name || 'Sin nombre',
-        clientPhone: booking.contact_phone || undefined,
-        service: booking.service_name || 'Servicio',
-        source: (booking.origin as any) || 'chat',
-        status: mapBookingStatus(booking.status),
-        notes: booking.notes || undefined,
-        chatId: booking.session_id || undefined,
-        createdAt: new Date(booking.created_at || Date.now()),
-        // Campos adicionales - por defecto es servicio
-        type: 'service' as const,
-        time: new Date(booking.scheduled_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
-        price: booking.price || undefined,
-        currency: booking.currency || undefined,
-      }));
+      // Mapear bookings externos a appointments
+      const appointments: Appointment[] = externalBookingsData.slice(0, 10).map(booking => {
+        // Combinar event_date + event_time para crear datetime
+        let datetime: Date;
+        if (booking.event_time) {
+          datetime = new Date(`${booking.event_date}T${booking.event_time}`);
+        } else {
+          datetime = new Date(`${booking.event_date}T00:00:00`);
+        }
+
+        return {
+          id: booking.id,
+          datetime,
+          clientName: booking.contact_name || 'Sin nombre',
+          clientPhone: booking.contact_phone || undefined,
+          clientEmail: booking.contact_email || undefined,
+          service: booking.item_name || 'Servicio',
+          source: (booking.origin as any) || 'chat',
+          status: 'confirmed' as const,
+          notes: booking.notes || undefined,
+          chatId: booking.session_id || undefined,
+          createdAt: new Date(booking.created_at || Date.now()),
+          type: (booking.type as 'service' | 'product') || 'service',
+          time: booking.event_time 
+            ? format(new Date(`2000-01-01T${booking.event_time}`), 'HH:mm')
+            : undefined,
+          price: booking.price || undefined,
+          currency: booking.currency || undefined,
+        };
+      });
 
       setMetrics(dashboardMetrics);
       setRecentAppointments(appointments);
@@ -258,20 +292,5 @@ export function useDashboardMetrics({
     error,
     refetch: fetchMetrics,
   };
-}
-
-// Helper para mapear status de booking
-function mapBookingStatus(status: string | null): 'confirmed' | 'pending' | 'canceled' {
-  switch (status) {
-    case 'confirmed':
-    case 'completed':
-      return 'confirmed';
-    case 'cancelled':
-    case 'no_show':
-      return 'canceled';
-    case 'pending':
-    default:
-      return 'pending';
-  }
 }
 
