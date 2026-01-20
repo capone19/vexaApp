@@ -18,7 +18,8 @@ import {
   ChevronRight,
   Lock,
 } from "lucide-react";
-import { isPremiumPlan, onPlanChange } from "@/lib/plan";
+import { useSubscription } from "@/hooks/use-subscription";
+import type { PlanId } from "@/lib/plan";
 
 interface NavItem {
   title: string;
@@ -70,15 +71,11 @@ interface SidebarProps {
 export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
   const location = useLocation();
   const [expandedItems, setExpandedItems] = useState<string[]>(["Resultados", "Marketing"]);
-  const [hasPremium, setHasPremium] = useState(isPremiumPlan());
-
-  // Listen for plan changes
-  useEffect(() => {
-    const unsubscribe = onPlanChange(() => {
-      setHasPremium(isPremiumPlan());
-    });
-    return unsubscribe;
-  }, []);
+  
+  // Obtener plan real de la suscripción
+  const { subscription } = useSubscription();
+  const currentPlan: PlanId = (subscription?.plan as PlanId) || 'basic';
+  const hasPremium = currentPlan === 'pro' || currentPlan === 'enterprise';
 
   const toggleExpanded = (title: string) => {
     setExpandedItems((prev) =>
