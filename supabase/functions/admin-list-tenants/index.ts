@@ -5,11 +5,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Límites de conversaciones por plan
+// Límites de conversaciones por plan (correctos)
 const PLAN_LIMITS: Record<string, number> = {
-  basic: 200,
-  pro: 500,
-  enterprise: 2000,
+  basic: 300,
+  pro: 1000,
+  enterprise: 4000,
 };
 
 Deno.serve(async (req) => {
@@ -23,7 +23,12 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     
+    // External Supabase for chat data
+    const externalSupabaseUrl = 'https://gfltyrhndfuttacrmcjd.supabase.co';
+    const externalSupabaseKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')!;
+    
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const externalSupabase = createClient(externalSupabaseUrl, externalSupabaseKey);
 
     // Verify the user is admin (check JWT)
     const authHeader = req.headers.get('Authorization');
@@ -112,30 +117,64 @@ Deno.serve(async (req) => {
       }
     });
 
-    // Fetch chat session counts per tenant for current period
-    const tenantChatCounts: Record<string, number> = {};
+    // Fetch tenant_channels to map phone numbers to tenant_ids
+    const { data: tenantChannels, error: channelsError } = await externalSupabase
+      .from('tenant_channels')
+      .select('tenant_id, phone_number');
     
-    for (const tenant of tenants || []) {
-      const subscription = tenant.subscriptions?.[0];
-      const periodStart = subscription?.current_period_start || new Date(new Date().setDate(1)).toISOString();
-      
-      const { count, error: countError } = await supabase
-        .from('chat_sessions')
-        .select('*', { count: 'exact', head: true })
-        .eq('tenant_id', tenant.id)
-        .gte('created_at', periodStart);
-      
-      if (!countError) {
-        tenantChatCounts[tenant.id] = count || 0;
-      }
+    if (channelsError) {
+      console.error('[admin-list-tenants] Error fetching tenant_channels:', channelsError);
     }
+
+    // Create phone -> tenant_id map (handle different formats)
+    const phoneToTenant: Record<string, string> = {};
+    tenantChannels?.forEach(channel => {
+      if (channel.phone_number && channel.tenant_id) {
+        // Store with and without country code
+        const phone = channel.phone_number.replace(/\D/g, '');
+        phoneToTenant[phone] = channel.tenant_id;
+        // Also store with 52 prefix if it's a Mexican number
+        if (phone.length === 10) {
+          phoneToTenant[`52${phone}`] = channel.tenant_id;
+          phoneToTenant[`521${phone}`] = channel.tenant_id;
+        }
+      }
+    });
+
+    // Fetch all unique sessions from external DB and count per tenant
+    const { data: chatSessions, error: sessionsError } = await externalSupabase
+      .from('n8n_chat_histories')
+      .select('session_id');
+    
+    if (sessionsError) {
+      console.error('[admin-list-tenants] Error fetching chat sessions:', sessionsError);
+    }
+
+    // Count unique sessions per tenant
+    const tenantChatCounts: Record<string, number> = {};
+    const processedSessions = new Set<string>();
+    
+    chatSessions?.forEach(row => {
+      if (processedSessions.has(row.session_id)) return;
+      processedSessions.add(row.session_id);
+      
+      // Extract phone from session_id (format: 521234567890@s.whatsapp.net)
+      const phone = row.session_id?.split('@')[0] || '';
+      const tenantId = phoneToTenant[phone];
+      
+      if (tenantId) {
+        tenantChatCounts[tenantId] = (tenantChatCounts[tenantId] || 0) + 1;
+      }
+    });
+
+    console.log('[admin-list-tenants] Chat counts per tenant:', tenantChatCounts);
 
     // Enrich tenants with email and chat counts
     const enrichedTenants = (tenants || []).map(tenant => ({
       ...tenant,
       owner_email: tenantOwnerEmails[tenant.id] || null,
       chat_count: tenantChatCounts[tenant.id] || 0,
-      chat_limit: PLAN_LIMITS[tenant.plan.toLowerCase()] || 200,
+      chat_limit: PLAN_LIMITS[tenant.plan.toLowerCase()] || 300,
     }));
 
     console.log(`[admin-list-tenants] Returning ${enrichedTenants.length} tenants with enriched data`);
