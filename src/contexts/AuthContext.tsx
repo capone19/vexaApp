@@ -158,18 +158,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Efecto de inicialización y listener de auth
   useEffect(() => {
-    initAuth();
-
-    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('[AuthContext] Auth state changed:', event);
-        
+    let isInitialized = false;
+    
+    const handleAuthChange = async (event: string, session: { user: any } | null) => {
+      console.log('[AuthContext] Auth state changed:', event);
+      
+      try {
         if (event === 'SIGNED_OUT') {
           setUser(null);
           setSubscription(null);
           setHasTenant(false);
-          setIsLoading(false);
         } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          // Solo procesar si ya fue inicializado (evitar duplicar initAuth)
+          if (isInitialized) {
+            const resolvedUser = await resolveUser(session);
+            setUser(resolvedUser);
+            setHasTenant(!!resolvedUser?.tenantId);
+            
+            if (resolvedUser?.tenantId) {
+              await fetchSubscription(resolvedUser.tenantId);
+            }
+          }
+        } else if (event === 'INITIAL_SESSION') {
+          // El evento INITIAL_SESSION se maneja aquí en lugar de initAuth separado
           const resolvedUser = await resolveUser(session);
           setUser(resolvedUser);
           setHasTenant(!!resolvedUser?.tenantId);
@@ -177,15 +188,35 @@ export function AuthProvider({ children }: AuthProviderProps) {
           if (resolvedUser?.tenantId) {
             await fetchSubscription(resolvedUser.tenantId);
           }
-          setIsLoading(false);
+          isInitialized = true;
         }
+      } catch (error) {
+        console.error('[AuthContext] Error handling auth change:', error);
+        // En caso de error, limpiar estado
+        setUser(null);
+        setHasTenant(false);
+      } finally {
+        // Siempre marcar como no-loading después de cualquier evento de auth
+        setIsLoading(false);
       }
+    };
+
+    // Obtener sesión inicial
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      handleAuthChange('INITIAL_SESSION', session);
+    }).catch((error) => {
+      console.error('[AuthContext] Error getting initial session:', error);
+      setIsLoading(false);
+    });
+
+    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => handleAuthChange(event, session)
     );
 
     return () => {
       authSubscription.unsubscribe();
     };
-  }, [initAuth, resolveUser, fetchSubscription]);
+  }, [resolveUser, fetchSubscription]);
 
   // Valores computados
   const isAuthenticated = !!user;
