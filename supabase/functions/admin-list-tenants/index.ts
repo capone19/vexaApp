@@ -5,6 +5,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Límites de conversaciones por plan
+const PLAN_LIMITS: Record<string, number> = {
+  basic: 200,
+  pro: 500,
+  enterprise: 2000,
+};
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -63,7 +70,9 @@ Deno.serve(async (req) => {
         created_at,
         subscriptions (
           price_usd,
-          status
+          status,
+          current_period_start,
+          current_period_end
         )
       `)
       .order('created_at', { ascending: false });
@@ -73,10 +82,66 @@ Deno.serve(async (req) => {
       throw tenantsError;
     }
 
-    console.log(`[admin-list-tenants] Returning ${tenants?.length || 0} tenants`);
+    // Fetch owner emails for each tenant
+    const { data: userRoles, error: rolesError } = await supabase
+      .from('user_roles')
+      .select('tenant_id, user_id, role')
+      .eq('role', 'owner');
+
+    if (rolesError) {
+      console.error('[admin-list-tenants] Error fetching user roles:', rolesError);
+    }
+
+    // Get unique user IDs
+    const userIds = [...new Set(userRoles?.map(r => r.user_id) || [])];
+    
+    // Fetch user emails from auth.users
+    const userEmails: Record<string, string> = {};
+    for (const userId of userIds) {
+      const { data: userData } = await supabase.auth.admin.getUserById(userId);
+      if (userData?.user?.email) {
+        userEmails[userId] = userData.user.email;
+      }
+    }
+
+    // Create tenant_id -> owner_email map
+    const tenantOwnerEmails: Record<string, string> = {};
+    userRoles?.forEach(role => {
+      if (role.role === 'owner' && userEmails[role.user_id]) {
+        tenantOwnerEmails[role.tenant_id] = userEmails[role.user_id];
+      }
+    });
+
+    // Fetch chat session counts per tenant for current period
+    const tenantChatCounts: Record<string, number> = {};
+    
+    for (const tenant of tenants || []) {
+      const subscription = tenant.subscriptions?.[0];
+      const periodStart = subscription?.current_period_start || new Date(new Date().setDate(1)).toISOString();
+      
+      const { count, error: countError } = await supabase
+        .from('chat_sessions')
+        .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', tenant.id)
+        .gte('created_at', periodStart);
+      
+      if (!countError) {
+        tenantChatCounts[tenant.id] = count || 0;
+      }
+    }
+
+    // Enrich tenants with email and chat counts
+    const enrichedTenants = (tenants || []).map(tenant => ({
+      ...tenant,
+      owner_email: tenantOwnerEmails[tenant.id] || null,
+      chat_count: tenantChatCounts[tenant.id] || 0,
+      chat_limit: PLAN_LIMITS[tenant.plan.toLowerCase()] || 200,
+    }));
+
+    console.log(`[admin-list-tenants] Returning ${enrichedTenants.length} tenants with enriched data`);
 
     return new Response(
-      JSON.stringify({ tenants: tenants || [] }),
+      JSON.stringify({ tenants: enrichedTenants }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error: unknown) {
