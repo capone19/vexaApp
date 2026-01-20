@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import {
   Table,
   TableBody,
@@ -11,9 +12,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, Building2, CheckCircle, XCircle } from 'lucide-react';
+import { Loader2, Building2, CheckCircle, XCircle, Copy } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { toast } from 'sonner';
 
 interface Tenant {
   id: string;
@@ -23,6 +25,9 @@ interface Tenant {
   is_active: boolean | null;
   whatsapp_phone_id: string | null;
   created_at: string | null;
+  owner_email: string | null;
+  chat_count: number;
+  chat_limit: number;
   subscriptions: {
     price_usd: number;
     status: string;
@@ -69,15 +74,19 @@ export default function AdminClients() {
     }
   };
 
-  const getPlanPrice = (plan: string) => {
-    switch (plan.toLowerCase()) {
-      case 'enterprise':
-        return '$499';
-      case 'pro':
-        return '$199';
-      default:
-        return '$99';
-    }
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success('ID copiado al portapapeles');
+  };
+
+  const getChatUsagePercentage = (count: number, limit: number) => {
+    return Math.min((count / limit) * 100, 100);
+  };
+
+  const getChatUsageColor = (percentage: number) => {
+    if (percentage >= 90) return 'text-destructive';
+    if (percentage >= 70) return 'text-yellow-600';
+    return 'text-green-600';
   };
 
   return (
@@ -111,60 +120,97 @@ export default function AdminClients() {
                 No hay clientes registrados
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead>Slug</TableHead>
-                    <TableHead>Plan</TableHead>
-                    <TableHead>Precio</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead>WhatsApp</TableHead>
-                    <TableHead>Creado</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tenants.map((tenant) => (
-                    <TableRow key={tenant.id}>
-                      <TableCell className="font-medium">{tenant.name}</TableCell>
-                      <TableCell className="text-muted-foreground">{tenant.slug}</TableCell>
-                      <TableCell>
-                        <Badge variant={getPlanBadgeVariant(tenant.plan)}>
-                          {tenant.plan.charAt(0).toUpperCase() + tenant.plan.slice(1)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{getPlanPrice(tenant.plan)}/mes</TableCell>
-                      <TableCell>
-                        {tenant.is_active ? (
-                          <Badge variant="default" className="bg-green-600 hover:bg-green-700">
-                            Activo
-                          </Badge>
-                        ) : (
-                          <Badge variant="destructive">Inactivo</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {tenant.whatsapp_phone_id ? (
-                          <span className="flex items-center gap-1 text-green-600">
-                            <CheckCircle className="h-4 w-4" />
-                            Conectado
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-muted-foreground">
-                            <XCircle className="h-4 w-4" />
-                            No conectado
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {tenant.created_at
-                          ? format(new Date(tenant.created_at), 'd MMM yyyy', { locale: es })
-                          : '-'}
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nombre</TableHead>
+                      <TableHead>Tenant ID</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Plan</TableHead>
+                      <TableHead>Uso de Chats</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>WhatsApp</TableHead>
+                      <TableHead>Creado</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {tenants.map((tenant) => {
+                      const usagePercentage = getChatUsagePercentage(tenant.chat_count, tenant.chat_limit);
+                      return (
+                        <TableRow key={tenant.id}>
+                          <TableCell className="font-medium">{tenant.name}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <code className="text-xs bg-muted px-2 py-1 rounded font-mono truncate max-w-[120px]">
+                                {tenant.id.slice(0, 8)}...
+                              </code>
+                              <button
+                                onClick={() => copyToClipboard(tenant.id)}
+                                className="text-muted-foreground hover:text-foreground transition-colors"
+                                title="Copiar ID completo"
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {tenant.owner_email || '-'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={getPlanBadgeVariant(tenant.plan)}>
+                              {tenant.plan.charAt(0).toUpperCase() + tenant.plan.slice(1)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1 min-w-[140px]">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className={getChatUsageColor(usagePercentage)}>
+                                  {tenant.chat_count} / {tenant.chat_limit}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {usagePercentage.toFixed(0)}%
+                                </span>
+                              </div>
+                              <Progress 
+                                value={usagePercentage} 
+                                className="h-1.5"
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {tenant.is_active ? (
+                              <Badge variant="default" className="bg-green-600 hover:bg-green-700">
+                                Activo
+                              </Badge>
+                            ) : (
+                              <Badge variant="destructive">Inactivo</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {tenant.whatsapp_phone_id ? (
+                              <span className="flex items-center gap-1 text-green-600">
+                                <CheckCircle className="h-4 w-4" />
+                                Conectado
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-muted-foreground">
+                                <XCircle className="h-4 w-4" />
+                                No conectado
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {tenant.created_at
+                              ? format(new Date(tenant.created_at), 'd MMM yyyy', { locale: es })
+                              : '-'}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </CardContent>
         </Card>
