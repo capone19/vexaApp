@@ -270,6 +270,7 @@ export interface Appointment {
   clientEmail?: string;
   service: string;
   source: AppointmentSource;
+  sourceRaw?: string; // Valor original de la BD (ej: "Shopify", "chat", etc.)
   status: AppointmentStatus;
   notes?: string;
   chatId?: string;

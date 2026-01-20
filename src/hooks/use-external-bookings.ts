@@ -63,6 +63,7 @@ const mapBookingToAppointment = (booking: ExternalBooking): Appointment => {
     clientEmail: booking.contact_email || undefined,
     service: booking.item_name,
     source: mapOrigin(booking.origin),
+    sourceRaw: booking.origin, // Preservar valor original de la BD
     status: mapStatus(),
     notes: booking.notes || undefined,
     chatId: booking.session_id || undefined,
