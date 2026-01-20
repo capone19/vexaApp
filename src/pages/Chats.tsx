@@ -29,6 +29,7 @@ type FilterTab = "todos" | "alta_intencion" | "en_progreso";
 
 interface N8nSession {
   sessionId: string;
+  phoneNumber: string;
   lastMessage: string;
   lastMessageAt: Date;
   messageCount: number;
@@ -244,16 +245,18 @@ export default function Chats() {
       const existing = sessionMap.get(msg.session_id);
       const msgDate = new Date(msg.created_at);
       
-      // Extract phone number for display
-      const contactName = msg.session_id.split('@')[0] || msg.session_id;
+      // Use phone_number column if available, fallback to extracting from session_id
+      const phoneNumber = msg.phone_number || msg.session_id.split('@')[0] || msg.session_id;
+      const displayPhone = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
       
       if (!existing) {
         sessionMap.set(msg.session_id, {
           sessionId: msg.session_id,
+          phoneNumber: displayPhone,
           lastMessage: msg.message.content || '',
           lastMessageAt: msgDate,
           messageCount: 1,
-          contactName: `+${contactName}`,
+          contactName: displayPhone,
           intentLabel: getIntentLabel(1),
           botEnabled: botStates[msg.session_id] ?? true,
         });
@@ -261,6 +264,11 @@ export default function Chats() {
         existing.messageCount++;
         existing.intentLabel = getIntentLabel(existing.messageCount);
         existing.botEnabled = botStates[msg.session_id] ?? true;
+        // Update phone_number if current message has it and existing doesn't
+        if (msg.phone_number && existing.phoneNumber === existing.sessionId) {
+          existing.phoneNumber = displayPhone;
+          existing.contactName = displayPhone;
+        }
         if (msgDate > existing.lastMessageAt) {
           existing.lastMessageAt = msgDate;
           existing.lastMessage = msg.message.content || '';
@@ -442,7 +450,7 @@ export default function Chats() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-medium text-sm text-foreground truncate">
-                      {session.contactName}
+                      {session.phoneNumber}
                     </span>
                     <span className="text-xs text-muted-foreground shrink-0 ml-2">
                       {format(session.lastMessageAt, "HH:mm", { locale: es })}
