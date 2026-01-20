@@ -169,14 +169,14 @@ export default function Chats() {
     }
   };
 
-  // Cargar estados iniciales de bot_activado desde la DB externa
+  // Cargar estados iniciales de bot_active desde la DB externa
   useEffect(() => {
     const loadBotStates = async () => {
       try {
-        // Obtener el estado más reciente de bot_activado para cada session_id
+        // Obtener el estado más reciente de bot_active para cada session_id
         const { data, error } = await externalSupabase
           .from('n8n_chat_histories')
-          .select('session_id, bot_activado')
+          .select('session_id, bot_active')
           .order('created_at', { ascending: false });
         
         if (error) {
@@ -188,7 +188,7 @@ export default function Chats() {
         const statesMap: Record<string, boolean> = {};
         data?.forEach(row => {
           if (!(row.session_id in statesMap)) {
-            statesMap[row.session_id] = row.bot_activado ?? true;
+            statesMap[row.session_id] = row.bot_active ?? true;
           }
         });
         
@@ -214,7 +214,7 @@ export default function Chats() {
       // Actualizar TODAS las filas de este session_id en la DB externa
       const { error } = await externalSupabase
         .from('n8n_chat_histories')
-        .update({ bot_activado: newState })
+        .update({ bot_active: newState })
         .eq('session_id', sessionId);
       
       if (error) {

@@ -18,6 +18,8 @@ export interface N8nChatMessage {
     tool_calls?: unknown[];
   };
   created_at: string;
+  bot_active: boolean; // Estado del bot (true = activo, false = humano tomó control)
+  pedido_agendado: boolean; // Si hay una cita/pedido agendado
 }
 
 // Interfaz para bookings externos
