@@ -857,7 +857,9 @@ const CalendarContent = () => {
 
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">Origen:</span>
-                <Badge variant="outline">{sourceLabels[selectedAppointment.source]}</Badge>
+                <Badge variant="outline">
+                  {selectedAppointment.sourceRaw || sourceLabels[selectedAppointment.source]}
+                </Badge>
               </div>
 
               {/* Solo mostrar botones de acción para servicios */}
