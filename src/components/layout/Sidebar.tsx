@@ -17,6 +17,8 @@ import {
   ChevronDown,
   ChevronRight,
   Lock,
+  Zap,
+  Sparkles,
 } from "lucide-react";
 import { useSubscription } from "@/hooks/use-subscription";
 import type { PlanId } from "@/lib/plan";
@@ -70,7 +72,7 @@ interface SidebarProps {
 
 export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
   const location = useLocation();
-  const [expandedItems, setExpandedItems] = useState<string[]>(["Resultados", "Marketing"]);
+  const [expandedItems, setExpandedItems] = useState<string[]>([]);
   
   // Obtener plan real de la suscripción
   const { subscription } = useSubscription();
@@ -207,6 +209,36 @@ export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
           ))}
         </ul>
       </nav>
+
+      {/* VEXA Ads - Premium Module */}
+      <div className="px-3 py-3 border-t border-border">
+        <NavLink
+          to="/vexa-ads"
+          className={({ isActive }) =>
+            cn(
+              "flex items-center rounded-xl px-3 py-3 text-sm font-medium transition-all",
+              isExpanded ? "gap-3" : "justify-center",
+              isActive
+                ? "bg-gradient-to-r from-violet-500/20 to-purple-500/20 text-violet-300 border border-violet-500/30"
+                : "bg-gradient-to-r from-violet-500/10 to-purple-500/10 text-violet-400 hover:from-violet-500/20 hover:to-purple-500/20 border border-violet-500/20"
+            )
+          }
+          title={!isExpanded ? "VEXA Ads" : undefined}
+        >
+          <div className="relative">
+            <Zap className="h-5 w-5 shrink-0" />
+            <Sparkles className="h-2.5 w-2.5 absolute -top-1 -right-1 text-violet-300" />
+          </div>
+          {isExpanded && (
+            <>
+              <span className="whitespace-nowrap font-semibold">VEXA Ads</span>
+              <span className="ml-auto px-1.5 py-0.5 text-[10px] rounded bg-violet-500/30 text-violet-200">
+                Premium
+              </span>
+            </>
+          )}
+        </NavLink>
+      </div>
 
       {/* Bottom Navigation */}
       <div className="border-t border-border px-3 py-4">
