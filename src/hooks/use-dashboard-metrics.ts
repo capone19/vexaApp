@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { externalSupabase, type N8nChatMessage } from '@/integrations/supabase/external-client';
 import type { DashboardMetrics, Appointment } from '@/lib/types';
 
 interface UseDashboardMetricsOptions {
@@ -45,6 +45,14 @@ const emptyMetrics: DashboardMetrics = {
   },
 };
 
+// Clasificar sesiones según cantidad de mensajes (igual que en Chats.tsx)
+function classifySessionByMessageCount(messageCount: number): 'tofu' | 'mofu' | 'hot' | null {
+  if (messageCount > 10) return 'hot';     // Alta intención
+  if (messageCount > 6) return 'mofu';     // En progreso
+  if (messageCount >= 1) return 'tofu';    // Conversación inicial
+  return null;
+}
+
 export function useDashboardMetrics({
   tenantId,
   dateRange,
@@ -76,12 +84,14 @@ export function useDashboardMetrics({
       let externalTotalMessages = 0;
       let externalTotalSessions = 0;
       let externalAvgPerSession = 0;
+      let funnelFromRealtime = { tofu: 0, mofu: 0, hot: 0 };
 
       try {
-        // Obtener todos los mensajes del rango de fechas
+        // Obtener todos los mensajes del rango de fechas para el tenant
         const { data: externalData, error: externalError } = await externalSupabase
           .from('n8n_chat_histories')
-          .select('id, session_id, created_at')
+          .select('id, session_id, created_at, tenant_id')
+          .eq('tenant_id', tenantId)
           .gte('created_at', startDate.toISOString())
           .lte('created_at', endDate.toISOString());
 
@@ -90,9 +100,22 @@ export function useDashboardMetrics({
         } else if (externalData) {
           externalTotalMessages = externalData.length;
           
-          // Contar sesiones únicas
-          const uniqueSessions = new Set(externalData.map(m => m.session_id));
-          externalTotalSessions = uniqueSessions.size;
+          // Agrupar mensajes por sesión y contar
+          const sessionMessageCounts = new Map<string, number>();
+          externalData.forEach(msg => {
+            const currentCount = sessionMessageCounts.get(msg.session_id) || 0;
+            sessionMessageCounts.set(msg.session_id, currentCount + 1);
+          });
+          
+          externalTotalSessions = sessionMessageCounts.size;
+          
+          // Clasificar cada sesión según cantidad de mensajes
+          sessionMessageCounts.forEach((msgCount, sessionId) => {
+            const stage = classifySessionByMessageCount(msgCount);
+            if (stage === 'tofu') funnelFromRealtime.tofu++;
+            else if (stage === 'mofu') funnelFromRealtime.mofu++;
+            else if (stage === 'hot') funnelFromRealtime.hot++;
+          });
           
           // Calcular promedio
           externalAvgPerSession = externalTotalSessions > 0 
@@ -103,6 +126,7 @@ export function useDashboardMetrics({
             totalMessages: externalTotalMessages,
             totalSessions: externalTotalSessions,
             avgPerSession: externalAvgPerSession,
+            funnel: funnelFromRealtime,
           });
         }
       } catch (extErr) {
@@ -110,7 +134,7 @@ export function useDashboardMetrics({
       }
 
       // ============================================
-      // 2. BOOKINGS desde DB LOCAL (Cloud)
+      // 2. BOOKINGS desde DB LOCAL (Cloud) para BOFU y servicios agendados
       // ============================================
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
@@ -118,14 +142,17 @@ export function useDashboardMetrics({
         .eq('tenant_id', tenantId)
         .gte('scheduled_at', startDate.toISOString())
         .order('scheduled_at', { ascending: false })
-        .limit(10);
+        .limit(50);
 
       if (bookingsError) throw bookingsError;
 
-      // Contar bookings confirmados
+      // Contar bookings confirmados (esto es BOFU - ventas)
       const confirmedBookings = (bookingsData || []).filter(
         b => b.status === 'confirmed' || b.status === 'completed'
       ).length;
+
+      // Total de servicios agendados (cualquier status)
+      const totalServicesBooked = (bookingsData || []).length;
 
       // Calcular revenue
       const totalRevenue = (bookingsData || []).reduce(
@@ -134,38 +161,35 @@ export function useDashboardMetrics({
       );
 
       // ============================================
-      // 3. FUNNEL desde DB LOCAL (chat_sessions)
+      // 3. CALCULAR TASAS DEL FUNNEL
       // ============================================
-      const { data: funnelData, error: funnelError } = await supabase
-        .from('chat_sessions')
-        .select('funnel_stage')
-        .eq('tenant_id', tenantId)
-        .gte('created_at', startDate.toISOString());
-
-      if (funnelError) throw funnelError;
-
-      // Calcular funnel desde sesiones
-      const funnelCounts = (funnelData || []).reduce(
-        (acc, session) => {
-          const stage = session.funnel_stage;
-          if (stage === 'tofu') acc.tofu++;
-          else if (stage === 'mofu') acc.mofu++;
-          else if (stage === 'hot') acc.hot++;
-          else if (stage === 'bofu') acc.bofu++;
-          else if (stage === 'converted') acc.converted++;
-          else if (stage === 'lost') acc.lost++;
-          return acc;
-        },
-        { tofu: 0, mofu: 0, hot: 0, bofu: 0, converted: 0, lost: 0 }
-      );
-
-      const totalFunnel = Object.values(funnelCounts).reduce((a, b) => a + b, 0) || 1;
+      const totalFunnelSessions = funnelFromRealtime.tofu + funnelFromRealtime.mofu + funnelFromRealtime.hot;
+      
+      // Tasa de conversión: bookings confirmados / total sesiones
+      const conversionRate = externalTotalSessions > 0
+        ? Math.round((confirmedBookings / externalTotalSessions) * 100)
+        : 0;
+      
+      // Tasa "sin respuesta": sesiones con pocos mensajes (TOFU) / total
+      const deadRate = totalFunnelSessions > 0
+        ? Math.round((funnelFromRealtime.tofu / totalFunnelSessions) * 100)
+        : 0;
+      
+      // Tasa "en progreso": MOFU / total
+      const warmRate = totalFunnelSessions > 0
+        ? Math.round((funnelFromRealtime.mofu / totalFunnelSessions) * 100)
+        : 0;
+      
+      // Tasa "alta intención": HOT / total
+      const hotRate = totalFunnelSessions > 0
+        ? Math.round((funnelFromRealtime.hot / totalFunnelSessions) * 100)
+        : 0;
 
       // ============================================
       // 4. CONSTRUIR MÉTRICAS COMBINADAS
       // ============================================
       const dashboardMetrics: DashboardMetrics = {
-        // Métricas de mensajes desde DB EXTERNA
+        // Métricas de mensajes desde DB EXTERNA (realtime)
         totalChats: externalTotalSessions,
         totalMessages: externalTotalMessages,
         avgMessagesPerChat: externalAvgPerSession,
@@ -175,22 +199,20 @@ export function useDashboardMetrics({
         avgFirstResponseTime: 0,
         avgConversionTime: 0,
         
-        // Métricas de negocio desde DB LOCAL
-        servicesBooked: confirmedBookings,
+        // Métricas de negocio desde DB LOCAL (bookings)
+        servicesBooked: totalServicesBooked,
         revenue: totalRevenue,
         
-        // Funnel desde DB LOCAL
+        // Funnel combinado: TOFU/MOFU/HOT desde realtime, BOFU desde bookings
         funnel: {
-          tofu: funnelCounts.tofu,
-          mofu: funnelCounts.mofu,
-          hotLeads: funnelCounts.hot,
-          bofu: funnelCounts.bofu,
-          deadRate: Math.round((funnelCounts.lost / totalFunnel) * 100),
-          warmRate: Math.round(((funnelCounts.tofu + funnelCounts.mofu) / totalFunnel) * 100),
-          hotRate: Math.round(((funnelCounts.hot + funnelCounts.bofu) / totalFunnel) * 100),
-          conversionRate: externalTotalSessions > 0
-            ? Math.round((confirmedBookings / externalTotalSessions) * 100)
-            : 0,
+          tofu: funnelFromRealtime.tofu,       // Conversaciones iniciales (1-6 msgs)
+          mofu: funnelFromRealtime.mofu,       // En progreso (7-10 msgs)
+          hotLeads: funnelFromRealtime.hot,    // Alta intención (>10 msgs)
+          bofu: confirmedBookings,              // Ventas (bookings confirmados)
+          deadRate,                             // % sin respuesta
+          warmRate,                             // % en progreso
+          hotRate,                              // % alta intención
+          conversionRate,                       // % conversión (bookings/sesiones)
         },
       };
 
