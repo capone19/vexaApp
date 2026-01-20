@@ -80,9 +80,17 @@ export default function Chats() {
   // Filtrar por tenant: admins ven todo, otros usuarios solo su tenant
   const { messages, isLoading, error, refetch } = useN8nChatHistory({
     enableRealtime: true,
-    limit: 500,
+    limit: 1000, // Aumentar límite para ver más mensajes
     tenantId: isAdmin ? undefined : user?.tenantId || undefined,
   });
+  
+  // Log para debug
+  useEffect(() => {
+    console.log('[Chats] User tenantId:', user?.tenantId, 'isAdmin:', isAdmin);
+    console.log('[Chats] Total messages loaded:', messages.length);
+    const uniqueSessions = [...new Set(messages.map(m => m.session_id))];
+    console.log('[Chats] Unique sessions:', uniqueSessions.length, uniqueSessions);
+  }, [messages, user?.tenantId, isAdmin]);
   
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -169,14 +177,14 @@ export default function Chats() {
     }
   };
 
-  // Cargar estados iniciales de bot_active desde la DB externa
+  // Cargar estados iniciales de bot_activado desde la DB externa
   useEffect(() => {
     const loadBotStates = async () => {
       try {
-        // Obtener el estado más reciente de bot_active para cada session_id
+        // Obtener el estado más reciente de bot_activado para cada session_id
         const { data, error } = await externalSupabase
           .from('n8n_chat_histories')
-          .select('session_id, bot_active')
+          .select('session_id, bot_activado')
           .order('created_at', { ascending: false });
         
         if (error) {
@@ -188,7 +196,7 @@ export default function Chats() {
         const statesMap: Record<string, boolean> = {};
         data?.forEach(row => {
           if (!(row.session_id in statesMap)) {
-            statesMap[row.session_id] = row.bot_active ?? true;
+            statesMap[row.session_id] = row.bot_activado ?? true;
           }
         });
         
@@ -214,7 +222,7 @@ export default function Chats() {
       // Actualizar TODAS las filas de este session_id en la DB externa
       const { error } = await externalSupabase
         .from('n8n_chat_histories')
-        .update({ bot_active: newState })
+        .update({ bot_activado: newState })
         .eq('session_id', sessionId);
       
       if (error) {
