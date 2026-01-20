@@ -26,6 +26,7 @@ import {
   MessageSquare,
   BarChart3,
   ChevronRight,
+  Loader2,
 } from 'lucide-react';
 import { mockBilling } from '@/lib/mock/data';
 import { format } from 'date-fns';
@@ -33,7 +34,8 @@ import { es } from 'date-fns/locale';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { getCurrentPlan, setCurrentPlan, type PlanId } from '@/lib/plan';
+import { useSubscription } from '@/hooks/use-subscription';
+import type { PlanId } from '@/lib/plan';
 
 interface BillingInfoData {
   companyName: string;
@@ -146,11 +148,16 @@ const Billing = () => {
   const [isChangePlanOpen, setIsChangePlanOpen] = useState(false);
   const [isPaymentMethodOpen, setIsPaymentMethodOpen] = useState(false);
   const [isBillingInfoOpen, setIsBillingInfoOpen] = useState(false);
-  const [currentPlan, setCurrentPlanState] = useState<PlanId>(getCurrentPlan());
-  const [selectedPlan, setSelectedPlan] = useState<PlanId>(getCurrentPlan());
+  const [selectedPlan, setSelectedPlan] = useState<PlanId>('basic');
   const [billingInfo, setBillingInfo] = useState<BillingInfoData>(getStoredBillingInfo);
   const [editingBillingInfo, setEditingBillingInfo] = useState<BillingInfoData>(billingInfo);
   const isMobile = useIsMobile();
+  
+  // Obtener suscripción real de la base de datos
+  const { subscription, isLoading: subscriptionLoading } = useSubscription();
+  
+  // Determinar el plan actual basado en la suscripción real
+  const currentPlan: PlanId = (subscription?.plan as PlanId) || 'basic';
 
   // Update selected plan when opening modal
   useEffect(() => {
@@ -173,13 +180,10 @@ const Billing = () => {
 
   const currentPlanData = plans.find(p => p.id === currentPlan) || plans[0];
 
-  // Handle plan change confirmation
+  // Handle plan change confirmation - ahora solo muestra mensaje ya que el cambio se hace desde admin
   const handleConfirmPlanChange = () => {
     if (selectedPlan !== currentPlan) {
-      setCurrentPlan(selectedPlan);
-      setCurrentPlanState(selectedPlan);
-      const newPlanData = plans.find(p => p.id === selectedPlan);
-      toast.success(`Plan actualizado a ${newPlanData?.name || selectedPlan}`);
+      toast.info('Contacta a soporte para cambiar tu plan');
     }
     setIsChangePlanOpen(false);
   };
@@ -458,55 +462,69 @@ const Billing = () => {
         {/* Current Plan Card */}
         <Card className="border-primary/20 bg-primary/5">
           <CardContent className={cn("p-4 md:p-6", isMobile && "space-y-4")}>
-            <div className={cn(
-              "flex gap-4 md:gap-6",
-              isMobile ? "flex-col" : "flex-row lg:items-center justify-between"
-            )}>
-              <div className="flex items-start gap-3 md:gap-4">
-                <div className={cn("rounded-lg bg-primary/10", isMobile ? "p-2" : "p-3")}>
-                  <Zap className={cn("text-primary", isMobile ? "h-5 w-5" : "h-6 w-6")} />
+            {subscriptionLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : (
+              <div className={cn(
+                "flex gap-4 md:gap-6",
+                isMobile ? "flex-col" : "flex-row lg:items-center justify-between"
+              )}>
+                <div className="flex items-start gap-3 md:gap-4">
+                  <div className={cn("rounded-lg bg-primary/10", isMobile ? "p-2" : "p-3")}>
+                    <Zap className={cn("text-primary", isMobile ? "h-5 w-5" : "h-6 w-6")} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <h3 className={cn("font-semibold text-foreground", isMobile ? "text-base" : "text-xl")}>
+                        Plan {currentPlanData?.name}
+                      </h3>
+                      <Badge className={cn(
+                        subscription?.status === 'active' 
+                          ? "bg-success/10 text-success" 
+                          : "bg-warning/10 text-warning"
+                      )}>
+                        {subscription?.status === 'active' ? 'Activo' : subscription?.status || 'Sin suscripción'}
+                      </Badge>
+                    </div>
+                    <p className="text-muted-foreground text-xs md:text-sm mb-2">
+                      {currentPlanData?.description}
+                    </p>
+                    <div className={cn(
+                      "flex items-center gap-2 md:gap-4 text-sm",
+                      isMobile && "flex-col items-start"
+                    )}>
+                      <span className="flex items-center gap-1.5 text-muted-foreground text-xs md:text-sm">
+                        <Calendar className="h-4 w-4" />
+                        Próximo cobro: {subscription?.current_period_end 
+                          ? format(new Date(subscription.current_period_end), 'dd MMM yyyy', { locale: es })
+                          : 'N/A'}
+                      </span>
+                      <span className={cn("font-semibold text-primary", isMobile ? "text-xl" : "text-2xl")}>
+                        ${subscription?.price_usd || currentPlanData?.price || 0}
+                        <span className="text-sm font-normal text-muted-foreground">/mes</span>
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <h3 className={cn("font-semibold text-foreground", isMobile ? "text-base" : "text-xl")}>
-                      Plan {currentPlanData?.name}
-                    </h3>
-                    <Badge className="bg-success/10 text-success">Activo</Badge>
-                  </div>
-                  <p className="text-muted-foreground text-xs md:text-sm mb-2">
-                    {currentPlanData?.description}
-                  </p>
-                  <div className={cn(
-                    "flex items-center gap-2 md:gap-4 text-sm",
-                    isMobile && "flex-col items-start"
-                  )}>
-                    <span className="flex items-center gap-1.5 text-muted-foreground text-xs md:text-sm">
-                      <Calendar className="h-4 w-4" />
-                      Próximo cobro: {format(mockBilling.nextBillingDate, 'dd MMM yyyy', { locale: es })}
-                    </span>
-                    <span className={cn("font-semibold text-primary", isMobile ? "text-xl" : "text-2xl")}>
-                      {formatCurrency(currentPlanData?.price, currentPlanData?.currency)}
-                      <span className="text-sm font-normal text-muted-foreground">/mes</span>
-                    </span>
-                  </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setIsChangePlanOpen(true)}
+                    className={cn(isMobile && "h-11")}
+                  >
+                    Cambiar Plan
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className={cn("text-destructive hover:text-destructive", isMobile && "h-11")}
+                  >
+                    Cancelar Suscripción
+                  </Button>
                 </div>
               </div>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setIsChangePlanOpen(true)}
-                  className={cn(isMobile && "h-11")}
-                >
-                  Cambiar Plan
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className={cn("text-destructive hover:text-destructive", isMobile && "h-11")}
-                >
-                  Cancelar Suscripción
-                </Button>
-              </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
