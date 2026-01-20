@@ -208,6 +208,47 @@ export default function Support() {
     fetchTickets();
   }, [user?.tenantId]);
 
+  // Realtime subscription for ticket updates
+  useEffect(() => {
+    if (!user?.tenantId) return;
+
+    const channel = supabase
+      .channel('tickets-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tickets',
+          filter: `tenant_id=eq.${user.tenantId}`,
+        },
+        (payload) => {
+          console.log('[Support] Ticket realtime update:', payload);
+          
+          if (payload.eventType === 'UPDATE') {
+            // Update ticket in state
+            setTickets(prev => prev.map(t => 
+              t.id === payload.new.id ? { ...t, ...payload.new } as Ticket : t
+            ));
+            // Also update selected ticket if viewing
+            if (selectedTicket?.id === payload.new.id) {
+              setSelectedTicket(prev => prev ? { ...prev, ...payload.new } as Ticket : null);
+            }
+          } else if (payload.eventType === 'INSERT') {
+            setTickets(prev => [payload.new as Ticket, ...prev]);
+          } else if (payload.eventType === 'DELETE') {
+            setTickets(prev => prev.filter(t => t.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.tenantId, selectedTicket?.id]);
+
+  // Load messages when ticket is selected
   useEffect(() => {
     if (selectedTicket) {
       fetchMessages(selectedTicket.id);

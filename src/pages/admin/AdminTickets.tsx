@@ -65,7 +65,7 @@ export default function AdminTickets() {
   const fetchTickets = async () => {
     setIsLoading(true);
     try {
-      // Fetch tickets with tenant info
+      // Fetch tickets
       const { data: ticketsData, error: ticketsError } = await supabase
         .from('tickets')
         .select('*')
@@ -73,19 +73,24 @@ export default function AdminTickets() {
 
       if (ticketsError) throw ticketsError;
 
-      // Fetch tenants to get names
-      const { data: tenantsData, error: tenantsError } = await supabase
-        .from('tenants')
-        .select('id, name');
+      // Get unique tenant IDs
+      const tenantIds = [...new Set(ticketsData?.map(t => t.tenant_id) || [])];
 
-      if (tenantsError) throw tenantsError;
+      // Fetch tenant names via edge function (bypasses RLS)
+      const { data: tenantsResponse, error: tenantsError } = await supabase.functions.invoke(
+        'admin-get-tenant-names',
+        { body: { tenantIds } }
+      );
 
-      // Map tenant names to tickets
-      const tenantsMap = new Map(tenantsData?.map(t => [t.id, t.name]));
+      if (tenantsError) {
+        console.error('Error fetching tenant names:', tenantsError);
+      }
+
+      const tenantsMap = tenantsResponse?.tenants || {};
       
       const ticketsWithTenants = (ticketsData || []).map(ticket => ({
         ...ticket,
-        tenant_name: tenantsMap.get(ticket.tenant_id) || 'Desconocido',
+        tenant_name: tenantsMap[ticket.tenant_id]?.name || 'Sin nombre',
       }));
 
       setTickets(ticketsWithTenants);
