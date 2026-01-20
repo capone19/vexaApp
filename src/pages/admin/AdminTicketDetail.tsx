@@ -100,15 +100,22 @@ export default function AdminTicketDetail() {
       if (ticketError) throw ticketError;
       setTicket(ticketData);
 
-      // Fetch tenant info
-      const { data: tenantData, error: tenantError } = await supabase
-        .from('tenants')
-        .select('id, name, slug, plan')
-        .eq('id', ticketData.tenant_id)
-        .single();
+      // Fetch tenant info via edge function (bypasses RLS)
+      const { data: tenantsResponse, error: tenantsError } = await supabase.functions.invoke(
+        'admin-get-tenant-names',
+        { body: { tenantIds: [ticketData.tenant_id] } }
+      );
 
-      if (!tenantError && tenantData) {
-        setTenant(tenantData);
+      if (!tenantsError && tenantsResponse?.tenants) {
+        const tenantInfo = tenantsResponse.tenants[ticketData.tenant_id];
+        if (tenantInfo) {
+          setTenant({
+            id: ticketData.tenant_id,
+            name: tenantInfo.name,
+            slug: tenantInfo.slug,
+            plan: tenantInfo.plan,
+          });
+        }
       }
 
       // Fetch messages
