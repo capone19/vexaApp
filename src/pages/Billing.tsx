@@ -35,6 +35,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useSubscription } from '@/hooks/use-subscription';
+import { usePeriodUsage } from '@/hooks/use-period-usage';
 import type { PlanId } from '@/lib/plan';
 
 interface BillingInfoData {
@@ -155,6 +156,9 @@ const Billing = () => {
   
   // Obtener suscripción real de la base de datos
   const { subscription, isLoading: subscriptionLoading } = useSubscription();
+  
+  // Obtener uso real del período actual
+  const { usage, isLoading: usageLoading } = usePeriodUsage();
   
   // Determinar el plan actual basado en la suscripción real
   const currentPlan: PlanId = (subscription?.plan as PlanId) || 'basic';
@@ -431,29 +435,75 @@ const Billing = () => {
                   <span className="text-xs md:text-sm text-muted-foreground">Conversaciones</span>
                   <MessageSquare className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>0</p>
-                <div className="mt-2">
-                  <div className="h-1.5 bg-border rounded-full overflow-hidden">
-                    <div className="h-full bg-primary rounded-full" style={{ width: '0%' }} />
+                {usageLoading ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   </div>
-                  <p className="text-[10px] md:text-xs text-muted-foreground mt-1">0% de 1,000</p>
-                </div>
+                ) : (
+                  <>
+                    <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>
+                      {usage?.conversationsUsed?.toLocaleString() ?? 0}
+                    </p>
+                    <div className="mt-2">
+                      <div className="h-1.5 bg-border rounded-full overflow-hidden">
+                        <div 
+                          className={cn(
+                            "h-full rounded-full transition-all",
+                            (usage?.conversationsPercentage ?? 0) >= 90 
+                              ? "bg-destructive" 
+                              : (usage?.conversationsPercentage ?? 0) >= 70 
+                                ? "bg-warning" 
+                                : "bg-primary"
+                          )} 
+                          style={{ width: `${Math.min(usage?.conversationsPercentage ?? 0, 100)}%` }} 
+                        />
+                      </div>
+                      <p className="text-[10px] md:text-xs text-muted-foreground mt-1">
+                        {usage?.conversationsPercentage ?? 0}% de {usage?.conversationsLimit?.toLocaleString() ?? 0}
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
               <div className={cn("rounded-lg bg-secondary", isMobile ? "p-3" : "p-4")}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs md:text-sm text-muted-foreground">WhatsApp</span>
                   <Users className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>0</p>
-                <p className="text-[10px] md:text-xs text-muted-foreground mt-2">de 1 disponible</p>
+                {usageLoading ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  </div>
+                ) : (
+                  <>
+                    <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>
+                      {usage?.whatsappConnected ?? 0}
+                    </p>
+                    <p className="text-[10px] md:text-xs text-muted-foreground mt-2">
+                      de {usage?.whatsappLimit === 'unlimited' ? 'ilimitados' : usage?.whatsappLimit ?? 1} disponible{(usage?.whatsappLimit !== 1 && usage?.whatsappLimit !== 'unlimited') ? 's' : ''}
+                    </p>
+                  </>
+                )}
               </div>
               <div className={cn("rounded-lg bg-secondary", isMobile ? "p-3" : "p-4")}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs md:text-sm text-muted-foreground">Campañas</span>
                   <Receipt className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>0</p>
-                <p className="text-[10px] md:text-xs text-muted-foreground mt-2">Disponible en Pro</p>
+                {usageLoading ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  </div>
+                ) : (
+                  <>
+                    <p className={cn("font-semibold text-foreground", isMobile ? "text-xl" : "text-2xl")}>
+                      {usage?.campaignsEnabled ? usage?.campaignsUsed ?? 0 : 0}
+                    </p>
+                    <p className="text-[10px] md:text-xs text-muted-foreground mt-2">
+                      {usage?.campaignsEnabled ? 'Disponible' : 'Disponible en Pro'}
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           </CardContent>
