@@ -304,6 +304,9 @@ export default function Chats() {
     const sessionMap = new Map<string, N8nSession>();
     
     messages.forEach(msg => {
+      // Skip messages with missing or invalid message object
+      if (!msg.message || typeof msg.message !== 'object') return;
+      
       const existing = sessionMap.get(msg.session_id);
       const msgDate = new Date(msg.created_at);
       
@@ -622,6 +625,8 @@ export default function Chats() {
           ) : (
             <div className="space-y-4">
               {selectedMessages.map((msg) => {
+                // Skip messages with missing or invalid message object
+                if (!msg.message || typeof msg.message !== 'object') return null;
                 const isHuman = msg.message.type === 'human';
                 return (
                   <div
