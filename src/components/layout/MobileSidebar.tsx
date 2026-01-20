@@ -30,7 +30,8 @@ import {
 import { logout } from "@/lib/auth";
 import { useAuth } from "@/hooks/use-auth";
 import { mockUser } from "@/lib/mock/data";
-import { isPremiumPlan, onPlanChange } from "@/lib/plan";
+import { useSubscription } from "@/hooks/use-subscription";
+import type { PlanId } from "@/lib/plan";
 
 interface NavItem {
   title: string;
@@ -97,15 +98,11 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
   const navigate = useNavigate();
   const userProfile = getUserProfile();
   const { user: authUser } = useAuth();
-  const [hasPremium, setHasPremium] = useState(isPremiumPlan());
-
-  // Listen for plan changes
-  useEffect(() => {
-    const unsubscribe = onPlanChange(() => {
-      setHasPremium(isPremiumPlan());
-    });
-    return unsubscribe;
-  }, []);
+  
+  // Obtener plan real de la suscripción
+  const { subscription } = useSubscription();
+  const currentPlan: PlanId = (subscription?.plan as PlanId) || 'basic';
+  const hasPremium = currentPlan === 'pro' || currentPlan === 'enterprise';
 
   const displayName = userProfile?.companyName || authUser?.name || mockUser.name;
   const displayLogo = userProfile?.logo || null;

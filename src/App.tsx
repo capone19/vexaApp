@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AdminRoute } from "@/components/auth/AdminRoute";
+import { PremiumRoute } from "@/components/auth/PremiumRoute";
 import Dashboard from "./pages/Dashboard";
 import Chats from "./pages/Chats";
 import AgentSettings from "./pages/AgentSettings";
@@ -49,9 +50,9 @@ const App = () => (
           <Route path="/resultados" element={<ProtectedRoute><Metrics /></ProtectedRoute>} />
           <Route path="/resultados/metricas" element={<ProtectedRoute><Metrics /></ProtectedRoute>} />
           <Route path="/resultados/ventas" element={<ProtectedRoute><Results /></ProtectedRoute>} />
-          <Route path="/marketing" element={<ProtectedRoute><Marketing /></ProtectedRoute>} />
-          <Route path="/marketing/plantillas" element={<ProtectedRoute><MarketingTemplates /></ProtectedRoute>} />
-          <Route path="/marketing/performance" element={<ProtectedRoute><MarketingPerformance /></ProtectedRoute>} />
+          <Route path="/marketing" element={<ProtectedRoute><PremiumRoute feature="El módulo de Marketing"><Marketing /></PremiumRoute></ProtectedRoute>} />
+          <Route path="/marketing/plantillas" element={<ProtectedRoute><PremiumRoute feature="Las plantillas de WhatsApp"><MarketingTemplates /></PremiumRoute></ProtectedRoute>} />
+          <Route path="/marketing/performance" element={<ProtectedRoute><PremiumRoute feature="El análisis de performance"><MarketingPerformance /></PremiumRoute></ProtectedRoute>} />
           <Route path="/reportes" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
           <Route path="/facturacion" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
           <Route path="/notificaciones" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
