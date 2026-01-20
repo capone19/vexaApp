@@ -9,6 +9,7 @@ export interface N8nChatMessage {
   id: number;
   session_id: string;
   tenant_id: string; // UUID del tenant para filtrar por cuenta
+  phone_number: string | null; // Número de teléfono del contacto
   message: {
     type: 'human' | 'ai';
     content: string;
