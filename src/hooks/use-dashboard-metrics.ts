@@ -113,17 +113,20 @@ async function fetchDashboardMetrics(
 
   try {
     const startDateStr = format(startDate, 'yyyy-MM-dd');
-    // Asegurar que endDate incluya el día completo (ajuste por timezone)
-    const endDateAdjusted = new Date(endDate);
-    endDateAdjusted.setDate(endDateAdjusted.getDate() + 1); // Incluir todo el día de hoy
-    const endDateStr = format(endDateAdjusted, 'yyyy-MM-dd');
+    // Usar fecha de hoy como string directamente para evitar problemas de timezone
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    // Usar la mayor entre endDate formateada y hoy
+    const endDateStr = format(endDate, 'yyyy-MM-dd');
+    const finalEndDateStr = endDateStr >= todayStr ? endDateStr : todayStr;
+
+    console.log('[useDashboardMetrics] Querying bookings:', { startDateStr, finalEndDateStr, tenantId });
 
     const { data: bookingsData, error: bookingsError } = await externalSupabase
       .from('bookings')
       .select('*')
       .eq('tenant_id', tenantId)
       .gte('event_date', startDateStr)
-      .lt('event_date', endDateStr) // Cambiar lte a lt ya que sumamos 1 día
+      .lte('event_date', finalEndDateStr) // Usar lte con la fecha correcta
       .order('event_date', { ascending: false });
 
     if (bookingsError) {
@@ -229,7 +232,8 @@ export function useDashboardMetrics({
     queryKey: ['dashboard-metrics', tenantId, startDate.toISOString(), endDate.toISOString()],
     queryFn: () => fetchDashboardMetrics(tenantId!, startDate, endDate),
     enabled: !!tenantId,
-    staleTime: 1000 * 60 * 2, // 2 minutos para dashboard (datos más frescos)
+    staleTime: 1000 * 30, // 30 segundos - refrescar más frecuentemente
+    refetchOnWindowFocus: true, // Refrescar al volver a la ventana
   });
 
   return {
