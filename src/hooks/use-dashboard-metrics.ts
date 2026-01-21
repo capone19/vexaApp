@@ -217,9 +217,9 @@ export function useDashboardMetrics({
   tenantId,
   dateRange,
 }: UseDashboardMetricsOptions): UseDashboardMetricsReturn {
-  // Calcular fechas con defaults
+  // Calcular fechas con defaults - usar rango amplio (1 año) si no hay filtro
   const endDate = dateRange?.endDate || new Date();
-  const startDate = dateRange?.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const startDate = dateRange?.startDate || new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
 
   // Usar React Query para cache automático
   const { data, isLoading, error, refetch } = useQuery({
