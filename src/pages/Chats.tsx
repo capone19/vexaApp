@@ -10,10 +10,11 @@ import { useN8nChatHistory } from "@/hooks/use-n8n-chat-history";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 import { WEBHOOKS } from "@/lib/constants";
 import { useAuth } from "@/hooks/use-auth";
+import { useChatLabels } from "@/hooks/use-chat-labels";
 
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio } from "lucide-react";
+import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio, Tags } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -23,6 +24,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { LabelBadge } from "@/components/chats/LabelBadge";
+import { LabelFilterBar } from "@/components/chats/LabelFilterBar";
+import { LabelSelector } from "@/components/chats/LabelSelector";
+import { LabelsManagerDialog } from "@/components/chats/LabelsManagerDialog";
 
 type IntentLabel = "alta_intencion" | "en_progreso" | null;
 type FilterTab = "todos" | "alta_intencion" | "en_progreso";
@@ -99,6 +104,20 @@ export default function Chats() {
   const [isTogglingBot, setIsTogglingBot] = useState(false);
   const [messageInput, setMessageInput] = useState("");
   const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [labelFilterIds, setLabelFilterIds] = useState<string[]>([]);
+  const [labelsManagerOpen, setLabelsManagerOpen] = useState(false);
+  
+  // Chat labels hook
+  const {
+    labels,
+    sessionLabels,
+    createLabel,
+    updateLabel,
+    deleteLabel,
+    assignLabel,
+    removeLabel,
+    getLabelsForSession,
+  } = useChatLabels();
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
@@ -346,7 +365,7 @@ export default function Chats() {
     );
   }, [messages, botStates]);
 
-  // Filter sessions by search and tab
+  // Filter sessions by search, tab, and labels
   const filteredSessions = useMemo(() => {
     let filtered = processedSessions;
     
@@ -355,21 +374,32 @@ export default function Chats() {
       filtered = filtered.filter(s => s.intentLabel === filterTab);
     }
     
-    // Filter by search term (including label text)
+    // Filter by labels
+    if (labelFilterIds.length > 0) {
+      filtered = filtered.filter(s => {
+        const sessionLabelIds = sessionLabels[s.sessionId] || [];
+        return labelFilterIds.some(filterLabelId => sessionLabelIds.includes(filterLabelId));
+      });
+    }
+    
+    // Filter by search term (including label text and custom labels)
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(s => {
-        const labelText = s.intentLabel ? INTENT_LABELS[s.intentLabel]?.text.toLowerCase() : "";
+        const intentLabelText = s.intentLabel ? INTENT_LABELS[s.intentLabel]?.text.toLowerCase() : "";
+        const customLabels = getLabelsForSession(s.sessionId);
+        const customLabelText = customLabels.map(l => l.name.toLowerCase()).join(" ");
         return (
           s.contactName.toLowerCase().includes(term) ||
           s.lastMessage.toLowerCase().includes(term) ||
-          labelText.includes(term)
+          intentLabelText.includes(term) ||
+          customLabelText.includes(term)
         );
       });
     }
     
     return filtered;
-  }, [processedSessions, searchTerm, filterTab]);
+  }, [processedSessions, searchTerm, filterTab, labelFilterIds, sessionLabels, getLabelsForSession]);
 
   // Get messages for selected session
   const selectedMessages = useMemo(() => {
@@ -438,6 +468,15 @@ export default function Chats() {
               {processedSessions.length} chats
             </span>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-xs h-8"
+            onClick={() => setLabelsManagerOpen(true)}
+          >
+            <Tags className="h-3.5 w-3.5" />
+            Labels
+          </Button>
         </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -481,6 +520,21 @@ export default function Chats() {
             Alta intención
           </Button>
         </div>
+        
+        {/* Label Filters */}
+        {labels.length > 0 && (
+          <LabelFilterBar
+            labels={labels}
+            selectedLabelIds={labelFilterIds}
+            onToggleFilter={(labelId) => {
+              setLabelFilterIds(prev => 
+                prev.includes(labelId) 
+                  ? prev.filter(id => id !== labelId)
+                  : [...prev, labelId]
+              );
+            }}
+          />
+        )}
       </div>
 
       {/* Chat List */}
@@ -524,9 +578,19 @@ export default function Chats() {
                   <p className="text-xs text-muted-foreground line-clamp-1 mb-2">
                     {session.lastMessage || "Sin mensajes"}
                   </p>
-                  {session.intentLabel && (
-                    <IntentBadge label={session.intentLabel} />
-                  )}
+                  <div className="flex flex-wrap gap-1">
+                    {session.intentLabel && (
+                      <IntentBadge label={session.intentLabel} />
+                    )}
+                    {getLabelsForSession(session.sessionId).map(label => (
+                      <LabelBadge
+                        key={label.id}
+                        name={label.name}
+                        color={label.color}
+                        size="sm"
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
             </button>
@@ -587,6 +651,25 @@ export default function Chats() {
             {selectedSession.intentLabel && (
               <IntentBadge label={selectedSession.intentLabel} />
             )}
+            
+            {/* Label Selector */}
+            <LabelSelector
+              labels={labels}
+              selectedLabelIds={sessionLabels[selectedSessionId] || []}
+              onToggleLabel={async (labelId, isSelected) => {
+                if (isSelected) {
+                  await assignLabel(selectedSessionId, labelId);
+                } else {
+                  await removeLabel(selectedSessionId, labelId);
+                }
+              }}
+              onManageLabels={() => setLabelsManagerOpen(true)}
+              trigger={
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Tags className="h-4 w-4" />
+                </Button>
+              }
+            />
             
             {/* Bot Toggle with Tooltip */}
             <TooltipProvider>
@@ -748,6 +831,16 @@ export default function Chats() {
           </div>
         )}
       </div>
+      
+      {/* Labels Manager Dialog */}
+      <LabelsManagerDialog
+        open={labelsManagerOpen}
+        onOpenChange={setLabelsManagerOpen}
+        labels={labels}
+        onCreateLabel={createLabel}
+        onUpdateLabel={updateLabel}
+        onDeleteLabel={deleteLabel}
+      />
     </MainLayout>
   );
 }
