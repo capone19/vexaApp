@@ -96,16 +96,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         tenantId,
       };
     } catch (error) {
-      // Si es timeout, retornar usuario básico (no null) para evitar loop
+      // Si es timeout, lanzar error especial para que el caller decida mantener estado
       if (error instanceof Error && error.message === 'Timeout') {
-        console.warn('[AuthContext] resolveUser timeout - usando datos básicos');
-        return {
-          id: supaUser.id,
-          email: supaUser.email || '',
-          name: supaUser.user_metadata?.full_name || supaUser.email?.split('@')[0] || 'Usuario',
-          role: 'viewer',
-          tenantId: null,
-        };
+        console.warn('[AuthContext] resolveUser timeout');
+        throw new Error('TIMEOUT_KEEP_STATE');
       }
       console.error('[AuthContext] Error resolving user:', error);
       return null;
@@ -194,28 +188,45 @@ export function AuthProvider({ children }: AuthProviderProps) {
         } else if (event === 'SIGNED_IN') {
           // Solo procesar si ya fue inicializado (evitar duplicar initAuth)
           if (isInitialized && session?.user) {
-            const resolvedUser = await resolveUser(session);
-            if (resolvedUser) {
-              setUser(resolvedUser);
-              setHasTenant(!!resolvedUser.tenantId);
-              if (resolvedUser.tenantId) {
-                await fetchSubscription(resolvedUser.tenantId);
+            try {
+              const resolvedUser = await resolveUser(session);
+              if (resolvedUser) {
+                setUser(resolvedUser);
+                setHasTenant(!!resolvedUser.tenantId);
+                if (resolvedUser.tenantId) {
+                  await fetchSubscription(resolvedUser.tenantId);
+                }
+              }
+              // Si resolvedUser es null pero session existe, mantener estado actual
+            } catch (resolveError) {
+              if (resolveError instanceof Error && resolveError.message === 'TIMEOUT_KEEP_STATE') {
+                console.warn('[AuthContext] SIGNED_IN timeout - manteniendo estado actual');
+              } else {
+                throw resolveError;
               }
             }
-            // Si resolvedUser es null pero session existe, mantener estado actual
           }
         } else if (event === 'TOKEN_REFRESHED') {
           // Validar sesión antes de actualizar estado (evita parpadeo a null)
           if (isInitialized && session?.user) {
-            const resolvedUser = await resolveUser(session);
-            if (resolvedUser) {
-              setUser(resolvedUser);
-              setHasTenant(!!resolvedUser.tenantId);
-              if (resolvedUser.tenantId) {
-                await fetchSubscription(resolvedUser.tenantId);
+            try {
+              const resolvedUser = await resolveUser(session);
+              if (resolvedUser) {
+                setUser(resolvedUser);
+                setHasTenant(!!resolvedUser.tenantId);
+                if (resolvedUser.tenantId) {
+                  await fetchSubscription(resolvedUser.tenantId);
+                }
+              }
+              // Si resolvedUser es null, NO resetear user (error temporal de red)
+            } catch (resolveError) {
+              // Si es timeout, mantener estado actual completamente
+              if (resolveError instanceof Error && resolveError.message === 'TIMEOUT_KEEP_STATE') {
+                console.warn('[AuthContext] TOKEN_REFRESHED timeout - manteniendo estado actual');
+              } else {
+                throw resolveError;
               }
             }
-            // Si resolvedUser es null, NO resetear user (error temporal de red)
           }
           // Si session?.user no existe en TOKEN_REFRESHED, ignorar (no limpiar estado)
         } else if (event === 'INITIAL_SESSION') {
@@ -232,7 +243,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } catch (error) {
         console.error('[AuthContext] Error handling auth change:', error);
         // Solo limpiar estado si NO es un error de timeout/red temporal
-        if (!(error instanceof Error && error.message === 'Timeout')) {
+        if (!(error instanceof Error && (error.message === 'Timeout' || error.message === 'TIMEOUT_KEEP_STATE'))) {
           setUser(null);
           setHasTenant(false);
         }
