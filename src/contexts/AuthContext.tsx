@@ -49,22 +49,34 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasTenant, setHasTenant] = useState(false);
 
-  // Resolver usuario desde sesión
+  // Resolver usuario desde sesión con timeout para evitar cuelgues
   const resolveUser = useCallback(async (session: { user: any } | null): Promise<User | null> => {
     if (!session?.user) {
       return null;
     }
 
     const supaUser = session.user;
+    const TIMEOUT_MS = 5000;
 
     try {
-      const [{ data: tenantIdRpc, error: tenantErr }, { data: userRole, error: roleErr }] = await Promise.all([
+      // Crear promesa con timeout
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout')), TIMEOUT_MS);
+      });
+
+      const dataPromise = Promise.all([
         supabase.rpc('get_user_tenant_id'),
         supabase
           .from('user_roles')
           .select('tenant_id, role')
           .eq('user_id', supaUser.id)
           .single(),
+      ]);
+
+      // Race: si el timeout gana, retornamos usuario básico
+      const [{ data: tenantIdRpc, error: tenantErr }, { data: userRole, error: roleErr }] = await Promise.race([
+        dataPromise,
+        timeoutPromise,
       ]);
 
       if (tenantErr) {
@@ -84,6 +96,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
         tenantId,
       };
     } catch (error) {
+      // Si es timeout, retornar usuario básico (no null) para evitar loop
+      if (error instanceof Error && error.message === 'Timeout') {
+        console.warn('[AuthContext] resolveUser timeout - usando datos básicos');
+        return {
+          id: supaUser.id,
+          email: supaUser.email || '',
+          name: supaUser.user_metadata?.full_name || supaUser.email?.split('@')[0] || 'Usuario',
+          role: 'viewer',
+          tenantId: null,
+        };
+      }
       console.error('[AuthContext] Error resolving user:', error);
       return null;
     }
@@ -168,17 +191,33 @@ export function AuthProvider({ children }: AuthProviderProps) {
           setUser(null);
           setSubscription(null);
           setHasTenant(false);
-        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        } else if (event === 'SIGNED_IN') {
           // Solo procesar si ya fue inicializado (evitar duplicar initAuth)
-          if (isInitialized) {
+          if (isInitialized && session?.user) {
             const resolvedUser = await resolveUser(session);
-            setUser(resolvedUser);
-            setHasTenant(!!resolvedUser?.tenantId);
-            
-            if (resolvedUser?.tenantId) {
-              await fetchSubscription(resolvedUser.tenantId);
+            if (resolvedUser) {
+              setUser(resolvedUser);
+              setHasTenant(!!resolvedUser.tenantId);
+              if (resolvedUser.tenantId) {
+                await fetchSubscription(resolvedUser.tenantId);
+              }
             }
+            // Si resolvedUser es null pero session existe, mantener estado actual
           }
+        } else if (event === 'TOKEN_REFRESHED') {
+          // Validar sesión antes de actualizar estado (evita parpadeo a null)
+          if (isInitialized && session?.user) {
+            const resolvedUser = await resolveUser(session);
+            if (resolvedUser) {
+              setUser(resolvedUser);
+              setHasTenant(!!resolvedUser.tenantId);
+              if (resolvedUser.tenantId) {
+                await fetchSubscription(resolvedUser.tenantId);
+              }
+            }
+            // Si resolvedUser es null, NO resetear user (error temporal de red)
+          }
+          // Si session?.user no existe en TOKEN_REFRESHED, ignorar (no limpiar estado)
         } else if (event === 'INITIAL_SESSION') {
           // El evento INITIAL_SESSION se maneja aquí en lugar de initAuth separado
           const resolvedUser = await resolveUser(session);
@@ -192,9 +231,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
       } catch (error) {
         console.error('[AuthContext] Error handling auth change:', error);
-        // En caso de error, limpiar estado
-        setUser(null);
-        setHasTenant(false);
+        // Solo limpiar estado si NO es un error de timeout/red temporal
+        if (!(error instanceof Error && error.message === 'Timeout')) {
+          setUser(null);
+          setHasTenant(false);
+        }
       } finally {
         // Siempre marcar como no-loading después de cualquier evento de auth
         setIsLoading(false);
