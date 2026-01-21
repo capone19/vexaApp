@@ -58,10 +58,18 @@ export default function AgentSettings() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [loadedSections, setLoadedSections] = useState<Set<AgentSettingsSectionId>>(new Set());
+  // Usar useRef para evitar re-renders en loop (no dispara useCallback)
+  const loadedSectionsRef = useRef<Set<AgentSettingsSectionId>>(new Set());
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const { toast } = useToast();
+
+  // Limpiar cache cuando cambia el tenant (evita datos stale)
+  useEffect(() => {
+    loadedSectionsRef.current = new Set();
+    setSettings(getEmptyAgentSettings());
+    setHasUnsavedChanges(false);
+  }, [user?.tenantId]);
 
   // Cargar solo la sección activa (lazy loading)
   const loadSection = useCallback(async (sectionId: AgentSettingsSectionId) => {
@@ -70,8 +78,8 @@ export default function AgentSettings() {
       return;
     }
 
-    // Si ya está cargada, no volver a cargar
-    if (loadedSections.has(sectionId)) {
+    // Si ya está cargada, no volver a cargar (usando ref, no state)
+    if (loadedSectionsRef.current.has(sectionId)) {
       setIsLoading(false);
       return;
     }
@@ -95,15 +103,15 @@ export default function AgentSettings() {
         });
       }
 
-      // Marcar como cargada
-      setLoadedSections(prev => new Set(prev).add(sectionId));
+      // Marcar como cargada (usando ref)
+      loadedSectionsRef.current.add(sectionId);
       console.log("[AgentSettings] Sección cargada:", sectionId);
     } catch (error) {
       console.error("[AgentSettings] Error cargando sección:", sectionId, error);
     } finally {
       setIsLoading(false);
     }
-  }, [user?.tenantId, loadedSections]);
+  }, [user?.tenantId]); // Sin dependencia de loadedSections
 
   // Cargar la sección activa cuando cambie
   useEffect(() => {
