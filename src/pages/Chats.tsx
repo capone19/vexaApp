@@ -553,47 +553,77 @@ export default function Chats() {
           )
         ) : (
           filteredSessions.map((session) => (
-            <button
+            <div
               key={session.sessionId}
-              onClick={() => setSelectedSessionId(session.sessionId)}
               className={cn(
-                "w-full p-4 text-left border-b border-border transition-colors",
-                "hover:bg-secondary/50 active:bg-secondary",
+                "w-full p-4 text-left border-b border-border transition-colors relative group",
+                "hover:bg-secondary/50",
                 selectedSessionId === session.sessionId && "bg-secondary"
               )}
             >
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
-                  <User className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium text-sm text-foreground truncate">
-                      {session.phoneNumber}
-                    </span>
-                    <span className="text-xs text-muted-foreground shrink-0 ml-2">
-                      {format(session.lastMessageAt, "HH:mm", { locale: es })}
-                    </span>
+              <button
+                onClick={() => setSelectedSessionId(session.sessionId)}
+                className="w-full text-left"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+                    <User className="h-5 w-5 text-muted-foreground" />
                   </div>
-                  <p className="text-xs text-muted-foreground line-clamp-1 mb-2">
-                    {session.lastMessage || "Sin mensajes"}
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {session.intentLabel && (
-                      <IntentBadge label={session.intentLabel} />
-                    )}
-                    {getLabelsForSession(session.sessionId).map(label => (
-                      <LabelBadge
-                        key={label.id}
-                        name={label.name}
-                        color={label.color}
-                        size="sm"
-                      />
-                    ))}
+                  <div className="flex-1 min-w-0 pr-8">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-sm text-foreground truncate">
+                        {session.phoneNumber}
+                      </span>
+                      <span className="text-xs text-muted-foreground shrink-0 ml-2">
+                        {format(session.lastMessageAt, "HH:mm", { locale: es })}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-1 mb-2">
+                      {session.lastMessage || "Sin mensajes"}
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {session.intentLabel && (
+                        <IntentBadge label={session.intentLabel} />
+                      )}
+                      {getLabelsForSession(session.sessionId).map(label => (
+                        <LabelBadge
+                          key={label.id}
+                          name={label.name}
+                          color={label.color}
+                          size="sm"
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
+              </button>
+              
+              {/* Label assign button - visible on hover */}
+              <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                <LabelSelector
+                  labels={labels}
+                  selectedLabelIds={sessionLabels[session.sessionId] || []}
+                  onToggleLabel={async (labelId, isSelected) => {
+                    if (isSelected) {
+                      await assignLabel(session.sessionId, labelId);
+                    } else {
+                      await removeLabel(session.sessionId, labelId);
+                    }
+                  }}
+                  onManageLabels={() => setLabelsManagerOpen(true)}
+                  trigger={
+                    <Button 
+                      variant="secondary" 
+                      size="icon" 
+                      className="h-7 w-7 bg-background shadow-sm border border-border"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Tags className="h-3.5 w-3.5" />
+                    </Button>
+                  }
+                />
               </div>
-            </button>
+            </div>
           ))
         )}
       </ScrollArea>
