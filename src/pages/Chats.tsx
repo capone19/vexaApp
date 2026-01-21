@@ -424,7 +424,7 @@ export default function Chats() {
   const chatListContent = (
     <div className={cn(
       "flex flex-col overflow-hidden",
-      isMobile ? "h-full" : "w-80 flex-shrink-0 rounded-lg border border-border bg-card"
+      isMobile ? "h-full" : "w-96 flex-shrink-0 rounded-lg border border-border bg-card"
     )}>
       {/* Header with realtime indicator */}
       <div className="p-3 md:p-4 border-b border-border space-y-3">
