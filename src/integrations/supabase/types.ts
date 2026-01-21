@@ -498,6 +498,41 @@ export type Database = {
           },
         ]
       }
+      chat_labels: {
+        Row: {
+          color: string
+          created_at: string | null
+          id: string
+          name: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          color?: string
+          created_at?: string | null
+          id?: string
+          name: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          color?: string
+          created_at?: string | null
+          id?: string
+          name?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_labels_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_messages: {
         Row: {
           content: string | null
@@ -545,6 +580,45 @@ export type Database = {
           },
           {
             foreignKeyName: "chat_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_session_labels: {
+        Row: {
+          created_at: string | null
+          id: string
+          label_id: string
+          session_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          label_id: string
+          session_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          label_id?: string
+          session_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_session_labels_label_id_fkey"
+            columns: ["label_id"]
+            isOneToOne: false
+            referencedRelation: "chat_labels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_session_labels_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
