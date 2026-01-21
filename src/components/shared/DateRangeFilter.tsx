@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const presets: { value: DateRangePreset; label: string; shortLabel: string }[] = [
+  { value: "today", label: "Hoy", shortLabel: "Hoy" },
+  { value: "yesterday", label: "Ayer", shortLabel: "Ayer" },
   { value: "7d", label: "Últimos 7 días", shortLabel: "7 días" },
   { value: "30d", label: "Últimos 30 días", shortLabel: "30 días" },
   { value: "90d", label: "Últimos 90 días", shortLabel: "90 días" },

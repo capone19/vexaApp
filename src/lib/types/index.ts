@@ -311,6 +311,17 @@ export interface DashboardMetrics {
   servicesBooked: number;
   revenue: number;
   funnel: FunnelMetrics;
+  // Time series data for charts
+  dailyData?: DailyMetric[];
+}
+
+export interface DailyMetric {
+  date: string; // ISO date string or day name
+  day: string; // Display name (e.g., "Lun", "Mar")
+  chats: number;
+  messages: number;
+  avgMessages: number;
+  abandonmentRate: number;
 }
 
 export interface FunnelMetrics {
@@ -352,7 +363,7 @@ export interface BillingRecord {
 }
 
 // Date Range Filter
-export type DateRangePreset = 'today' | '7d' | '30d' | '90d' | 'ytd' | 'all' | 'custom';
+export type DateRangePreset = 'today' | 'yesterday' | '7d' | '30d' | '90d' | 'ytd' | 'all' | 'custom';
 
 export interface DateRange {
   preset: DateRangePreset;
