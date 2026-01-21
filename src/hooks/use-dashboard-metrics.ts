@@ -5,8 +5,9 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { externalSupabase, type ExternalBooking } from '@/integrations/supabase/external-client';
-import type { DashboardMetrics, Appointment } from '@/lib/types';
-import { format } from 'date-fns';
+import type { DashboardMetrics, Appointment, DailyMetric } from '@/lib/types';
+import { format, eachDayOfInterval } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 interface UseDashboardMetricsOptions {
   tenantId: string | null | undefined;
@@ -45,6 +46,7 @@ const emptyMetrics: DashboardMetrics = {
     hotRate: 0,
     conversionRate: 0,
   },
+  dailyData: [],
 };
 
 // Clasificar sesiones según cantidad de mensajes
@@ -53,6 +55,11 @@ function classifySessionByMessageCount(messageCount: number): 'tofu' | 'mofu' | 
   if (messageCount > 6) return 'mofu';
   if (messageCount >= 1) return 'tofu';
   return null;
+}
+
+// Get short day name in Spanish
+function getShortDayName(date: Date): string {
+  return format(date, 'EEE', { locale: es }).charAt(0).toUpperCase() + format(date, 'EEE', { locale: es }).slice(1, 3);
 }
 
 // Función de fetch separada para usar con React Query
@@ -68,6 +75,9 @@ async function fetchDashboardMetrics(
   let externalTotalSessions = 0;
   let externalAvgPerSession = 0;
   let funnelFromRealtime = { tofu: 0, mofu: 0, hot: 0 };
+  
+  // Store raw chat data for daily calculations
+  let chatMessagesData: Array<{ id: string; session_id: string; created_at: string; tenant_id: string }> = [];
 
   try {
     let chatQuery = externalSupabase
@@ -91,6 +101,7 @@ async function fetchDashboardMetrics(
     if (externalError) {
       console.warn('[useDashboardMetrics] Error DB externa (chats):', externalError);
     } else if (externalData) {
+      chatMessagesData = externalData;
       externalTotalMessages = externalData.length;
       
       const sessionMessageCounts = new Map<string, number>();
@@ -179,7 +190,63 @@ async function fetchDashboardMetrics(
     : 0;
 
   // ============================================
-  // 4. CONSTRUIR MÉTRICAS COMBINADAS
+  // 4. GENERAR DATOS DIARIOS PARA GRÁFICOS
+  // ============================================
+  const dailyData: DailyMetric[] = [];
+  
+  if (startDate && endDate) {
+    // Get all days in the range
+    const days = eachDayOfInterval({ start: startDate, end: endDate });
+    
+    // Group messages by day and session
+    const dailyMessagesMap = new Map<string, { sessions: Set<string>; messages: number }>();
+    
+    // Initialize all days
+    days.forEach(day => {
+      const dateKey = format(day, 'yyyy-MM-dd');
+      dailyMessagesMap.set(dateKey, { sessions: new Set(), messages: 0 });
+    });
+    
+    // Count actual messages per day
+    chatMessagesData.forEach(msg => {
+      const msgDate = new Date(msg.created_at);
+      const dateKey = format(msgDate, 'yyyy-MM-dd');
+      const dayData = dailyMessagesMap.get(dateKey);
+      if (dayData) {
+        dayData.sessions.add(msg.session_id);
+        dayData.messages++;
+      }
+    });
+    
+    // Build daily data array
+    days.forEach(day => {
+      const dateKey = format(day, 'yyyy-MM-dd');
+      const dayData = dailyMessagesMap.get(dateKey) || { sessions: new Set(), messages: 0 };
+      const chatsCount = dayData.sessions.size;
+      const messagesCount = dayData.messages;
+      const avgMessages = chatsCount > 0 ? Math.round((messagesCount / chatsCount) * 10) / 10 : 0;
+      
+      // Simple abandonment rate: sessions with only 1 message (TOFU) / total sessions
+      let abandonedCount = 0;
+      dayData.sessions.forEach(sessionId => {
+        const sessionMsgs = chatMessagesData.filter(m => m.session_id === sessionId && format(new Date(m.created_at), 'yyyy-MM-dd') === dateKey);
+        if (sessionMsgs.length <= 2) abandonedCount++;
+      });
+      const abandonmentRate = chatsCount > 0 ? Math.round((abandonedCount / chatsCount) * 100) : 0;
+      
+      dailyData.push({
+        date: dateKey,
+        day: getShortDayName(day),
+        chats: chatsCount,
+        messages: messagesCount,
+        avgMessages,
+        abandonmentRate,
+      });
+    });
+  }
+
+  // ============================================
+  // 5. CONSTRUIR MÉTRICAS COMBINADAS
   // ============================================
   const dashboardMetrics: DashboardMetrics = {
     totalChats: externalTotalSessions,
@@ -200,6 +267,7 @@ async function fetchDashboardMetrics(
       hotRate,
       conversionRate,
     },
+    dailyData,
   };
 
   // Mapear bookings externos a appointments

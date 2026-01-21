@@ -38,10 +38,15 @@ const Metrics = () => {
   const dateRangeObj = useMemo(() => {
     const now = new Date();
     let startDate: Date;
+    let endDate: Date = now;
     
     switch (dateRange) {
       case "today":
         startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case "yesterday":
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
         break;
       case "7d":
         startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -59,7 +64,7 @@ const Metrics = () => {
         startDate = new Date(0);
     }
     
-    return { startDate, endDate: now };
+    return { startDate, endDate };
   }, [dateRange]);
 
   const { metrics, isLoading, error } = useDashboardMetrics({
@@ -112,26 +117,28 @@ const Metrics = () => {
     { stage: 'BOFU', value: metrics?.funnel.bofu || 0, fill: 'hsl(var(--bofu))' },
   ] : [];
 
-  // Empty time series data (would come from metrics_daily in production)
-  const timeSeriesData = hasData ? [
-    { day: 'Lun', chats: 0, avgMessages: 0 },
-    { day: 'Mar', chats: 0, avgMessages: 0 },
-    { day: 'Mié', chats: 0, avgMessages: 0 },
-    { day: 'Jue', chats: 0, avgMessages: 0 },
-    { day: 'Vie', chats: 0, avgMessages: 0 },
-    { day: 'Sáb', chats: 0, avgMessages: 0 },
-    { day: 'Dom', chats: 0, avgMessages: 0 },
-  ] : [];
+  // Time series data from real metrics
+  const timeSeriesData = useMemo(() => {
+    if (!hasData || !metrics?.dailyData?.length) {
+      return [];
+    }
+    return metrics.dailyData.map(d => ({
+      day: d.day,
+      chats: d.chats,
+      avgMessages: d.avgMessages,
+    }));
+  }, [hasData, metrics?.dailyData]);
 
-  const abandonmentData = hasData ? [
-    { hour: '08:00', rate: 0 },
-    { hour: '10:00', rate: 0 },
-    { hour: '12:00', rate: 0 },
-    { hour: '14:00', rate: 0 },
-    { hour: '16:00', rate: 0 },
-    { hour: '18:00', rate: 0 },
-    { hour: '20:00', rate: 0 },
-  ] : [];
+  // Abandonment data from real metrics
+  const abandonmentData = useMemo(() => {
+    if (!hasData || !metrics?.dailyData?.length) {
+      return [];
+    }
+    return metrics.dailyData.map(d => ({
+      day: d.day,
+      rate: d.abandonmentRate,
+    }));
+  }, [hasData, metrics?.dailyData]);
 
   return (
     <MainLayout>
@@ -330,13 +337,13 @@ const Metrics = () => {
                     <TrendingDown className="h-4 w-4 text-destructive" />
                     Tasa de Abandono
                   </CardTitle>
-                  <CardDescription className="text-xs md:text-sm">Conversaciones sin respuesta por hora</CardDescription>
+                  <CardDescription className="text-xs md:text-sm">Conversaciones abandonadas por día</CardDescription>
                 </CardHeader>
                 <CardContent className={cn(isMobile && "px-2")}>
                   <ResponsiveContainer width="100%" height={isMobile ? 220 : 280}>
                     <LineChart data={abandonmentData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-                      <XAxis dataKey="hour" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 10 : 12} />
+                      <XAxis dataKey="day" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 10 : 12} />
                       <YAxis stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 10 : 12} unit="%" width={isMobile ? 35 : 45} />
                       <Tooltip 
                         contentStyle={{ 
