@@ -113,14 +113,17 @@ async function fetchDashboardMetrics(
 
   try {
     const startDateStr = format(startDate, 'yyyy-MM-dd');
-    const endDateStr = format(endDate, 'yyyy-MM-dd');
+    // Asegurar que endDate incluya el día completo (ajuste por timezone)
+    const endDateAdjusted = new Date(endDate);
+    endDateAdjusted.setDate(endDateAdjusted.getDate() + 1); // Incluir todo el día de hoy
+    const endDateStr = format(endDateAdjusted, 'yyyy-MM-dd');
 
     const { data: bookingsData, error: bookingsError } = await externalSupabase
       .from('bookings')
       .select('*')
       .eq('tenant_id', tenantId)
       .gte('event_date', startDateStr)
-      .lte('event_date', endDateStr)
+      .lt('event_date', endDateStr) // Cambiar lte a lt ya que sumamos 1 día
       .order('event_date', { ascending: false });
 
     if (bookingsError) {
