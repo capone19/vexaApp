@@ -1,8 +1,9 @@
 // ============================================
-// VEXA - Hook para Dashboard Metrics (con React Query)
+// VEXA - Hook para Dashboard Metrics (con React Query + Realtime)
 // ============================================
 
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useRef, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { externalSupabase, type ExternalBooking } from '@/integrations/supabase/external-client';
 import type { DashboardMetrics, Appointment } from '@/lib/types';
 import { format } from 'date-fns';
@@ -13,6 +14,7 @@ interface UseDashboardMetricsOptions {
     startDate: Date;
     endDate: Date;
   };
+  enableRealtime?: boolean;
 }
 
 interface UseDashboardMetricsReturn {
@@ -56,8 +58,8 @@ function classifySessionByMessageCount(messageCount: number): 'tofu' | 'mofu' | 
 // Función de fetch separada para usar con React Query
 async function fetchDashboardMetrics(
   tenantId: string,
-  startDate: Date,
-  endDate: Date
+  startDate?: Date,
+  endDate?: Date
 ): Promise<{ metrics: DashboardMetrics; appointments: Appointment[] }> {
   // ============================================
   // 1. MÉTRICAS DE MENSAJES desde DB EXTERNA
@@ -68,12 +70,23 @@ async function fetchDashboardMetrics(
   let funnelFromRealtime = { tofu: 0, mofu: 0, hot: 0 };
 
   try {
-    const { data: externalData, error: externalError } = await externalSupabase
+    let chatQuery = externalSupabase
       .from('n8n_chat_histories')
       .select('id, session_id, created_at, tenant_id')
-      .eq('tenant_id', tenantId)
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString());
+      .eq('tenant_id', tenantId);
+
+    // Solo aplicar filtro de fechas si se proporcionan
+    if (startDate) {
+      chatQuery = chatQuery.gte('created_at', startDate.toISOString());
+    }
+    if (endDate) {
+      // Agregar 1 día para incluir todo el día final
+      const endDatePlusOne = new Date(endDate);
+      endDatePlusOne.setDate(endDatePlusOne.getDate() + 1);
+      chatQuery = chatQuery.lt('created_at', endDatePlusOne.toISOString());
+    }
+
+    const { data: externalData, error: externalError } = await chatQuery;
 
     if (externalError) {
       console.warn('[useDashboardMetrics] Error DB externa (chats):', externalError);
@@ -104,7 +117,7 @@ async function fetchDashboardMetrics(
   }
 
   // ============================================
-  // 2. BOOKINGS desde DB EXTERNA
+  // 2. BOOKINGS desde DB EXTERNA (misma lógica que useExternalBookings)
   // ============================================
   let totalServicesBooked = 0;
   let confirmedBookings = 0;
@@ -112,22 +125,24 @@ async function fetchDashboardMetrics(
   let externalBookingsData: ExternalBooking[] = [];
 
   try {
-    const startDateStr = format(startDate, 'yyyy-MM-dd');
-    // Usar fecha de hoy como string directamente para evitar problemas de timezone
-    const todayStr = format(new Date(), 'yyyy-MM-dd');
-    // Usar la mayor entre endDate formateada y hoy
-    const endDateStr = format(endDate, 'yyyy-MM-dd');
-    const finalEndDateStr = endDateStr >= todayStr ? endDateStr : todayStr;
-
-    console.log('[useDashboardMetrics] Querying bookings:', { startDateStr, finalEndDateStr, tenantId });
-
-    const { data: bookingsData, error: bookingsError } = await externalSupabase
+    let bookingsQuery = externalSupabase
       .from('bookings')
       .select('*')
       .eq('tenant_id', tenantId)
-      .gte('event_date', startDateStr)
-      .lte('event_date', finalEndDateStr) // Usar lte con la fecha correcta
       .order('event_date', { ascending: false });
+
+    // Solo aplicar filtro de fechas si se proporcionan
+    if (startDate) {
+      bookingsQuery = bookingsQuery.gte('event_date', format(startDate, 'yyyy-MM-dd'));
+    }
+    if (endDate) {
+      // Agregar 1 día para incluir todo el día final
+      const endDatePlusOne = new Date(endDate);
+      endDatePlusOne.setDate(endDatePlusOne.getDate() + 1);
+      bookingsQuery = bookingsQuery.lt('event_date', format(endDatePlusOne, 'yyyy-MM-dd'));
+    }
+
+    const { data: bookingsData, error: bookingsError } = await bookingsQuery;
 
     if (bookingsError) {
       console.warn('[useDashboardMetrics] Error DB externa (bookings):', bookingsError);
@@ -136,6 +151,7 @@ async function fetchDashboardMetrics(
       totalServicesBooked = externalBookingsData.length;
       confirmedBookings = totalServicesBooked;
       totalRevenue = externalBookingsData.reduce((sum, b) => sum + (b.price || 0), 0);
+      console.log('[useDashboardMetrics] Bookings encontrados:', totalServicesBooked, 'Revenue:', totalRevenue);
     }
   } catch (extErr) {
     console.warn('[useDashboardMetrics] Error conectando DB externa (bookings):', extErr);
@@ -203,6 +219,7 @@ async function fetchDashboardMetrics(
       clientEmail: booking.contact_email || undefined,
       service: booking.item_name || 'Servicio',
       source: (booking.origin as any) || 'chat',
+      sourceRaw: booking.origin, // Preservar valor original
       status: 'confirmed' as const,
       notes: booking.notes || undefined,
       chatId: booking.session_id || undefined,
@@ -222,19 +239,88 @@ async function fetchDashboardMetrics(
 export function useDashboardMetrics({
   tenantId,
   dateRange,
+  enableRealtime = true,
 }: UseDashboardMetricsOptions): UseDashboardMetricsReturn {
-  // Calcular fechas con defaults - usar rango amplio (1 año) si no hay filtro
-  const endDate = dateRange?.endDate || new Date();
-  const startDate = dateRange?.startDate || new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+  const queryClient = useQueryClient();
+  const channelRef = useRef<ReturnType<typeof externalSupabase.channel> | null>(null);
+
+  // Calcular fechas - usar undefined si no hay filtro para traer todo
+  const startDate = dateRange?.startDate;
+  const endDate = dateRange?.endDate;
+
+  // Query key para cache
+  const queryKey = [
+    'dashboard-metrics',
+    tenantId,
+    startDate?.toISOString(),
+    endDate?.toISOString(),
+  ];
 
   // Usar React Query para cache automático
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['dashboard-metrics', tenantId, startDate.toISOString(), endDate.toISOString()],
+    queryKey,
     queryFn: () => fetchDashboardMetrics(tenantId!, startDate, endDate),
     enabled: !!tenantId,
-    staleTime: 1000 * 30, // 30 segundos - refrescar más frecuentemente
-    refetchOnWindowFocus: true, // Refrescar al volver a la ventana
+    staleTime: 1000 * 30, // 30 segundos
+    refetchOnWindowFocus: true,
   });
+
+  // Función para invalidar cache y refetch
+  const handleRealtimeUpdate = useCallback(() => {
+    console.log('[useDashboardMetrics] Realtime update - invalidating cache');
+    queryClient.invalidateQueries({ queryKey: ['dashboard-metrics', tenantId] });
+  }, [queryClient, tenantId]);
+
+  // Suscripción a Realtime para bookings
+  useEffect(() => {
+    if (!enableRealtime || !tenantId) return;
+
+    // Limpiar canal previo
+    if (channelRef.current) {
+      externalSupabase.removeChannel(channelRef.current);
+    }
+
+    const channel = externalSupabase
+      .channel(`dashboard-metrics-${tenantId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'bookings',
+          filter: `tenant_id=eq.${tenantId}`,
+        },
+        (payload) => {
+          console.log('[useDashboardMetrics] Realtime booking event:', payload.eventType);
+          handleRealtimeUpdate();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'n8n_chat_histories',
+          filter: `tenant_id=eq.${tenantId}`,
+        },
+        (payload) => {
+          console.log('[useDashboardMetrics] Realtime chat event:', payload.eventType);
+          handleRealtimeUpdate();
+        }
+      )
+      .subscribe((status) => {
+        console.log('[useDashboardMetrics] Subscription status:', status);
+      });
+
+    channelRef.current = channel;
+
+    return () => {
+      if (channelRef.current) {
+        externalSupabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+  }, [enableRealtime, tenantId, handleRealtimeUpdate]);
 
   return {
     metrics: data?.metrics ?? (tenantId ? null : emptyMetrics),
