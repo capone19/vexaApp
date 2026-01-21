@@ -598,8 +598,8 @@ export default function Chats() {
                 </div>
               </button>
               
-              {/* Label assign button - visible on hover */}
-              <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity">
+              {/* Label assign button - always visible */}
+              <div className="absolute right-3 top-3">
                 <LabelSelector
                   labels={labels}
                   selectedLabelIds={sessionLabels[session.sessionId] || []}
