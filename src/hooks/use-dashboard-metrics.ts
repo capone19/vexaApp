@@ -136,10 +136,10 @@ async function fetchDashboardMetrics(
       bookingsQuery = bookingsQuery.gte('event_date', format(startDate, 'yyyy-MM-dd'));
     }
     if (endDate) {
-      // Agregar 1 día para incluir todo el día final
-      const endDatePlusOne = new Date(endDate);
-      endDatePlusOne.setDate(endDatePlusOne.getDate() + 1);
-      bookingsQuery = bookingsQuery.lt('event_date', format(endDatePlusOne, 'yyyy-MM-dd'));
+      // Usar lte (menor o igual) con la fecha de hoy como mínimo
+      const today = new Date();
+      const effectiveEndDate = endDate > today ? endDate : today;
+      bookingsQuery = bookingsQuery.lte('event_date', format(effectiveEndDate, 'yyyy-MM-dd'));
     }
 
     const { data: bookingsData, error: bookingsError } = await bookingsQuery;
