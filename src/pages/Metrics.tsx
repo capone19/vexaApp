@@ -76,6 +76,44 @@ const Metrics = () => {
     setDateRange(preset);
   };
 
+  // Check if there's any data - must be before useMemo hooks
+  const hasData = metrics && (metrics.totalChats > 0 || metrics.totalMessages > 0);
+
+  // Time series data from real metrics - MUST be before any conditional returns
+  const timeSeriesData = useMemo(() => {
+    if (!hasData || !metrics?.dailyData?.length) {
+      return [];
+    }
+    return metrics.dailyData.map(d => ({
+      day: d.day,
+      chats: d.chats,
+      avgMessages: d.avgMessages,
+    }));
+  }, [hasData, metrics?.dailyData]);
+
+  // Abandonment data from real metrics - MUST be before any conditional returns
+  const abandonmentData = useMemo(() => {
+    if (!hasData || !metrics?.dailyData?.length) {
+      return [];
+    }
+    return metrics.dailyData.map(d => ({
+      day: d.day,
+      rate: d.abandonmentRate,
+    }));
+  }, [hasData, metrics?.dailyData]);
+
+  // Funnel data
+  const funnelData = useMemo(() => {
+    if (!hasData) return [];
+    return [
+      { stage: 'TOFU', value: metrics?.funnel.tofu || 0, fill: 'hsl(var(--tofu))' },
+      { stage: 'MOFU', value: metrics?.funnel.mofu || 0, fill: 'hsl(var(--mofu))' },
+      { stage: 'Hot Leads', value: metrics?.funnel.hotLeads || 0, fill: 'hsl(var(--hotlead))' },
+      { stage: 'BOFU', value: metrics?.funnel.bofu || 0, fill: 'hsl(var(--bofu))' },
+    ];
+  }, [hasData, metrics?.funnel]);
+
+  // CONDITIONAL RETURNS - After all hooks are declared
   if (isLoading) {
     return (
       <MainLayout>
@@ -105,40 +143,6 @@ const Metrics = () => {
       </MainLayout>
     );
   }
-
-  // Check if there's any data
-  const hasData = metrics && (metrics.totalChats > 0 || metrics.totalMessages > 0);
-
-  // Empty funnel data
-  const funnelData = hasData ? [
-    { stage: 'TOFU', value: metrics?.funnel.tofu || 0, fill: 'hsl(var(--tofu))' },
-    { stage: 'MOFU', value: metrics?.funnel.mofu || 0, fill: 'hsl(var(--mofu))' },
-    { stage: 'Hot Leads', value: metrics?.funnel.hotLeads || 0, fill: 'hsl(var(--hotlead))' },
-    { stage: 'BOFU', value: metrics?.funnel.bofu || 0, fill: 'hsl(var(--bofu))' },
-  ] : [];
-
-  // Time series data from real metrics
-  const timeSeriesData = useMemo(() => {
-    if (!hasData || !metrics?.dailyData?.length) {
-      return [];
-    }
-    return metrics.dailyData.map(d => ({
-      day: d.day,
-      chats: d.chats,
-      avgMessages: d.avgMessages,
-    }));
-  }, [hasData, metrics?.dailyData]);
-
-  // Abandonment data from real metrics
-  const abandonmentData = useMemo(() => {
-    if (!hasData || !metrics?.dailyData?.length) {
-      return [];
-    }
-    return metrics.dailyData.map(d => ({
-      day: d.day,
-      rate: d.abandonmentRate,
-    }));
-  }, [hasData, metrics?.dailyData]);
 
   return (
     <MainLayout>
