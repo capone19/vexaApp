@@ -33,15 +33,15 @@ const AdminOnboarding = lazy(() => import("./pages/admin/AdminOnboarding"));
 const AdminTickets = lazy(() => import("./pages/admin/AdminTickets"));
 const AdminTicketDetail = lazy(() => import("./pages/admin/AdminTicketDetail"));
 
-// VEXA Ads - Módulo Premium Demo (aislado)
+// VEXA Ads - Módulo Premium Demo (aislado) - Nueva estructura simplificada
 const VexaAdsOverview = lazy(() => import("./pages/vexa-ads/VexaAdsOverview"));
-const VexaAdsInsights = lazy(() => import("./pages/vexa-ads/VexaAdsInsights"));
-const VexaAdsStrategies = lazy(() => import("./pages/vexa-ads/VexaAdsStrategies"));
-const VexaAdsCampaigns = lazy(() => import("./pages/vexa-ads/VexaAdsCampaigns"));
-const VexaAdsCreatives = lazy(() => import("./pages/vexa-ads/VexaAdsCreatives"));
-const VexaAdsRecommendations = lazy(() => import("./pages/vexa-ads/VexaAdsRecommendations"));
-const VexaAdsBudget = lazy(() => import("./pages/vexa-ads/VexaAdsBudget"));
-const VexaAdsConfig = lazy(() => import("./pages/vexa-ads/VexaAdsConfig"));
+const VexaAdsDiagnostico = lazy(() => import("./pages/vexa-ads/VexaAdsDiagnostico"));
+const VexaAdsEstrategia = lazy(() => import("./pages/vexa-ads/VexaAdsEstrategia"));
+const VexaAdsCampanas = lazy(() => import("./pages/vexa-ads/VexaAdsCampanas"));
+const VexaAdsCreativos = lazy(() => import("./pages/vexa-ads/VexaAdsCreativos"));
+const VexaAdsRecomendaciones = lazy(() => import("./pages/vexa-ads/VexaAdsRecomendaciones"));
+const VexaAdsPresupuesto = lazy(() => import("./pages/vexa-ads/VexaAdsPresupuesto"));
+const VexaAdsConfiguracion = lazy(() => import("./pages/vexa-ads/VexaAdsConfiguracion"));
 
 // Componente de loading para Suspense
 const PageLoader = () => (
@@ -53,11 +53,11 @@ const PageLoader = () => (
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutos - datos se consideran frescos
-      gcTime: 1000 * 60 * 30,   // 30 minutos - tiempo en cache
-      refetchOnWindowFocus: false, // No refetch al volver a la ventana
-      refetchOnReconnect: true,    // Sí refetch al reconectar
-      retry: 2,                    // Reintentar 2 veces en error
+      staleTime: 1000 * 60 * 5,
+      gcTime: 1000 * 60 * 30,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+      retry: 2,
     },
   },
 });
@@ -100,16 +100,15 @@ const App = () => (
               <Route path="/admin/tickets" element={<AdminRoute><AdminTickets /></AdminRoute>} />
               <Route path="/admin/tickets/:ticketId" element={<AdminRoute><AdminTicketDetail /></AdminRoute>} />
               
-              {/* VEXA Ads - Módulo Premium Demo (NO requiere auth para demo) */}
+              {/* VEXA Ads - Módulo Premium Demo - Nueva navegación simplificada */}
               <Route path="/vexa-ads" element={<VexaAdsOverview />} />
-              <Route path="/vexa-ads/insights" element={<VexaAdsInsights />} />
-              <Route path="/vexa-ads/estrategias" element={<VexaAdsStrategies />} />
-              <Route path="/vexa-ads/campanas" element={<VexaAdsCampaigns />} />
-              <Route path="/vexa-ads/creativos" element={<VexaAdsCreatives />} />
-              <Route path="/vexa-ads/generacion-ia" element={<VexaAdsCreatives />} />
-              <Route path="/vexa-ads/recomendaciones" element={<VexaAdsRecommendations />} />
-              <Route path="/vexa-ads/presupuesto" element={<VexaAdsBudget />} />
-              <Route path="/vexa-ads/configuracion" element={<VexaAdsConfig />} />
+              <Route path="/vexa-ads/diagnostico" element={<VexaAdsDiagnostico />} />
+              <Route path="/vexa-ads/estrategia" element={<VexaAdsEstrategia />} />
+              <Route path="/vexa-ads/campanas" element={<VexaAdsCampanas />} />
+              <Route path="/vexa-ads/creativos" element={<VexaAdsCreativos />} />
+              <Route path="/vexa-ads/recomendaciones" element={<VexaAdsRecomendaciones />} />
+              <Route path="/vexa-ads/presupuesto" element={<VexaAdsPresupuesto />} />
+              <Route path="/vexa-ads/configuracion" element={<VexaAdsConfiguracion />} />
               
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />

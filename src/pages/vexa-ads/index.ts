@@ -3,11 +3,10 @@
 // ============================================
 
 export { default as VexaAdsOverview } from './VexaAdsOverview';
-export { default as VexaAdsInsights } from './VexaAdsInsights';
-export { default as VexaAdsStrategies } from './VexaAdsStrategies';
-export { default as VexaAdsCampaigns } from './VexaAdsCampaigns';
-export { default as VexaAdsCreatives } from './VexaAdsCreatives';
-export { default as VexaAdsRecommendations } from './VexaAdsRecommendations';
-export { default as VexaAdsBudget } from './VexaAdsBudget';
-export { default as VexaAdsConfig } from './VexaAdsConfig';
-
+export { default as VexaAdsDiagnostico } from './VexaAdsDiagnostico';
+export { default as VexaAdsEstrategia } from './VexaAdsEstrategia';
+export { default as VexaAdsCampanas } from './VexaAdsCampanas';
+export { default as VexaAdsCreativos } from './VexaAdsCreativos';
+export { default as VexaAdsRecomendaciones } from './VexaAdsRecomendaciones';
+export { default as VexaAdsPresupuesto } from './VexaAdsPresupuesto';
+export { default as VexaAdsConfiguracion } from './VexaAdsConfiguracion';
