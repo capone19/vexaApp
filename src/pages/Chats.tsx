@@ -740,25 +740,25 @@ export default function Chats() {
               {selectedMessages.map((msg) => {
                 // Skip messages with missing or invalid message object
                 if (!msg.message || typeof msg.message !== 'object') return null;
-                const isHuman = msg.message.type === 'human';
+                const isFromClient = msg.message.type === 'human';
                 return (
                   <div
                     key={msg.id}
                     className={cn(
                       "flex",
-                      isHuman ? "justify-end" : "justify-start"
+                      isFromClient ? "justify-start" : "justify-end"
                     )}
                   >
                     <div
                       className={cn(
                         "max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm",
-                        isHuman
-                          ? "bg-primary text-primary-foreground rounded-br-md"
-                          : "bg-card border border-border text-foreground rounded-bl-md"
+                        isFromClient
+                          ? "bg-blue-500 text-white rounded-bl-md"
+                          : "bg-primary text-primary-foreground rounded-br-md"
                       )}
                     >
-                      {!isHuman && (
-                        <div className="flex items-center gap-1 mb-1 text-muted-foreground">
+                      {!isFromClient && (
+                        <div className="flex items-center gap-1 mb-1 opacity-70">
                           <Bot className="h-3 w-3" />
                           <span className="text-[10px] font-medium">VEXA</span>
                         </div>
@@ -767,8 +767,7 @@ export default function Chats() {
                         {msg.message.content}
                       </p>
                       <p className={cn(
-                        "text-[10px] mt-1",
-                        isHuman ? "opacity-70" : "text-muted-foreground"
+                        "text-[10px] mt-1 opacity-70"
                       )}>
                         {format(new Date(msg.created_at), "HH:mm", { locale: es })}
                       </p>
