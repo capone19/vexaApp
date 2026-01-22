@@ -313,6 +313,8 @@ export interface DashboardMetrics {
   funnel: FunnelMetrics;
   // Time series data for charts
   dailyData?: DailyMetric[];
+  // Top services by conversions
+  topServices?: TopService[];
 }
 
 export interface DailyMetric {
@@ -322,6 +324,13 @@ export interface DailyMetric {
   messages: number;
   avgMessages: number;
   abandonmentRate: number;
+  bookings: number; // Number of bookings on this day
+}
+
+export interface TopService {
+  name: string;
+  count: number;
+  revenue: number;
 }
 
 export interface FunnelMetrics {

@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
 import { TrendingUp, TrendingDown, DollarSign, Calendar, Target, Award, BarChart3 } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { KPICard } from '@/components/shared/KPICard';
 import { DateRangeFilter } from '@/components/shared/DateRangeFilter';
 import { SkeletonCard } from '@/components/shared/SkeletonCard';
@@ -38,10 +39,15 @@ const Results = () => {
   const dateRangeObj = useMemo(() => {
     const now = new Date();
     let startDate: Date;
+    let endDate: Date = now;
     
     switch (dateRange) {
       case "today":
         startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case "yesterday":
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
         break;
       case "7d":
         startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -59,7 +65,7 @@ const Results = () => {
         startDate = new Date(0);
     }
     
-    return { startDate, endDate: now };
+    return { startDate, endDate };
   }, [dateRange]);
 
   const { metrics, isLoading, error } = useDashboardMetrics({
@@ -71,6 +77,37 @@ const Results = () => {
     setDateRange(preset);
   };
 
+  // Check if there's any data - must be before useMemo hooks
+  const hasData = metrics && (metrics.servicesBooked > 0 || metrics.revenue > 0);
+  
+  const conversionRate = metrics && metrics.totalChats > 0 
+    ? ((metrics.servicesBooked / metrics.totalChats) * 100).toFixed(1)
+    : "0";
+
+  // Conversion trend data from real metrics - MUST be before any conditional returns
+  const conversionTrend = useMemo(() => {
+    if (!metrics?.dailyData?.length) {
+      return [];
+    }
+    return metrics.dailyData.map(d => ({
+      day: d.day,
+      appointments: d.bookings,
+    }));
+  }, [metrics?.dailyData]);
+
+  // Top services data - MUST be before any conditional returns
+  const topServicesData = useMemo(() => {
+    if (!metrics?.topServices?.length) {
+      return [];
+    }
+    const maxCount = Math.max(...metrics.topServices.map(s => s.count));
+    return metrics.topServices.map(s => ({
+      ...s,
+      percentage: maxCount > 0 ? (s.count / maxCount) * 100 : 0,
+    }));
+  }, [metrics?.topServices]);
+
+  // CONDITIONAL RETURNS - After all hooks are declared
   if (isLoading) {
     return (
       <MainLayout>
@@ -100,24 +137,6 @@ const Results = () => {
       </MainLayout>
     );
   }
-
-  // Check if there's any data
-  const hasData = metrics && (metrics.servicesBooked > 0 || metrics.revenue > 0);
-  
-  const conversionRate = metrics && metrics.totalChats > 0 
-    ? ((metrics.servicesBooked / metrics.totalChats) * 100).toFixed(1)
-    : "0";
-
-  // Empty conversion trend data
-  const conversionTrend = [
-    { day: 'Lun', appointments: 0 },
-    { day: 'Mar', appointments: 0 },
-    { day: 'Mié', appointments: 0 },
-    { day: 'Jue', appointments: 0 },
-    { day: 'Vie', appointments: 0 },
-    { day: 'Sáb', appointments: 0 },
-    { day: 'Dom', appointments: 0 },
-  ];
 
   return (
     <MainLayout>
@@ -255,7 +274,7 @@ const Results = () => {
               </Card>
             </div>
 
-            {/* Top Services - Empty State */}
+            {/* Top Services */}
             <Card className="border-border">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
@@ -265,10 +284,36 @@ const Results = () => {
                 <CardDescription>Servicios más agendados a través del chatbot</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-8 text-muted-foreground">
-                  <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                  <p>Los servicios más vendidos aparecerán aquí cuando tengas conversiones</p>
-                </div>
+                {topServicesData.length > 0 ? (
+                  <div className="space-y-4">
+                    {topServicesData.map((service, index) => (
+                      <div key={service.name} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-muted-foreground w-5">
+                              #{index + 1}
+                            </span>
+                            <span className="font-medium text-sm">{service.name}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-muted-foreground">
+                              {formatCurrency(service.revenue)}
+                            </span>
+                            <Badge variant="secondary" className="text-xs">
+                              {service.count} {service.count === 1 ? 'venta' : 'ventas'}
+                            </Badge>
+                          </div>
+                        </div>
+                        <Progress value={service.percentage} className="h-2" />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                    <p>Los servicios más vendidos aparecerán aquí cuando tengas conversiones</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </>

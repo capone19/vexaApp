@@ -5,7 +5,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { externalSupabase, type ExternalBooking } from '@/integrations/supabase/external-client';
-import type { DashboardMetrics, Appointment, DailyMetric } from '@/lib/types';
+import type { DashboardMetrics, Appointment, DailyMetric, TopService } from '@/lib/types';
 import { format, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -194,6 +194,13 @@ async function fetchDashboardMetrics(
   // ============================================
   const dailyData: DailyMetric[] = [];
   
+  // Group bookings by day
+  const dailyBookingsMap = new Map<string, number>();
+  externalBookingsData.forEach(booking => {
+    const dateKey = booking.event_date; // Already in yyyy-MM-dd format
+    dailyBookingsMap.set(dateKey, (dailyBookingsMap.get(dateKey) || 0) + 1);
+  });
+  
   if (startDate && endDate) {
     // Get all days in the range
     const days = eachDayOfInterval({ start: startDate, end: endDate });
@@ -241,12 +248,31 @@ async function fetchDashboardMetrics(
         messages: messagesCount,
         avgMessages,
         abandonmentRate,
+        bookings: dailyBookingsMap.get(dateKey) || 0,
       });
     });
   }
 
   // ============================================
-  // 5. CONSTRUIR MÉTRICAS COMBINADAS
+  // 5. CALCULAR TOP SERVICIOS
+  // ============================================
+  const serviceMap = new Map<string, { count: number; revenue: number }>();
+  externalBookingsData.forEach(booking => {
+    const serviceName = booking.item_name || 'Servicio';
+    const current = serviceMap.get(serviceName) || { count: 0, revenue: 0 };
+    serviceMap.set(serviceName, {
+      count: current.count + 1,
+      revenue: current.revenue + (booking.price || 0),
+    });
+  });
+  
+  const topServices: TopService[] = Array.from(serviceMap.entries())
+    .map(([name, data]) => ({ name, count: data.count, revenue: data.revenue }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  // ============================================
+  // 6. CONSTRUIR MÉTRICAS COMBINADAS
   // ============================================
   const dashboardMetrics: DashboardMetrics = {
     totalChats: externalTotalSessions,
@@ -268,6 +294,7 @@ async function fetchDashboardMetrics(
       conversionRate,
     },
     dailyData,
+    topServices,
   };
 
   // Mapear bookings externos a appointments
