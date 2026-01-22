@@ -33,14 +33,15 @@ const AdminOnboarding = lazy(() => import("./pages/admin/AdminOnboarding"));
 const AdminTickets = lazy(() => import("./pages/admin/AdminTickets"));
 const AdminTicketDetail = lazy(() => import("./pages/admin/AdminTicketDetail"));
 
-// VEXA Ads - Módulo Premium Demo (aislado) - Nueva estructura simplificada
+// VEXA Ads - Módulo Premium Demo (aislado) - Estructura reestructurada
 const VexaAdsOverview = lazy(() => import("./pages/vexa-ads/VexaAdsOverview"));
 const VexaAdsDiagnostico = lazy(() => import("./pages/vexa-ads/VexaAdsDiagnostico"));
 const VexaAdsEstrategia = lazy(() => import("./pages/vexa-ads/VexaAdsEstrategia"));
-const VexaAdsCampanas = lazy(() => import("./pages/vexa-ads/VexaAdsCampanas"));
 const VexaAdsCreativos = lazy(() => import("./pages/vexa-ads/VexaAdsCreativos"));
+const VexaAdsCampanas = lazy(() => import("./pages/vexa-ads/VexaAdsCampanas"));
+const VexaAdsAnalisis = lazy(() => import("./pages/vexa-ads/VexaAdsAnalisis"));
 const VexaAdsRecomendaciones = lazy(() => import("./pages/vexa-ads/VexaAdsRecomendaciones"));
-const VexaAdsPresupuesto = lazy(() => import("./pages/vexa-ads/VexaAdsPresupuesto"));
+const VexaAdsVideoAsesor = lazy(() => import("./pages/vexa-ads/VexaAdsVideoAsesor"));
 const VexaAdsConfiguracion = lazy(() => import("./pages/vexa-ads/VexaAdsConfiguracion"));
 
 // Componente de loading para Suspense
@@ -100,14 +101,18 @@ const App = () => (
               <Route path="/admin/tickets" element={<AdminRoute><AdminTickets /></AdminRoute>} />
               <Route path="/admin/tickets/:ticketId" element={<AdminRoute><AdminTicketDetail /></AdminRoute>} />
               
-              {/* VEXA Ads - Módulo Premium Demo - Nueva navegación simplificada */}
+              {/* VEXA Ads - Módulo Premium Demo - Estructura reestructurada */}
               <Route path="/vexa-ads" element={<VexaAdsOverview />} />
               <Route path="/vexa-ads/diagnostico" element={<VexaAdsDiagnostico />} />
               <Route path="/vexa-ads/estrategia" element={<VexaAdsEstrategia />} />
-              <Route path="/vexa-ads/campanas" element={<VexaAdsCampanas />} />
               <Route path="/vexa-ads/creativos" element={<VexaAdsCreativos />} />
+              {/* Campañas como sección padre con Presupuesto como sub-sección */}
+              <Route path="/vexa-ads/campanas" element={<VexaAdsCampanas />} />
+              <Route path="/vexa-ads/campanas/presupuesto" element={<VexaAdsCampanas />} />
+              {/* Nueva sección de Análisis */}
+              <Route path="/vexa-ads/analisis" element={<VexaAdsAnalisis />} />
               <Route path="/vexa-ads/recomendaciones" element={<VexaAdsRecomendaciones />} />
-              <Route path="/vexa-ads/presupuesto" element={<VexaAdsPresupuesto />} />
+              <Route path="/vexa-ads/recomendaciones/video" element={<VexaAdsVideoAsesor />} />
               <Route path="/vexa-ads/configuracion" element={<VexaAdsConfiguracion />} />
               
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
