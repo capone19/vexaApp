@@ -8,5 +8,6 @@ export { default as VexaAdsEstrategia } from './VexaAdsEstrategia';
 export { default as VexaAdsCampanas } from './VexaAdsCampanas';
 export { default as VexaAdsCreativos } from './VexaAdsCreativos';
 export { default as VexaAdsRecomendaciones } from './VexaAdsRecomendaciones';
-export { default as VexaAdsPresupuesto } from './VexaAdsPresupuesto';
+export { default as VexaAdsAnalisis } from './VexaAdsAnalisis';
+export { default as VexaAdsVideoAsesor } from './VexaAdsVideoAsesor';
 export { default as VexaAdsConfiguracion } from './VexaAdsConfiguracion';

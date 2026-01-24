@@ -7,7 +7,7 @@ import { DateRangeFilter } from "@/components/shared/DateRangeFilter";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { SkeletonCard, SkeletonTable } from "@/components/shared/SkeletonCard";
 import { useDashboardMetrics } from "@/hooks/use-dashboard-metrics";
-import { useAuth } from "@/hooks/use-auth";
+import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
 import type { DateRangePreset } from "@/lib/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -42,7 +42,7 @@ import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { tenantId } = useEffectiveTenant();
   const [dateRange, setDateRange] = useState<DateRangePreset>("30d");
   const isMobile = useIsMobile();
 
@@ -76,7 +76,7 @@ export default function Dashboard() {
   }, [dateRange]);
 
   const { metrics, recentAppointments, isLoading, error } = useDashboardMetrics({
-    tenantId: user?.tenantId,
+    tenantId,
     dateRange: dateRangeObj,
   });
 

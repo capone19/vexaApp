@@ -5,6 +5,8 @@ import { MobileNav } from "./MobileNav";
 import { MobileSidebar } from "./MobileSidebar";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useImpersonation } from "@/contexts/ImpersonationContext";
+import { useAuthContext } from "@/contexts/AuthContext";
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -14,9 +16,14 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isMobile = useIsMobile();
+  const { isImpersonating } = useImpersonation();
+  const { isAdmin } = useAuthContext();
+  
+  // Agregar padding top cuando admin está impersonando
+  const showImpersonationPadding = isAdmin && isImpersonating;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className={cn("min-h-screen bg-background", showImpersonationPadding && "pt-12")}>
       {/* Desktop Sidebar */}
       {!isMobile && (
         <Sidebar 
