@@ -5,6 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ImpersonationProvider } from "@/contexts/ImpersonationContext";
+import { ImpersonationBanner } from "@/components/admin/ImpersonationBanner";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AdminRoute } from "@/components/auth/AdminRoute";
 import { PremiumRoute } from "@/components/auth/PremiumRoute";
@@ -69,10 +71,11 @@ const App = () => (
       <Toaster />
       <Sonner />
       <AuthProvider>
-        <BrowserRouter>
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              {/* Rutas públicas */}
+        <ImpersonationProvider>
+          <BrowserRouter>
+            <ImpersonationBanner />
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
               <Route path="/auth" element={<Auth />} />
               <Route path="/pending-setup" element={<PendingSetup />} />
               
@@ -116,10 +119,11 @@ const App = () => (
               <Route path="/vexa-ads/configuracion" element={<VexaAdsConfiguracion />} />
               
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
+          </BrowserRouter>
+        </ImpersonationProvider>
       </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>

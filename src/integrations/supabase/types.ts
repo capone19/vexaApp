@@ -14,6 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_impersonation_logs: {
+        Row: {
+          admin_email: string
+          admin_user_id: string
+          created_at: string
+          ended_at: string | null
+          id: string
+          ip_address: string | null
+          started_at: string
+          tenant_id: string
+          tenant_name: string | null
+        }
+        Insert: {
+          admin_email: string
+          admin_user_id: string
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          ip_address?: string | null
+          started_at?: string
+          tenant_id: string
+          tenant_name?: string | null
+        }
+        Update: {
+          admin_email?: string
+          admin_user_id?: string
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          ip_address?: string | null
+          started_at?: string
+          tenant_id?: string
+          tenant_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_impersonation_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_prompts: {
         Row: {
           id: string

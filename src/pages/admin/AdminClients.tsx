@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -11,8 +13,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, Building2, CheckCircle, XCircle, Copy } from 'lucide-react';
+import { useImpersonation } from '@/contexts/ImpersonationContext';
+import { Loader2, Building2, CheckCircle, XCircle, Copy, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -35,9 +43,12 @@ interface Tenant {
 }
 
 export default function AdminClients() {
+  const navigate = useNavigate();
+  const { startImpersonation } = useImpersonation();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchTenants = async () => {
@@ -89,6 +100,26 @@ export default function AdminClients() {
     return 'text-green-600';
   };
 
+  const handleImpersonate = async (tenant: Tenant) => {
+    if (impersonatingId) return; // Prevenir doble clic
+    
+    setImpersonatingId(tenant.id);
+    
+    const success = await startImpersonation({
+      id: tenant.id,
+      name: tenant.name,
+      plan: tenant.plan,
+      slug: tenant.slug,
+    });
+
+    if (success) {
+      // Redirigir al dashboard del cliente
+      navigate('/');
+    }
+    
+    setImpersonatingId(null);
+  };
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -124,6 +155,7 @@ export default function AdminClients() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-[50px]">Acción</TableHead>
                       <TableHead>Nombre</TableHead>
                       <TableHead>Tenant ID</TableHead>
                       <TableHead>Email</TableHead>
@@ -137,8 +169,32 @@ export default function AdminClients() {
                   <TableBody>
                     {tenants.map((tenant) => {
                       const usagePercentage = getChatUsagePercentage(tenant.chat_count, tenant.chat_limit);
+                      const isCurrentlyImpersonating = impersonatingId === tenant.id;
+                      
                       return (
                         <TableRow key={tenant.id}>
+                          <TableCell>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleImpersonate(tenant)}
+                                  disabled={!!impersonatingId}
+                                  className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
+                                >
+                                  {isCurrentlyImpersonating ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Eye className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Ver como cliente</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TableCell>
                           <TableCell className="font-medium">{tenant.name}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">

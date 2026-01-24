@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { UserPlus, Users, LogOut, Menu, X, Ticket } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useImpersonation } from '@/contexts/ImpersonationContext';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -20,6 +21,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { isImpersonating } = useImpersonation();
 
   const handleLogout = async () => {
     try {
@@ -33,7 +35,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   };
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className={cn("min-h-screen bg-background flex", isImpersonating && "pt-12")}>
       {/* Sidebar Desktop */}
       <aside className="hidden md:flex w-64 flex-col border-r border-border bg-card">
         {/* Logo */}
