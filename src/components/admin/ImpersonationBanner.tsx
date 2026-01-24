@@ -22,7 +22,7 @@ export function ImpersonationBanner() {
 
   const handleExit = async () => {
     await stopImpersonation();
-    navigate('/admin/clients');
+    navigate('/admin/clientes');
   };
 
   return (

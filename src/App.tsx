@@ -28,7 +28,6 @@ const Notifications = lazy(() => import("./pages/Notifications"));
 const Support = lazy(() => import("./pages/Support"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Auth = lazy(() => import("./pages/Auth"));
-const PendingSetup = lazy(() => import("./pages/PendingSetup"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const AdminClients = lazy(() => import("./pages/admin/AdminClients"));
 const AdminOnboarding = lazy(() => import("./pages/admin/AdminOnboarding"));
@@ -77,7 +76,6 @@ const App = () => (
             <Suspense fallback={<PageLoader />}>
               <Routes>
               <Route path="/auth" element={<Auth />} />
-              <Route path="/pending-setup" element={<PendingSetup />} />
               
               {/* Rutas protegidas */}
               <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
