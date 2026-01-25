@@ -16,6 +16,7 @@ import { getEmptyAgentSettings } from "@/lib/mock/empty-defaults";
 import type { AgentSettings as AgentSettingsType } from "@/lib/types";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/hooks/use-auth";
+import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
 import { cn } from "@/lib/utils";
 import { saveAgentSection, loadAgentSection } from "@/lib/api/save-agent-section";
 import { useToast } from "@/hooks/use-toast";
@@ -62,18 +63,19 @@ export default function AgentSettings() {
   const loadedSectionsRef = useRef<Set<AgentSettingsSectionId>>(new Set());
   const isMobile = useIsMobile();
   const { user } = useAuth();
+  const { tenantId: effectiveTenantId, isImpersonating } = useEffectiveTenant();
   const { toast } = useToast();
 
-  // Limpiar cache cuando cambia el tenant (evita datos stale)
+  // Limpiar cache cuando cambia el tenant efectivo (evita datos stale)
   useEffect(() => {
     loadedSectionsRef.current = new Set();
     setSettings(getEmptyAgentSettings());
     setHasUnsavedChanges(false);
-  }, [user?.tenantId]);
+  }, [effectiveTenantId]);
 
   // Cargar solo la sección activa (lazy loading)
   const loadSection = useCallback(async (sectionId: AgentSettingsSectionId) => {
-    if (!user?.tenantId) {
+    if (!effectiveTenantId) {
       setIsLoading(false);
       return;
     }
@@ -87,7 +89,7 @@ export default function AgentSettings() {
     setIsLoading(true);
     
     try {
-      const data = await loadAgentSection(sectionId, user.tenantId!);
+      const data = await loadAgentSection(sectionId, effectiveTenantId);
 
       if (data) {
         setSettings(prev => {
@@ -111,7 +113,7 @@ export default function AgentSettings() {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.tenantId]); // Sin dependencia de loadedSections
+  }, [effectiveTenantId]); // Sin dependencia de loadedSections
 
   // Cargar la sección activa cuando cambie
   useEffect(() => {
@@ -169,6 +171,16 @@ export default function AgentSettings() {
   const isSavingRef = useRef(false);
 
   const handleSave = async () => {
+    // No permitir guardar cuando está impersonando (modo solo lectura)
+    if (isImpersonating) {
+      toast({
+        title: "Modo solo lectura",
+        description: "No puedes modificar configuraciones mientras visualizas como cliente.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     // Doble verificación: estado + ref para evitar race conditions
     if (isSaving || isSavingRef.current) {
       console.log("[AgentSettings] Guardado ignorado - ya hay uno en progreso");
@@ -176,8 +188,8 @@ export default function AgentSettings() {
     }
 
     // No permitir guardar si aún no tenemos tenantId (evita usar DEV_CLIENT_ID y que falle RLS)
-    if (!user?.tenantId) {
-      console.warn("[AgentSettings] tenantId no disponible:", { user, tenantId: user?.tenantId });
+    if (!effectiveTenantId) {
+      console.warn("[AgentSettings] tenantId no disponible:", { user, tenantId: effectiveTenantId });
       toast({
         title: "Cargando sesión...",
         description: "Espera un momento mientras se carga tu sesión.",
@@ -206,7 +218,7 @@ export default function AgentSettings() {
 
       console.log("[AgentSettings] Iniciando guardado de sección:", activeSection);
 
-      const tenantId = user.tenantId;
+      const tenantId = effectiveTenantId;
 
       // REGLA: 1 botón = 1 evento = 1 sección
       // Envía DATA RAW COMPLETA de la sección activa
@@ -359,9 +371,9 @@ export default function AgentSettings() {
             <AgentSettingsHeader
               currentSection={currentSection}
               onSave={handleSave}
-              hasUnsavedChanges={hasUnsavedChanges}
+              hasUnsavedChanges={hasUnsavedChanges && !isImpersonating}
               isSaving={isSaving}
-              tenantId={user?.tenantId}
+              tenantId={effectiveTenantId || undefined}
             />
 
             {/* Contenido de la sección */}

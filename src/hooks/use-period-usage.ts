@@ -1,7 +1,7 @@
 // Hook para obtener el uso de conversaciones del período actual
 import { useState, useEffect, useCallback } from 'react';
 import { externalSupabase } from '@/integrations/supabase/external-client';
-import { useAuth } from './use-auth';
+import { useEffectiveTenant } from './use-effective-tenant';
 import { useSubscription } from './use-subscription';
 import { 
   getConversationLimit, 
@@ -37,14 +37,14 @@ interface UsePeriodUsageReturn {
 }
 
 export function usePeriodUsage(): UsePeriodUsageReturn {
-  const { user } = useAuth();
+  const { tenantId } = useEffectiveTenant();
   const { subscription } = useSubscription();
   const [usage, setUsage] = useState<PeriodUsage | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchUsage = useCallback(async () => {
-    if (!user?.tenantId) {
+    if (!tenantId) {
       setUsage(null);
       setIsLoading(false);
       return;
@@ -75,7 +75,7 @@ export function usePeriodUsage(): UsePeriodUsageReturn {
       const { data: sessionsData, error: sessionsError } = await externalSupabase
         .from('n8n_chat_histories')
         .select('session_id')
-        .eq('tenant_id', user.tenantId)
+        .eq('tenant_id', tenantId)
         .gte('created_at', periodStartStr)
         .lte('created_at', periodEndStr);
 
@@ -133,7 +133,7 @@ export function usePeriodUsage(): UsePeriodUsageReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.tenantId, subscription]);
+  }, [tenantId, subscription]);
 
   useEffect(() => {
     fetchUsage();

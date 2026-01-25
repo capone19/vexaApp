@@ -16,6 +16,7 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import { SkeletonCard } from '@/components/shared/SkeletonCard';
 import { useExternalBookings } from '@/hooks/use-external-bookings';
 import { useAuth } from '@/hooks/use-auth';
+import { useEffectiveTenant } from '@/hooks/use-effective-tenant';
 import type { Appointment, AppointmentSource, AppointmentStatus, AppointmentType } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { BlockingModeProvider, useBlockingMode } from '@/components/calendar/BlockingModeContext';
@@ -27,7 +28,8 @@ import { useIsMobile } from '@/hooks/use-mobile';
 type CalendarView = 'month' | 'week' | 'day';
 
 const CalendarContent = () => {
-  const { user, isLoading: authLoading } = useAuth();
+  const { isLoading: authLoading } = useAuth();
+  const { tenantId } = useEffectiveTenant();
   const [view, setView] = useState<CalendarView>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -55,7 +57,7 @@ const CalendarContent = () => {
     isLoading: loading, 
     error 
   } = useExternalBookings({
-    tenantId: user?.tenantId,
+    tenantId: tenantId || undefined,
     startDate,
     endDate,
     type: filterType,
