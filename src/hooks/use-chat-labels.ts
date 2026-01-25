@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/use-auth';
+import { useEffectiveTenant } from '@/hooks/use-effective-tenant';
 import { toast } from 'sonner';
 
 export interface ChatLabel {
@@ -39,13 +39,11 @@ interface UseChatLabelsReturn {
 }
 
 export function useChatLabels(): UseChatLabelsReturn {
-  const { user } = useAuth();
+  const { tenantId } = useEffectiveTenant();
   const [labels, setLabels] = useState<ChatLabel[]>([]);
   const [sessionLabels, setSessionLabels] = useState<Record<string, string[]>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const tenantId = user?.tenantId;
 
   // Fetch all labels and session assignments
   const fetchData = useCallback(async () => {

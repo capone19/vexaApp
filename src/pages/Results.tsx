@@ -10,7 +10,7 @@ import { KPICard } from '@/components/shared/KPICard';
 import { DateRangeFilter } from '@/components/shared/DateRangeFilter';
 import { SkeletonCard } from '@/components/shared/SkeletonCard';
 import { useDashboardMetrics } from '@/hooks/use-dashboard-metrics';
-import { useAuth } from '@/hooks/use-auth';
+import { useEffectiveTenant } from '@/hooks/use-effective-tenant';
 import type { DateRangePreset } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -32,7 +32,7 @@ const formatCurrency = (value: number) => {
 };
 
 const Results = () => {
-  const { user } = useAuth();
+  const { tenantId } = useEffectiveTenant();
   const [dateRange, setDateRange] = useState<DateRangePreset>('7d');
 
   // Calcular rango de fechas
@@ -69,7 +69,7 @@ const Results = () => {
   }, [dateRange]);
 
   const { metrics, isLoading, error } = useDashboardMetrics({
-    tenantId: user?.tenantId,
+    tenantId,
     dateRange: dateRangeObj,
   });
 

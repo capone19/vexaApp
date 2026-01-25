@@ -10,6 +10,7 @@ import { useN8nChatHistory } from "@/hooks/use-n8n-chat-history";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 import { WEBHOOKS } from "@/lib/constants";
 import { useAuth } from "@/hooks/use-auth";
+import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
 import { useChatLabels } from "@/hooks/use-chat-labels";
 
 import { format } from "date-fns";
@@ -78,24 +79,25 @@ function IntentBadge({ label }: { label: IntentLabel }) {
 
 export default function Chats() {
   const { user, isLoading: authLoading } = useAuth();
+  const { tenantId: effectiveTenantId, isImpersonating } = useEffectiveTenant();
   
-  // Determinar si el usuario es admin (ve todos los chats)
-  const isAdmin = user?.role === 'admin';
+  // Determinar si el usuario es admin (ve todos los chats) - pero NO cuando está impersonando
+  const isAdmin = user?.role === 'admin' && !isImpersonating;
   
-  // Filtrar por tenant: admins ven todo, otros usuarios solo su tenant
+  // Filtrar por tenant: admins ven todo (cuando no impersonan), otros usuarios solo su tenant
   const { messages, isLoading, error, refetch } = useN8nChatHistory({
     enableRealtime: true,
     limit: 1000, // Aumentar límite para ver más mensajes
-    tenantId: isAdmin ? undefined : user?.tenantId || undefined,
+    tenantId: isAdmin ? undefined : effectiveTenantId || undefined,
   });
   
   // Log para debug
   useEffect(() => {
-    console.log('[Chats] User tenantId:', user?.tenantId, 'isAdmin:', isAdmin);
+    console.log('[Chats] Effective tenantId:', effectiveTenantId, 'isAdmin:', isAdmin, 'isImpersonating:', isImpersonating);
     console.log('[Chats] Total messages loaded:', messages.length);
     const uniqueSessions = [...new Set(messages.map(m => m.session_id))];
     console.log('[Chats] Unique sessions:', uniqueSessions.length, uniqueSessions);
-  }, [messages, user?.tenantId, isAdmin]);
+  }, [messages, effectiveTenantId, isAdmin, isImpersonating]);
   
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
