@@ -29,6 +29,7 @@ const Support = lazy(() => import("./pages/Support"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Auth = lazy(() => import("./pages/Auth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const AdminClients = lazy(() => import("./pages/admin/AdminClients"));
 const AdminOnboarding = lazy(() => import("./pages/admin/AdminOnboarding"));
 const AdminTickets = lazy(() => import("./pages/admin/AdminTickets"));
@@ -96,9 +97,10 @@ const App = () => (
               <Route path="/configuracion" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
               
               {/* Admin routes */}
-              <Route path="/admin" element={<AdminRoute><AdminClients /></AdminRoute>} />
-              <Route path="/admin/clientes" element={<AdminRoute><AdminClients /></AdminRoute>} />
+              <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+              <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
               <Route path="/admin/onboarding" element={<AdminRoute><AdminOnboarding /></AdminRoute>} />
+              <Route path="/admin/clientes" element={<AdminRoute><AdminClients /></AdminRoute>} />
               <Route path="/admin/tickets" element={<AdminRoute><AdminTickets /></AdminRoute>} />
               <Route path="/admin/tickets/:ticketId" element={<AdminRoute><AdminTicketDetail /></AdminRoute>} />
               

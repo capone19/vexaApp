@@ -1,14 +1,15 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { KPICard } from "@/components/shared/KPICard";
 import { LiveBadge } from "@/components/shared/LiveBadge";
-import { DateRangeFilter } from "@/components/shared/DateRangeFilter";
+import { PeriodFilter, type PeriodPreset } from "@/components/shared/PeriodFilter";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { SkeletonCard, SkeletonTable } from "@/components/shared/SkeletonCard";
 import { useDashboardMetrics } from "@/hooks/use-dashboard-metrics";
+import { usePeriodUsage } from "@/hooks/use-period-usage";
+import { useBillingPeriod } from "@/hooks/use-billing-period";
 import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
-import type { DateRangePreset } from "@/lib/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import {
@@ -28,7 +29,10 @@ import {
   ChevronRight,
   Calendar,
   Loader2,
+  BarChart3,
+  Clock,
 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import {
   Table,
   TableBody,
@@ -43,41 +47,18 @@ import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function Dashboard() {
   const { tenantId } = useEffectiveTenant();
-  const [dateRange, setDateRange] = useState<DateRangePreset>("30d");
+  const [selectedPeriod, setSelectedPeriod] = useState<PeriodPreset>("current");
   const isMobile = useIsMobile();
-
-  // Calcular fechas según el rango seleccionado
-  const dateRangeObj = useMemo(() => {
-    const now = new Date();
-    let startDate: Date;
-    
-    switch (dateRange) {
-      case "today":
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      case "7d":
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case "30d":
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      case "90d":
-        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-        break;
-      case "ytd":
-        startDate = new Date(now.getFullYear(), 0, 1);
-        break;
-      case "all":
-      default:
-        startDate = new Date(0);
-    }
-    
-    return { startDate, endDate: now };
-  }, [dateRange]);
+  
+  // Hook para obtener el uso del período de facturación
+  const { usage: billingUsage, isLoading: billingLoading } = usePeriodUsage();
+  
+  // Usar el hook de período de facturación
+  const { startDate, endDate, periodInfo } = useBillingPeriod({ selectedPeriod });
 
   const { metrics, recentAppointments, isLoading, error } = useDashboardMetrics({
     tenantId,
-    dateRange: dateRangeObj,
+    dateRange: startDate && endDate ? { startDate, endDate } : undefined,
   });
 
   const formatCurrency = (value: number) =>
@@ -147,9 +128,10 @@ export default function Dashboard() {
             subtitle="Vista general de tu rendimiento"
             badge={<LiveBadge />}
             actions={
-              <DateRangeFilter
-                value={dateRange}
-                onChange={(preset) => setDateRange(preset)}
+              <PeriodFilter
+                value={selectedPeriod}
+                onChange={setSelectedPeriod}
+                periodInfo={periodInfo}
               />
             }
           />
@@ -257,9 +239,10 @@ export default function Dashboard() {
           subtitle="Vista general de tu rendimiento"
           badge={<LiveBadge />}
           actions={
-            <DateRangeFilter
-              value={dateRange}
-              onChange={(preset) => setDateRange(preset)}
+            <PeriodFilter
+              value={selectedPeriod}
+              onChange={setSelectedPeriod}
+              periodInfo={periodInfo}
             />
           }
         />
@@ -351,6 +334,145 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
+
+        {/* Billing Period Usage Card - FUENTE DE VERDAD para facturación */}
+        <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 md:p-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-amber-100 p-2">
+                <BarChart3 className="h-4 w-4 md:h-5 md:w-5 text-amber-600" />
+              </div>
+              <div>
+                <span className="text-xs md:text-sm font-medium text-foreground">Uso del Período de Facturación</span>
+                <p className="text-[10px] md:text-xs text-muted-foreground">
+                  {billingUsage?.periodStart && billingUsage?.periodEnd 
+                    ? `${format(billingUsage.periodStart, 'd MMM', { locale: es })} - ${format(billingUsage.periodEnd, 'd MMM yyyy', { locale: es })}`
+                    : format(new Date(), 'MMMM yyyy', { locale: es })}
+                </p>
+              </div>
+            </div>
+            {billingUsage && !billingLoading && (
+              <div className="text-right">
+                <span className="text-lg md:text-xl font-bold text-amber-700">{billingUsage.daysRemaining}</span>
+                <p className="text-[10px] text-muted-foreground">días restantes</p>
+              </div>
+            )}
+          </div>
+          {billingLoading ? (
+            <div className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
+              <span className="text-sm text-muted-foreground">Cargando...</span>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-baseline justify-between">
+                <p className="text-2xl md:text-3xl font-bold text-foreground">
+                  {billingUsage?.conversationsUsed?.toLocaleString() ?? 0}
+                </p>
+                <span className="text-sm text-muted-foreground">
+                  de {billingUsage?.conversationsLimit?.toLocaleString() ?? 300} conversaciones
+                </span>
+              </div>
+              <Progress 
+                value={billingUsage?.conversationsPercentage ?? 0} 
+                className="h-2"
+              />
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  {billingUsage?.conversationsPercentage ?? 0}% utilizado del plan
+                </p>
+                {billingUsage && billingUsage.conversationsExtra > 0 && (
+                  <span className="text-xs font-medium text-amber-700">
+                    +{billingUsage.conversationsExtra} extra = ${billingUsage.extraCostUSD.toFixed(2)} USD
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Panel de Conversaciones Extra - SIEMPRE VISIBLE */}
+        {!billingLoading && billingUsage && (
+          <div className={cn(
+            "rounded-xl border-2 p-4 md:p-5",
+            billingUsage.conversationsExtra > 0 
+              ? "border-orange-400 bg-gradient-to-br from-orange-50 to-amber-50" 
+              : "border-gray-200 bg-gradient-to-br from-gray-50 to-slate-50"
+          )}>
+            <div className="flex items-start gap-3 md:gap-4">
+              <div className={cn(
+                "rounded-xl p-2 md:p-3 shrink-0",
+                billingUsage.conversationsExtra > 0 ? "bg-orange-200" : "bg-gray-100"
+              )}>
+                <MessageSquare className={cn(
+                  "h-5 w-5 md:h-6 md:w-6",
+                  billingUsage.conversationsExtra > 0 ? "text-orange-700" : "text-gray-500"
+                )} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className={cn(
+                  "font-bold text-sm md:text-base",
+                  billingUsage.conversationsExtra > 0 ? "text-orange-800" : "text-gray-700"
+                )}>
+                  Conversaciones Fuera de Plan
+                </h4>
+                
+                <p className={cn(
+                  "text-xs md:text-sm mt-1",
+                  billingUsage.conversationsExtra > 0 ? "text-orange-700" : "text-gray-600"
+                )}>
+                  {billingUsage.conversationsExtra > 0 
+                    ? <>Has superado el límite de <strong>{billingUsage.conversationsLimit}</strong> conversaciones.</>
+                    : <>Dentro del límite ({billingUsage.conversationsUsed} de {billingUsage.conversationsLimit}).</>
+                  }
+                </p>
+                
+                {/* Panel de cálculo de costo - SIEMPRE VISIBLE */}
+                <div className={cn(
+                  "mt-3 p-3 rounded-lg border",
+                  billingUsage.conversationsExtra > 0 
+                    ? "bg-white border-orange-200" 
+                    : "bg-white border-gray-200"
+                )}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs text-gray-600">
+                        {billingUsage.conversationsExtra} conv. extra × $0.30 USD
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className={cn(
+                        "text-xl md:text-2xl font-bold",
+                        billingUsage.conversationsExtra > 0 ? "text-orange-700" : "text-gray-400"
+                      )}>
+                        ${billingUsage.extraCostUSD.toFixed(2)}
+                      </span>
+                      <span className="text-xs text-gray-500 ml-1">USD</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Instrucciones - SIEMPRE VISIBLES */}
+                <div className={cn(
+                  "mt-3 p-3 rounded-lg",
+                  billingUsage.conversationsExtra > 0 
+                    ? "bg-orange-100/70" 
+                    : "bg-gray-100/70"
+                )}>
+                  <p className={cn(
+                    "text-xs md:text-sm",
+                    billingUsage.conversationsExtra > 0 ? "text-orange-700" : "text-gray-600"
+                  )}>
+                    {billingUsage.conversationsExtra > 0 
+                      ? <>⚠️ El cobro de estas conversaciones se realizará al <strong>finalizar el período de facturación</strong>. Te recomendamos <strong>subir al siguiente plan</strong> para evitar cargos adicionales.</>
+                      : <>ℹ️ Si superas el límite, se cobran <strong>$0.30 USD</strong> por cada conversación extra al finalizar el período. En ese caso, te recomendamos <strong>subir al siguiente plan</strong>.</>
+                    }
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Revenue Card */}
         <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 md:p-6">

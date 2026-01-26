@@ -1,10 +1,14 @@
 // ============================================
 // VEXA - Hook para Dashboard Metrics (con React Query + Realtime)
 // ============================================
+// Usa la función centralizada countConversations para garantizar
+// consistencia con Facturación y Admin.
+// ============================================
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { externalSupabase, type ExternalBooking } from '@/integrations/supabase/external-client';
+import { countConversations, classifySession } from '@/lib/api/conversation-counter';
 import type { DashboardMetrics, Appointment, DailyMetric, TopService } from '@/lib/types';
 import { format, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -49,14 +53,6 @@ const emptyMetrics: DashboardMetrics = {
   dailyData: [],
 };
 
-// Clasificar sesiones según cantidad de mensajes
-function classifySessionByMessageCount(messageCount: number): 'tofu' | 'mofu' | 'hot' | null {
-  if (messageCount > 10) return 'hot';
-  if (messageCount > 6) return 'mofu';
-  if (messageCount >= 1) return 'tofu';
-  return null;
-}
-
 // Get short day name in Spanish
 function getShortDayName(date: Date): string {
   return format(date, 'EEE', { locale: es }).charAt(0).toUpperCase() + format(date, 'EEE', { locale: es }).slice(1, 3);
@@ -69,63 +65,29 @@ async function fetchDashboardMetrics(
   endDate?: Date
 ): Promise<{ metrics: DashboardMetrics; appointments: Appointment[] }> {
   // ============================================
-  // 1. MÉTRICAS DE MENSAJES desde DB EXTERNA
+  // 1. USAR FUNCIÓN CENTRALIZADA DE CONTEO
+  // Esto garantiza consistencia con Facturación y Admin
   // ============================================
-  let externalTotalMessages = 0;
-  let externalTotalSessions = 0;
-  let externalAvgPerSession = 0;
-  let funnelFromRealtime = { tofu: 0, mofu: 0, hot: 0 };
-  
-  // Store raw chat data for daily calculations
-  let chatMessagesData: Array<{ id: string; session_id: string; created_at: string; tenant_id: string }> = [];
+  const conversationData = await countConversations({
+    tenantId,
+    startDate,
+    endDate,
+  });
 
-  try {
-    let chatQuery = externalSupabase
-      .from('n8n_chat_histories')
-      .select('id, session_id, created_at, tenant_id')
-      .eq('tenant_id', tenantId);
+  const externalTotalSessions = conversationData.totalConversations;
+  const externalTotalMessages = conversationData.totalMessages;
+  const externalAvgPerSession = conversationData.avgMessagesPerConversation;
+  const funnelFromRealtime = {
+    tofu: conversationData.byStage.tofu,
+    mofu: conversationData.byStage.mofu,
+    hot: conversationData.byStage.hotLeads,
+  };
 
-    // Solo aplicar filtro de fechas si se proporcionan
-    if (startDate) {
-      chatQuery = chatQuery.gte('created_at', startDate.toISOString());
-    }
-    if (endDate) {
-      // Agregar 1 día para incluir todo el día final
-      const endDatePlusOne = new Date(endDate);
-      endDatePlusOne.setDate(endDatePlusOne.getDate() + 1);
-      chatQuery = chatQuery.lt('created_at', endDatePlusOne.toISOString());
-    }
-
-    const { data: externalData, error: externalError } = await chatQuery;
-
-    if (externalError) {
-      console.warn('[useDashboardMetrics] Error DB externa (chats):', externalError);
-    } else if (externalData) {
-      chatMessagesData = externalData;
-      externalTotalMessages = externalData.length;
-      
-      const sessionMessageCounts = new Map<string, number>();
-      externalData.forEach(msg => {
-        const currentCount = sessionMessageCounts.get(msg.session_id) || 0;
-        sessionMessageCounts.set(msg.session_id, currentCount + 1);
-      });
-      
-      externalTotalSessions = sessionMessageCounts.size;
-      
-      sessionMessageCounts.forEach((msgCount) => {
-        const stage = classifySessionByMessageCount(msgCount);
-        if (stage === 'tofu') funnelFromRealtime.tofu++;
-        else if (stage === 'mofu') funnelFromRealtime.mofu++;
-        else if (stage === 'hot') funnelFromRealtime.hot++;
-      });
-      
-      externalAvgPerSession = externalTotalSessions > 0 
-        ? Math.round((externalTotalMessages / externalTotalSessions) * 10) / 10
-        : 0;
-    }
-  } catch (extErr) {
-    console.warn('[useDashboardMetrics] Error conectando DB externa (chats):', extErr);
-  }
+  console.log('[useDashboardMetrics] ✓ Conversation count:', {
+    totalConversations: externalTotalSessions,
+    totalMessages: externalTotalMessages,
+    funnel: funnelFromRealtime,
+  });
 
   // ============================================
   // 2. BOOKINGS desde DB EXTERNA (misma lógica que useExternalBookings)
@@ -200,57 +162,77 @@ async function fetchDashboardMetrics(
     const dateKey = booking.event_date; // Already in yyyy-MM-dd format
     dailyBookingsMap.set(dateKey, (dailyBookingsMap.get(dateKey) || 0) + 1);
   });
-  
+
+  // Para datos diarios, necesitamos hacer una query adicional con los mensajes completos
   if (startDate && endDate) {
-    // Get all days in the range
-    const days = eachDayOfInterval({ start: startDate, end: endDate });
-    
-    // Group messages by day and session
-    const dailyMessagesMap = new Map<string, { sessions: Set<string>; messages: number }>();
-    
-    // Initialize all days
-    days.forEach(day => {
-      const dateKey = format(day, 'yyyy-MM-dd');
-      dailyMessagesMap.set(dateKey, { sessions: new Set(), messages: 0 });
-    });
-    
-    // Count actual messages per day
-    chatMessagesData.forEach(msg => {
-      const msgDate = new Date(msg.created_at);
-      const dateKey = format(msgDate, 'yyyy-MM-dd');
-      const dayData = dailyMessagesMap.get(dateKey);
-      if (dayData) {
-        dayData.sessions.add(msg.session_id);
-        dayData.messages++;
+    try {
+      // Query para obtener datos diarios (con límite razonable para gráficos)
+      const { data: chatMessagesData, error: chatError } = await externalSupabase
+        .from('n8n_chat_histories')
+        .select('id, session_id, created_at')
+        .eq('tenant_id', tenantId)
+        .gte('created_at', startDate.toISOString())
+        .lt('created_at', new Date(endDate.getTime() + 24 * 60 * 60 * 1000).toISOString())
+        .limit(50000);
+
+      if (chatError) {
+        console.warn('[useDashboardMetrics] Error fetching daily data:', chatError);
+      } else if (chatMessagesData) {
+        const days = eachDayOfInterval({ start: startDate, end: endDate });
+        
+        // Group messages by day and session
+        const dailyMessagesMap = new Map<string, { sessions: Set<string>; messages: number }>();
+        
+        // Initialize all days
+        days.forEach(day => {
+          const dateKey = format(day, 'yyyy-MM-dd');
+          dailyMessagesMap.set(dateKey, { sessions: new Set(), messages: 0 });
+        });
+        
+        // Count actual messages per day
+        chatMessagesData.forEach(msg => {
+          const msgDate = new Date(msg.created_at);
+          const dateKey = format(msgDate, 'yyyy-MM-dd');
+          const dayData = dailyMessagesMap.get(dateKey);
+          if (dayData) {
+            dayData.sessions.add(msg.session_id);
+            dayData.messages++;
+          }
+        });
+        
+        // Build daily data array
+        days.forEach(day => {
+          const dateKey = format(day, 'yyyy-MM-dd');
+          const dayData = dailyMessagesMap.get(dateKey) || { sessions: new Set(), messages: 0 };
+          const chatsCount = dayData.sessions.size;
+          const messagesCount = dayData.messages;
+          const avgMessages = chatsCount > 0 ? Math.round((messagesCount / chatsCount) * 10) / 10 : 0;
+          
+          // Simple abandonment rate: sessions with only 1-2 messages / total sessions
+          let abandonedCount = 0;
+          dayData.sessions.forEach(sessionId => {
+            const sessionMsgs = chatMessagesData.filter(
+              m => m.session_id === sessionId && 
+              format(new Date(m.created_at), 'yyyy-MM-dd') === dateKey
+            );
+            if (sessionMsgs.length <= 2) abandonedCount++;
+          });
+          const abandonmentRate = chatsCount > 0 ? Math.round((abandonedCount / chatsCount) * 100) : 0;
+          
+          dailyData.push({
+            date: dateKey,
+            day: getShortDayName(day),
+            chats: chatsCount,
+            messages: messagesCount,
+            avgMessages,
+            abandonmentRate,
+            bookings: dailyBookingsMap.get(dateKey) || 0,
+          });
+        });
       }
-    });
-    
-    // Build daily data array
-    days.forEach(day => {
-      const dateKey = format(day, 'yyyy-MM-dd');
-      const dayData = dailyMessagesMap.get(dateKey) || { sessions: new Set(), messages: 0 };
-      const chatsCount = dayData.sessions.size;
-      const messagesCount = dayData.messages;
-      const avgMessages = chatsCount > 0 ? Math.round((messagesCount / chatsCount) * 10) / 10 : 0;
-      
-      // Simple abandonment rate: sessions with only 1 message (TOFU) / total sessions
-      let abandonedCount = 0;
-      dayData.sessions.forEach(sessionId => {
-        const sessionMsgs = chatMessagesData.filter(m => m.session_id === sessionId && format(new Date(m.created_at), 'yyyy-MM-dd') === dateKey);
-        if (sessionMsgs.length <= 2) abandonedCount++;
-      });
-      const abandonmentRate = chatsCount > 0 ? Math.round((abandonedCount / chatsCount) * 100) : 0;
-      
-      dailyData.push({
-        date: dateKey,
-        day: getShortDayName(day),
-        chats: chatsCount,
-        messages: messagesCount,
-        avgMessages,
-        abandonmentRate,
-        bookings: dailyBookingsMap.get(dateKey) || 0,
-      });
-    });
+    } catch (err) {
+      console.warn('[useDashboardMetrics] Error building daily data:', err);
+    }
   }
 
   // ============================================
@@ -356,8 +338,9 @@ export function useDashboardMetrics({
     queryKey,
     queryFn: () => fetchDashboardMetrics(tenantId!, startDate, endDate),
     enabled: !!tenantId,
-    staleTime: 1000 * 30, // 30 segundos
+    staleTime: 0, // Sin stale time para que siempre se refresquen al cambiar fechas
     refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 
   // Función para invalidar cache y refetch

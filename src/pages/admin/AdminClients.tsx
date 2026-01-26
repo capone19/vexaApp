@@ -1,3 +1,10 @@
+// ============================================
+// VEXA - Panel Admin de Clientes
+// ============================================
+// IMPORTANTE: Usa la función centralizada countConversationsForBillingPeriod
+// para garantizar que el conteo de chats sea consistente con Facturación.
+// ============================================
+
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AdminLayout } from '@/components/layout/AdminLayout';
@@ -20,7 +27,8 @@ import {
 } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import { useImpersonation } from '@/contexts/ImpersonationContext';
-import { Loader2, Building2, CheckCircle, XCircle, Copy, Eye } from 'lucide-react';
+import { countConversationsForBillingPeriod } from '@/lib/api/conversation-counter';
+import { Loader2, Building2, CheckCircle, XCircle, Copy, Eye, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -34,7 +42,8 @@ interface Tenant {
   whatsapp_phone_id: string | null;
   created_at: string | null;
   owner_email: string | null;
-  chat_count: number;
+  chat_count: number;      // Viene del backend (puede estar desactualizado)
+  chat_count_real?: number; // Calculado en frontend con función centralizada
   chat_limit: number;
   subscriptions: {
     price_usd: number;
@@ -47,9 +56,11 @@ export default function AdminClients() {
   const { startImpersonation } = useImpersonation();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingRealCounts, setIsLoadingRealCounts] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
 
+  // Cargar tenants del backend
   useEffect(() => {
     const fetchTenants = async () => {
       try {
@@ -62,7 +73,13 @@ export default function AdminClients() {
           throw fnError;
         }
 
-        setTenants(data?.tenants || []);
+        const tenantsData = data?.tenants || [];
+        setTenants(tenantsData);
+        
+        // Cargar conteos reales después de obtener los tenants
+        if (tenantsData.length > 0) {
+          loadRealChatCounts(tenantsData);
+        }
       } catch (err) {
         console.error('[AdminClients] Error:', err);
         setError(err instanceof Error ? err.message : 'Error al cargar clientes');
@@ -73,6 +90,57 @@ export default function AdminClients() {
 
     fetchTenants();
   }, []);
+
+  // Cargar conteos reales usando la función centralizada
+  // IMPORTANTE: El período se calcula basado en la fecha de creación de cada tenant
+  const loadRealChatCounts = async (tenantsToLoad: Tenant[]) => {
+    setIsLoadingRealCounts(true);
+    
+    try {
+      // Cargar conteos en paralelo para todos los tenants
+      const countPromises = tenantsToLoad.map(async (tenant) => {
+        try {
+          // Pasar la fecha de creación del tenant para calcular el período correcto
+          const tenantCreatedAt = tenant.created_at ? new Date(tenant.created_at) : undefined;
+          const result = await countConversationsForBillingPeriod(
+            tenant.id,
+            undefined, // periodStart - se calculará basado en created_at
+            undefined, // periodEnd - se calculará basado en created_at
+            tenantCreatedAt
+          );
+          return { tenantId: tenant.id, count: result.totalConversations };
+        } catch (err) {
+          console.warn(`[AdminClients] Error counting for ${tenant.id}:`, err);
+          return { tenantId: tenant.id, count: tenant.chat_count }; // Fallback al valor del backend
+        }
+      });
+
+      const results = await Promise.all(countPromises);
+      
+      // Actualizar los tenants con los conteos reales
+      setTenants(prev => prev.map(tenant => {
+        const realCount = results.find(r => r.tenantId === tenant.id);
+        return {
+          ...tenant,
+          chat_count_real: realCount?.count ?? tenant.chat_count,
+        };
+      }));
+
+      console.log('[AdminClients] ✓ Real chat counts loaded:', results);
+    } catch (err) {
+      console.error('[AdminClients] Error loading real counts:', err);
+    } finally {
+      setIsLoadingRealCounts(false);
+    }
+  };
+
+  // Refrescar conteos manualmente
+  const handleRefreshCounts = () => {
+    if (tenants.length > 0) {
+      loadRealChatCounts(tenants);
+      toast.success('Actualizando conteos...');
+    }
+  };
 
   const getPlanBadgeVariant = (plan: string) => {
     switch (plan.toLowerCase()) {
@@ -132,10 +200,29 @@ export default function AdminClients() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5" />
-              Lista de Clientes ({tenants.length})
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="h-5 w-5" />
+                Lista de Clientes ({tenants.length})
+              </CardTitle>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRefreshCounts}
+                    disabled={isLoadingRealCounts}
+                    className="gap-2"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isLoadingRealCounts ? 'animate-spin' : ''}`} />
+                    {isLoadingRealCounts ? 'Actualizando...' : 'Actualizar conteos'}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Recalcular conteos de conversaciones (período actual)</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -168,7 +255,9 @@ export default function AdminClients() {
                   </TableHeader>
                   <TableBody>
                     {tenants.map((tenant) => {
-                      const usagePercentage = getChatUsagePercentage(tenant.chat_count, tenant.chat_limit);
+                      // USAR CONTEO REAL si está disponible, sino el del backend
+                      const chatCount = tenant.chat_count_real ?? tenant.chat_count;
+                      const usagePercentage = getChatUsagePercentage(chatCount, tenant.chat_limit);
                       const isCurrentlyImpersonating = impersonatingId === tenant.id;
                       
                       return (
@@ -222,7 +311,14 @@ export default function AdminClients() {
                             <div className="space-y-1 min-w-[140px]">
                               <div className="flex items-center justify-between text-xs">
                                 <span className={getChatUsageColor(usagePercentage)}>
-                                  {tenant.chat_count} / {tenant.chat_limit}
+                                  {isLoadingRealCounts && tenant.chat_count_real === undefined ? (
+                                    <span className="flex items-center gap-1">
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                      {tenant.chat_count}
+                                    </span>
+                                  ) : (
+                                    `${chatCount} / ${tenant.chat_limit}`
+                                  )}
                                 </span>
                                 <span className="text-muted-foreground">
                                   {usagePercentage.toFixed(0)}%

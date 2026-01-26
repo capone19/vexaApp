@@ -31,7 +31,7 @@ const responseLengthValues: PersonalitySettings["responseLength"][] = ["corta", 
 
 const objectiveLabels: Record<PersonalitySettings["primaryObjective"], string> = {
   agendar: "Agendar citas",
-  vender: "Vender servicios",
+  vender: "Vender servicios y/o productos",
   calificar: "Calificar leads",
   informar: "Informar / Soporte",
   mixto: "Mixto",

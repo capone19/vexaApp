@@ -424,11 +424,21 @@ const Billing = () => {
               <BarChart3 className="h-4 w-4" />
               Uso del Período Actual
             </CardTitle>
-            <CardDescription className="text-xs md:text-sm">
-              Período: {format(new Date(), 'MMMM yyyy', { locale: es })}
+            <CardDescription className="text-xs md:text-sm flex items-center justify-between">
+              <span>
+                Período: {usage?.periodStart && usage?.periodEnd 
+                  ? `${format(usage.periodStart, "d MMM", { locale: es })} - ${format(usage.periodEnd, "d MMM yyyy", { locale: es })}`
+                  : format(new Date(), 'MMMM yyyy', { locale: es })}
+              </span>
+              {usage && !usageLoading && (
+                <span className="text-primary font-medium">
+                  {usage.daysRemaining} días restantes
+                </span>
+              )}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {/* Métricas principales */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
               <div className={cn("rounded-lg bg-secondary", isMobile ? "p-3" : "p-4")}>
                 <div className="flex items-center justify-between mb-2">
@@ -506,6 +516,111 @@ const Billing = () => {
                 )}
               </div>
             </div>
+
+            {/* Panel de Conversaciones Extra - SIEMPRE VISIBLE */}
+            {!usageLoading && usage && (
+              <div className={cn(
+                "rounded-xl border-2 p-4 md:p-5",
+                usage.conversationsExtra > 0 
+                  ? "border-orange-400 bg-gradient-to-br from-orange-50 to-amber-50" 
+                  : "border-gray-200 bg-gradient-to-br from-gray-50 to-slate-50"
+              )}>
+                <div className="flex items-start gap-4">
+                  <div className={cn(
+                    "rounded-xl p-3 shrink-0",
+                    usage.conversationsExtra > 0 ? "bg-orange-200" : "bg-gray-100"
+                  )}>
+                    <MessageSquare className={cn(
+                      "h-6 w-6",
+                      usage.conversationsExtra > 0 ? "text-orange-700" : "text-gray-500"
+                    )} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className={cn(
+                      "font-bold text-base md:text-lg",
+                      usage.conversationsExtra > 0 ? "text-orange-800" : "text-gray-700"
+                    )}>
+                      Conversaciones Fuera de Plan
+                    </h4>
+                    
+                    <p className={cn(
+                      "text-sm mt-2",
+                      usage.conversationsExtra > 0 ? "text-orange-700" : "text-gray-600"
+                    )}>
+                      {usage.conversationsExtra > 0 
+                        ? <>Has superado el límite de <strong>{usage.conversationsLimit}</strong> conversaciones de tu plan.</>
+                        : <>Estás dentro del límite de tu plan ({usage.conversationsUsed} de {usage.conversationsLimit}).</>
+                      }
+                    </p>
+                    
+                    {/* Panel de cálculo de costo - SIEMPRE VISIBLE */}
+                    <div className={cn(
+                      "mt-4 p-4 rounded-xl border shadow-sm",
+                      usage.conversationsExtra > 0 
+                        ? "bg-white border-orange-200" 
+                        : "bg-white border-gray-200"
+                    )}>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium text-gray-700">
+                          Conversaciones extra
+                        </span>
+                        <span className={cn(
+                          "text-xl font-bold",
+                          usage.conversationsExtra > 0 ? "text-orange-600" : "text-gray-400"
+                        )}>
+                          {usage.conversationsExtra}
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center justify-between py-3 border-t border-gray-100">
+                        <div>
+                          <span className="text-sm text-gray-600">
+                            {usage.conversationsExtra} conv. × $0.30 USD
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className={cn(
+                            "text-2xl font-bold",
+                            usage.conversationsExtra > 0 ? "text-orange-700" : "text-gray-400"
+                          )}>
+                            ${usage.extraCostUSD.toFixed(2)}
+                          </span>
+                          <span className="text-sm text-gray-500 ml-1">USD</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Instrucciones - SIEMPRE VISIBLES */}
+                    <div className={cn(
+                      "mt-4 p-3 rounded-lg",
+                      usage.conversationsExtra > 0 
+                        ? "bg-orange-100/70" 
+                        : "bg-gray-100/70"
+                    )}>
+                      <p className={cn(
+                        "text-sm",
+                        usage.conversationsExtra > 0 ? "text-orange-700" : "text-gray-600"
+                      )}>
+                        {usage.conversationsExtra > 0 
+                          ? <>⚠️ El cobro de estas conversaciones se realizará al <strong>finalizar el período de facturación</strong>. Te recomendamos <strong>subir al siguiente plan</strong> para evitar cargos adicionales.</>
+                          : <>ℹ️ Si superas el límite de {usage.conversationsLimit} conversaciones, se cobrarán <strong>$0.30 USD</strong> por cada conversación extra al finalizar tu período. En ese caso, te recomendamos <strong>subir al siguiente plan</strong>.</>
+                        }
+                      </p>
+                    </div>
+                    
+                    {usage.conversationsExtra > 0 && (
+                      <Button 
+                        className="mt-3 w-full md:w-auto"
+                        onClick={() => setIsChangePlanOpen(true)}
+                      >
+                        <Zap className="h-4 w-4 mr-2" />
+                        Ver planes disponibles
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

@@ -7,11 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { KPICard } from '@/components/shared/KPICard';
-import { DateRangeFilter } from '@/components/shared/DateRangeFilter';
+import { PeriodFilter, type PeriodPreset } from '@/components/shared/PeriodFilter';
 import { SkeletonCard } from '@/components/shared/SkeletonCard';
 import { useDashboardMetrics } from '@/hooks/use-dashboard-metrics';
 import { useEffectiveTenant } from '@/hooks/use-effective-tenant';
-import type { DateRangePreset } from '@/lib/types';
+import { useBillingPeriod } from '@/hooks/use-billing-period';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 
@@ -30,51 +30,17 @@ const EmptyState = () => (
 
 const Metrics = () => {
   const { tenantId } = useEffectiveTenant();
-  const [dateRange, setDateRange] = useState<DateRangePreset>('7d');
+  const [selectedPeriod, setSelectedPeriod] = useState<PeriodPreset>('current');
   const [showComparison, setShowComparison] = useState(false);
   const isMobile = useIsMobile();
-
-  // Calcular rango de fechas
-  const dateRangeObj = useMemo(() => {
-    const now = new Date();
-    let startDate: Date;
-    let endDate: Date = now;
-    
-    switch (dateRange) {
-      case "today":
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      case "yesterday":
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
-        break;
-      case "7d":
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case "30d":
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      case "90d":
-        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-        break;
-      case "ytd":
-        startDate = new Date(now.getFullYear(), 0, 1);
-        break;
-      default:
-        startDate = new Date(0);
-    }
-    
-    return { startDate, endDate };
-  }, [dateRange]);
+  
+  // Usar el hook de período de facturación
+  const { startDate, endDate, periodInfo } = useBillingPeriod({ selectedPeriod });
 
   const { metrics, isLoading, error } = useDashboardMetrics({
     tenantId,
-    dateRange: dateRangeObj,
+    dateRange: startDate && endDate ? { startDate, endDate } : undefined,
   });
-
-  const handleDateChange = (preset: DateRangePreset) => {
-    setDateRange(preset);
-  };
 
   // Check if there's any data - must be before useMemo hooks
   const hasData = metrics && (metrics.totalChats > 0 || metrics.totalMessages > 0);
@@ -151,24 +117,28 @@ const Metrics = () => {
           title="Métricas" 
           subtitle={isMobile ? undefined : "Análisis detallado de conversaciones y rendimiento"}
           actions={
-            <div className={cn(
-              "flex items-center gap-2 md:gap-4",
-              isMobile && "flex-wrap justify-end"
-            )}>
-              {!isMobile && hasData && (
-                <div className="flex items-center gap-2">
-                  <Switch 
-                    id="comparison" 
-                    checked={showComparison} 
-                    onCheckedChange={setShowComparison} 
+                <div className={cn(
+                  "flex items-center gap-2 md:gap-4",
+                  isMobile && "flex-wrap justify-end"
+                )}>
+                  {!isMobile && hasData && (
+                    <div className="flex items-center gap-2">
+                      <Switch 
+                        id="comparison" 
+                        checked={showComparison} 
+                        onCheckedChange={setShowComparison} 
+                      />
+                      <Label htmlFor="comparison" className="text-sm text-muted-foreground whitespace-nowrap">
+                        Comparar período
+                      </Label>
+                    </div>
+                  )}
+                  <PeriodFilter 
+                    value={selectedPeriod} 
+                    onChange={setSelectedPeriod}
+                    periodInfo={periodInfo}
                   />
-                  <Label htmlFor="comparison" className="text-sm text-muted-foreground whitespace-nowrap">
-                    Comparar período
-                  </Label>
                 </div>
-              )}
-              <DateRangeFilter value={dateRange} onChange={handleDateChange} />
-            </div>
           }
         />
 

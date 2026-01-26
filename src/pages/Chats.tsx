@@ -85,9 +85,10 @@ export default function Chats() {
   const isAdmin = user?.role === 'admin' && !isImpersonating;
   
   // Filtrar por tenant: admins ven todo (cuando no impersonan), otros usuarios solo su tenant
+  // CRÍTICO: Límite alto para conteo preciso de conversaciones (facturación)
   const { messages, isLoading, error, refetch } = useN8nChatHistory({
     enableRealtime: true,
-    limit: 1000, // Aumentar límite para ver más mensajes
+    limit: 50000, // Límite alto para garantizar conteo completo de sesiones
     tenantId: isAdmin ? undefined : effectiveTenantId || undefined,
   });
   

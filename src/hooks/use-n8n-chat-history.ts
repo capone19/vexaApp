@@ -5,7 +5,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 interface UseN8nChatHistoryOptions {
   sessionId?: string;
   tenantId?: string; // Filtrar por tenant del usuario logueado
-  limit?: number;
+  limit?: number;    // Default: 10000 (aumentado para conteo preciso)
   enableRealtime?: boolean;
   pollingIntervalMs?: number;
 }
@@ -59,7 +59,7 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
   const { 
     sessionId, 
     tenantId,
-    limit = 100, 
+    limit = 10000,  // Aumentado de 100 a 10000 para conteo preciso de conversaciones
     enableRealtime = true,
     pollingIntervalMs = 3000
   } = options;
