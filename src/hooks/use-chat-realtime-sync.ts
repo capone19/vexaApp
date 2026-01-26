@@ -87,7 +87,11 @@ export function useChatRealtimeSync({
           filter: `tenant_id=eq.${tenantId}`,
         },
         (payload) => {
-          console.log('[ChatRealtimeSync] ✨ New message detected:', payload.new);
+          const newData = payload.new as { session_id?: string };
+          console.log('[ChatRealtimeSync] ✨ NEW MESSAGE DETECTED!', {
+            session_id: newData?.session_id,
+            timestamp: new Date().toISOString(),
+          });
           invalidateAllChatCaches();
         }
       )
