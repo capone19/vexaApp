@@ -2,17 +2,17 @@
 // VEXA - Hook para Uso del Período de Facturación
 // ============================================
 // CRÍTICO: Este hook determina el uso para facturación.
-// El período se calcula basado en current_period_start de la suscripción
-// o la fecha de creación del tenant (ciclos mensuales).
+// El período se calcula SIEMPRE basado en la fecha de creación
+// del tenant (ciclos mensuales desde created_at).
 // ============================================
-// ACTUALIZADO: Ahora usa React Query para cache compartido
-// y sincronización con otros hooks vía invalidación.
+// FUENTE DE VERDAD:
+// - Período: tenants.created_at (1 mes desde fecha de creación)
+// - Plan/Límites: tenants.plan (no subscription)
 // ============================================
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenant } from './use-effective-tenant';
-import { useSubscription } from './use-subscription';
 import { countConversationsForBillingPeriod } from '@/lib/api/conversation-counter';
 import { 
   getConversationLimit, 
@@ -61,12 +61,6 @@ interface UsePeriodUsageReturn {
   refetch: () => Promise<void>;
 }
 
-interface Subscription {
-  current_period_start?: string;
-  current_period_end?: string;
-  plan?: string;
-}
-
 /**
  * Calcula el período de facturación actual basado en la fecha de inicio.
  * Los períodos son ciclos mensuales desde la fecha de inicio.
@@ -95,39 +89,34 @@ function calculateBillingPeriod(startDate: Date): { periodStart: Date; periodEnd
 }
 
 /**
- * Función de fetch separada para usar con React Query
+ * Función de fetch que SIEMPRE usa tenants.created_at para el período
+ * y tenants.plan para los límites.
  */
-async function fetchPeriodUsage(
-  tenantId: string,
-  subscription: Subscription | null
-): Promise<PeriodUsage> {
+async function fetchPeriodUsage(tenantId: string): Promise<PeriodUsage> {
   let periodStart: Date;
   let periodEnd: Date;
   
-  // PRIORIDAD 1: Usar fechas de la suscripción si existen
-  if (subscription?.current_period_start && subscription?.current_period_end) {
-    periodStart = new Date(subscription.current_period_start);
-    periodEnd = new Date(subscription.current_period_end);
+  // ============================================
+  // SIEMPRE calcular basado en fecha de creación del tenant
+  // ============================================
+  const { data: tenantData, error: tenantError } = await supabase
+    .from('tenants')
+    .select('created_at, plan')
+    .eq('id', tenantId)
+    .single();
+  
+  if (tenantError || !tenantData?.created_at) {
+    console.warn('[usePeriodUsage] No se pudo obtener created_at del tenant, usando fallback');
+    // FALLBACK: Usar el mes actual si no hay fecha de creación
+    const now = new Date();
+    periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
   } else {
-    // PRIORIDAD 2: Calcular basado en fecha de creación del tenant
-    const { data: tenantData, error: tenantError } = await supabase
-      .from('tenants')
-      .select('created_at')
-      .eq('id', tenantId)
-      .single();
-    
-    if (tenantError || !tenantData?.created_at) {
-      // FALLBACK: Usar el mes actual si no hay fecha de creación
-      const now = new Date();
-      periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-    } else {
-      // Calcular período basado en fecha de creación
-      const createdAt = new Date(tenantData.created_at);
-      const calculated = calculateBillingPeriod(createdAt);
-      periodStart = calculated.periodStart;
-      periodEnd = calculated.periodEnd;
-    }
+    // Calcular período basado en fecha de creación del tenant
+    const createdAt = new Date(tenantData.created_at);
+    const calculated = calculateBillingPeriod(createdAt);
+    periodStart = calculated.periodStart;
+    periodEnd = calculated.periodEnd;
   }
 
   // Calcular días del período
@@ -150,8 +139,10 @@ async function fetchPeriodUsage(
   const totalMessages = conversationData.totalMessages;
   const avgMessagesPerConversation = conversationData.avgMessagesPerConversation;
 
-  // Obtener el plan actual y límites
-  const currentPlan: PlanId = (subscription?.plan as PlanId) || 'basic';
+  // ============================================
+  // USAR PLAN DEL TENANT (no de suscripción)
+  // ============================================
+  const currentPlan: PlanId = (tenantData?.plan as PlanId) || 'basic';
   const conversationsLimit = getConversationLimit(currentPlan);
   const whatsappLimit = getWhatsAppLimit(currentPlan);
   const campaignsEnabled = hasCampaignsEnabled(currentPlan);
@@ -172,6 +163,7 @@ async function fetchPeriodUsage(
 
   console.log('[usePeriodUsage] ✓ Billing usage loaded:', {
     tenantId,
+    tenantCreatedAt: tenantData?.created_at,
     conversationsUsed,
     conversationsLimit,
     conversationsExtra,
@@ -180,7 +172,7 @@ async function fetchPeriodUsage(
     periodEnd: periodEnd.toISOString().split('T')[0],
     daysRemaining,
     currentPlan,
-    note: 'Period = 1 mes desde fecha de creación del tenant',
+    source: 'tenants.created_at (always)',
   });
 
   return {
@@ -205,37 +197,31 @@ async function fetchPeriodUsage(
 
 export function usePeriodUsage(): UsePeriodUsageReturn {
   const { tenantId } = useEffectiveTenant();
-  const { subscription, isLoading: subscriptionLoading } = useSubscription();
   const queryClient = useQueryClient();
 
   // Query key incluye tenantId para cache separado por tenant
   const queryKey = ['period-usage', tenantId];
 
-  // Debug: Estado de sincronización
-  console.log('[usePeriodUsage] State:', {
+  // Debug: Estado actual
+  console.log('[usePeriodUsage] Hook state:', {
     tenantId,
-    subscriptionLoading,
-    hasSubscription: !!subscription,
-    periodFromSubscription: subscription?.current_period_start 
-      ? 'yes' : 'will-fallback',
+    source: 'Will use tenants.created_at directly',
   });
 
   const { data: usage, isLoading, error, refetch } = useQuery({
     queryKey,
-    queryFn: () => fetchPeriodUsage(tenantId!, subscription),
-    // IMPORTANTE: Solo ejecutar cuando:
-    // 1. Tenemos tenantId
-    // 2. La suscripción ya terminó de cargar (evita fallback incorrecto)
-    enabled: !!tenantId && !subscriptionLoading,
-    staleTime: 30000, // 30 segundos - se invalida externamente por realtime
+    queryFn: () => fetchPeriodUsage(tenantId!),
+    // Solo ejecutar cuando tenemos tenantId
+    // Ya no dependemos de useSubscription para las fechas
+    enabled: !!tenantId,
+    staleTime: 30000, // 30 segundos
     refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
 
   return {
     usage: usage ?? null,
-    // Mostrar loading si falta tenantId O si la suscripción está cargando
-    isLoading: !tenantId ? false : (subscriptionLoading || isLoading),
+    isLoading: tenantId ? isLoading : false,
     error: error ? (error as Error).message : null,
     refetch: async () => { 
       await refetch(); 
