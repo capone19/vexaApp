@@ -119,7 +119,7 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
       let query = externalSupabase
         .from('n8n_chat_histories')
         .select('*')
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false })  // Más recientes primero para carga rápida
         .limit(limit);
 
       // Filtrar por tenant si se proporciona

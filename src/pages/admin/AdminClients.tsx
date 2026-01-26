@@ -45,6 +45,8 @@ interface Tenant {
   chat_count: number;      // Viene del backend (puede estar desactualizado)
   chat_count_real?: number; // Calculado en frontend con función centralizada
   chat_limit: number;
+  chats_extra?: number;    // Chats por encima del límite del plan
+  cobro_extra_usd?: number; // Cobro asociado en USD ($0.30 por chat extra)
   subscriptions: {
     price_usd: number;
     status: string;
@@ -117,12 +119,23 @@ export default function AdminClients() {
 
       const results = await Promise.all(countPromises);
       
-      // Actualizar los tenants con los conteos reales
+      // Tarifa por chat extra: $0.30 USD
+      const TARIFA_CHAT_EXTRA_USD = 0.30;
+      
+      // Actualizar los tenants con los conteos reales y cálculos de exceso
       setTenants(prev => prev.map(tenant => {
         const realCount = results.find(r => r.tenantId === tenant.id);
+        const chatCountReal = realCount?.count ?? tenant.chat_count;
+        
+        // Calcular chats extra (solo si excede el límite)
+        const chatsExtra = Math.max(0, chatCountReal - tenant.chat_limit);
+        const cobroExtraUsd = chatsExtra * TARIFA_CHAT_EXTRA_USD;
+        
         return {
           ...tenant,
-          chat_count_real: realCount?.count ?? tenant.chat_count,
+          chat_count_real: chatCountReal,
+          chats_extra: chatsExtra,
+          cobro_extra_usd: cobroExtraUsd,
         };
       }));
 
@@ -248,6 +261,8 @@ export default function AdminClients() {
                       <TableHead>Email</TableHead>
                       <TableHead>Plan</TableHead>
                       <TableHead>Uso de Chats</TableHead>
+                      <TableHead>Chats Extra</TableHead>
+                      <TableHead>Cobro Extra</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead>WhatsApp</TableHead>
                       <TableHead>Creado</TableHead>
@@ -329,6 +344,30 @@ export default function AdminClients() {
                                 className="h-1.5"
                               />
                             </div>
+                          </TableCell>
+                          {/* Chats Extra */}
+                          <TableCell>
+                            {isLoadingRealCounts && tenant.chats_extra === undefined ? (
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                            ) : (tenant.chats_extra ?? 0) > 0 ? (
+                              <Badge variant="destructive" className="font-mono">
+                                +{tenant.chats_extra}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-sm">0</span>
+                            )}
+                          </TableCell>
+                          {/* Cobro Extra */}
+                          <TableCell>
+                            {isLoadingRealCounts && tenant.cobro_extra_usd === undefined ? (
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                            ) : (tenant.cobro_extra_usd ?? 0) > 0 ? (
+                              <span className="font-semibold text-destructive">
+                                ${tenant.cobro_extra_usd?.toFixed(2)} USD
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-sm">$0.00</span>
+                            )}
                           </TableCell>
                           <TableCell>
                             {tenant.is_active ? (
