@@ -1,156 +1,172 @@
 
+# Plan: Agregar Switch para Activar/Desactivar Clientes
 
-# Plan: Corregir Período de Facturación - Usar Fecha de Creación del Tenant
+## Resumen Ejecutivo
 
-## Problema Identificado
-
-La UI muestra **"1 ene - 31 ene 2026"** cuando debería mostrar **"15 ene - 14 feb 2026"** para Estetica Online.
-
-**Causa raíz:** El código actual prioriza las fechas de `subscriptions.current_period_start/end`, pero cuando el admin impersona un cliente, hay una condición de carrera donde la query de suscripción no ha terminado y el sistema cae al fallback del mes calendario.
-
-**Datos en base de datos (correctos):**
-| Campo | Valor |
-|-------|-------|
-| `tenants.created_at` | 2026-01-16 |
-| `subscriptions.current_period_start` | 2026-01-16 |
-| `subscriptions.current_period_end` | 2026-02-16 |
-
-**Requerimiento del usuario:** El período de facturación debe ser **SIEMPRE** 1 mes desde la fecha de la columna "Creado" del tenant (visible en Admin > Clientes).
+Implementar un componente Switch en la columna "Estado" del panel Admin > Clientes que permita activar o desactivar clientes de forma instantánea. El switch reemplazará el Badge estático actual.
 
 ---
 
-## Solución
+## Contexto Técnico
 
-Modificar `usePeriodUsage` para que **siempre** calcule el período basado en `tenants.created_at`, ignorando las fechas de la tabla `subscriptions`. Esto garantiza:
+### Tabla y Campo Afectado
+- **Tabla:** `public.tenants`
+- **Campo:** `is_active` (BOOLEAN, default: `true`)
+- **Valores:** `true` = Activo, `false` = Inactivo
 
-1. Consistencia visual entre Admin y vista de cliente
-2. No hay dependencia de timing con `useSubscription`
-3. La lógica es más simple y predecible
+### Estado Actual del Campo
+El campo `is_active` actualmente es **informativo**:
+- Se usa para estadísticas en Admin Dashboard (clientes totales vs activos)
+- Se muestra como Badge visual en la lista de clientes
+- **NO bloquea** login, webhooks, ni procesamiento de mensajes
+
+### Políticas RLS
+Los usuarios normales **no pueden** hacer UPDATE en la tabla `tenants`. Solo el service role tiene acceso completo, por lo que se requiere una edge function para realizar la actualización de forma segura.
 
 ---
 
-## Cambios Técnicos
+## Implementación
 
-### Archivo: `src/hooks/use-period-usage.ts`
+### 1. Crear Edge Function: `admin-toggle-tenant-status`
 
-**1. Eliminar prioridad de suscripción, usar siempre `tenants.created_at`:**
+Nueva función en `supabase/functions/admin-toggle-tenant-status/index.ts`:
 
 ```typescript
-async function fetchPeriodUsage(
-  tenantId: string,
-  subscription: Subscription | null
-): Promise<PeriodUsage> {
-  let periodStart: Date;
-  let periodEnd: Date;
-  
-  // ============================================
-  // SIEMPRE calcular basado en fecha de creación del tenant
-  // ============================================
-  const { data: tenantData, error: tenantError } = await supabase
-    .from('tenants')
-    .select('created_at, plan')
-    .eq('id', tenantId)
-    .single();
-  
-  if (tenantError || !tenantData?.created_at) {
-    // FALLBACK: Usar el mes actual si no hay fecha de creación
-    const now = new Date();
-    periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-  } else {
-    // Calcular período basado en fecha de creación del tenant
-    const createdAt = new Date(tenantData.created_at);
-    const calculated = calculateBillingPeriod(createdAt);
-    periodStart = calculated.periodStart;
-    periodEnd = calculated.periodEnd;
+// Endpoint: POST /admin-toggle-tenant-status
+// Body: { tenantId: string, isActive: boolean }
+
+// 1. Verificar que el usuario sea admin (email = contacto@vexalatam.com)
+// 2. Validar parámetros de entrada
+// 3. Actualizar is_active en tabla tenants usando service role
+// 4. Registrar acción en audit_logs para trazabilidad
+// 5. Retornar estado actualizado
+```
+
+**Características:**
+- Usa `SUPABASE_SERVICE_ROLE_KEY` para bypass de RLS
+- Valida que solo admins puedan ejecutar
+- Registra en `audit_logs` quién hizo el cambio
+- Retorna el nuevo estado para actualización optimista de UI
+
+### 2. Modificar Vista de Clientes
+
+En `src/pages/admin/AdminClients.tsx`:
+
+**A. Importar Switch:**
+```typescript
+import { Switch } from '@/components/ui/switch';
+```
+
+**B. Agregar estado de loading por tenant:**
+```typescript
+const [togglingId, setTogglingId] = useState<string | null>(null);
+```
+
+**C. Handler para toggle:**
+```typescript
+const handleToggleStatus = async (tenantId: string, newStatus: boolean) => {
+  setTogglingId(tenantId);
+  try {
+    const { data, error } = await supabase.functions.invoke('admin-toggle-tenant-status', {
+      body: { tenantId, isActive: newStatus }
+    });
+    
+    if (error) throw error;
+    
+    // Actualizar estado local
+    setTenants(prev => prev.map(t => 
+      t.id === tenantId ? { ...t, is_active: newStatus } : t
+    ));
+    
+    toast.success(newStatus ? 'Cliente activado' : 'Cliente desactivado');
+  } catch (err) {
+    toast.error('Error al cambiar estado');
+  } finally {
+    setTogglingId(null);
   }
-  
-  // ============================================
-  // USAR PLAN DEL TENANT (no de suscripción)
-  // ============================================
-  const currentPlan: PlanId = (tenantData?.plan as PlanId) || 'basic';
-  
-  // ... resto del código sin cambios
-}
+};
 ```
 
-**2. Simplificar dependencias del hook:**
-
-Como ya no dependemos de `useSubscription` para las fechas, podemos eliminar la condición de `subscriptionLoading`:
-
+**D. Reemplazar Badge por Switch:**
 ```typescript
-export function usePeriodUsage(): UsePeriodUsageReturn {
-  const { tenantId, tenantPlan } = useEffectiveTenant();
-  const queryClient = useQueryClient();
+// Antes (líneas 333-340):
+<Badge>Activo/Inactivo</Badge>
 
-  const queryKey = ['period-usage', tenantId];
-
-  const { data: usage, isLoading, error, refetch } = useQuery({
-    queryKey,
-    queryFn: () => fetchPeriodUsage(tenantId!),
-    enabled: !!tenantId,
-    staleTime: 30000,
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
-  });
-
-  return {
-    usage: usage ?? null,
-    isLoading: tenantId ? isLoading : false,
-    error: error ? (error as Error).message : null,
-    refetch: async () => { await refetch(); },
-  };
-}
+// Después:
+<div className="flex items-center gap-2">
+  <Switch
+    checked={tenant.is_active !== false}
+    onCheckedChange={(checked) => handleToggleStatus(tenant.id, checked)}
+    disabled={togglingId === tenant.id}
+  />
+  <span className={tenant.is_active !== false ? 'text-green-600' : 'text-destructive'}>
+    {tenant.is_active !== false ? 'Activo' : 'Inactivo'}
+  </span>
+</div>
 ```
 
 ---
 
-## Flujo Corregido
+## Flujo de Usuario
 
 ```text
-Admin hace clic en "Ver como cliente"
-            ↓
-useEffectiveTenant() devuelve tenantId impersonado
-            ↓
-usePeriodUsage() consulta tenants.created_at
-            ↓
-created_at = 2026-01-16
-            ↓
-calculateBillingPeriod(2026-01-16) = {
-  periodStart: 2026-01-16
-  periodEnd: 2026-02-15
-}
-            ↓
-UI muestra: "16 ene - 15 feb 2026"
+Admin en Panel Clientes
+         ↓
+Ve Switch en columna "Estado" (ON = verde)
+         ↓
+Hace clic en Switch para desactivar
+         ↓
+Switch muestra loading (disabled)
+         ↓
+Edge function valida admin + actualiza BD
+         ↓
+Switch cambia a OFF + texto "Inactivo" (rojo)
+         ↓
+Toast: "Cliente desactivado"
 ```
 
 ---
 
-## Verificación de Límite por Plan
+## Archivos a Crear/Modificar
 
-Para el límite (300/1000/4000) se usará el campo `plan` de la tabla `tenants`, consistente con lo que se muestra en Admin > Clientes:
-
-| Cliente | Plan | Límite |
-|---------|------|--------|
-| Estetica Online | basic | 300 |
-| Casa Buona | pro | 1,000 |
-| Growth Partners | pro | 1,000 |
+| Archivo | Acción | Descripción |
+|---------|--------|-------------|
+| `supabase/functions/admin-toggle-tenant-status/index.ts` | **Crear** | Edge function para toggle seguro |
+| `src/pages/admin/AdminClients.tsx` | **Modificar** | Agregar Switch y handler |
 
 ---
 
-## Archivos a Modificar
+## Consideraciones de Seguridad
 
-| Archivo | Cambio |
-|---------|--------|
-| `src/hooks/use-period-usage.ts` | Usar `tenants.created_at` y `tenants.plan` directamente, eliminar dependencia de `useSubscription` para fechas |
+1. **Validación de Admin:** Solo el email `contacto@vexalatam.com` puede ejecutar
+2. **Audit Trail:** Cada cambio se registra en `audit_logs` con:
+   - `admin_user_id`
+   - `action: 'tenant_status_toggle'`
+   - `old_values: { is_active: true }`
+   - `new_values: { is_active: false }`
+3. **No auto-desactivación:** Agregar validación para que el admin no pueda desactivar su propio tenant (si aplicable)
+
+---
+
+## Extensiones Futuras (No Incluidas en Este Plan)
+
+Actualmente `is_active = false` es solo informativo. Para hacerlo funcional se podría:
+
+| Funcionalidad | Impacto |
+|---------------|---------|
+| Bloquear login | Usuarios del tenant no pueden entrar |
+| Pausar WhatsApp | Mensajes entrantes no se procesan |
+| Banner de suspensión | Cliente ve aviso al entrar |
+| Suspender facturación | No se cobran extras |
+
+Estas extensiones requerirían modificaciones adicionales en `ProtectedRoute`, `webhook-n8n-proxy`, etc.
 
 ---
 
 ## Resultado Esperado
 
-1. Estetica Online (creado 15 ene) → Período: **"16 ene - 15 feb 2026"**
-2. Casa Buona (creado 17 ene) → Período: **"17 ene - 16 feb 2026"**
-3. Growthpartners Demo (creado 10 ene) → Período: **"10 ene - 9 feb 2026"**
-
-Cada cliente tendrá su período de facturación correcto basado en su fecha de creación.
-
+El admin podrá:
+1. Ver el estado actual de cada cliente como un Switch interactivo
+2. Activar/desactivar clientes con un solo clic
+3. Ver feedback visual inmediato (loading + toast)
+4. Tener registro de auditoría de todos los cambios
