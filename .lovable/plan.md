@@ -1,101 +1,134 @@
 
-
-# Plan: Corregir Sincronización de Métricas en Tiempo Real
+# Plan: Corregir Período de Facturación en Modo Impersonación
 
 ## Problema Identificado
 
-Las métricas no se actualizan visualmente a pesar de que:
-- ✅ Realtime está habilitado en `n8n_chat_histories` y `bookings`
-- ✅ El canal realtime está conectado (`[ChatRealtimeSync] ✅ Realtime connected successfully`)
-- ✅ El polling está funcionando cada 30 segundos
+Cuando un admin impersona un cliente, el período de facturación muestra **"1 ene - 31 ene 2026"** en lugar del período correcto basado en la fecha de creación del cliente (ej: "16 ene - 15 feb 2026" para Estetica Online).
 
-**Causa raíz**: Se está usando `invalidateQueries` que solo marca el cache como "obsoleto", pero no fuerza un refetch inmediato. Los datos solo se refrescan cuando hay un trigger como navegación o window focus.
+### Causa Raíz
+1. `usePeriodUsage` usa `useSubscription` para obtener las fechas del período
+2. Cuando se impersona, `useSubscription` hace una query asíncrona para cargar los datos del tenant
+3. React Query ejecuta `fetchPeriodUsage` **antes** de que la suscripción termine de cargar
+4. Con `subscription = null`, el código cae al **fallback** que usa el mes calendario actual
+5. El cache guarda este resultado incorrecto
+
+### Datos en Base de Datos (CORRECTOS)
+```
+Estetica Online (6fea8edb-fcaa-4724-86c3-3865398e4aa8):
+- current_period_start: 2026-01-16
+- current_period_end: 2026-02-16
+- plan: basic
+```
+
+---
 
 ## Solución
 
-Cambiar de `invalidateQueries` a `refetchQueries` para forzar la actualización inmediata de los datos.
+Modificar `usePeriodUsage` para que **espere** a que la suscripción esté cargada antes de ejecutar la query de período.
 
-## Archivo a Modificar
+### Cambios en `src/hooks/use-period-usage.ts`
 
-`src/hooks/use-chat-realtime-sync.ts`
-
-### Cambios Específicos
-
-Actualizar la función `invalidateAllChatCaches` para usar `refetchQueries`:
+**1. Agregar dependencia al estado de carga de suscripción:**
 
 ```typescript
-// ANTES
-queryClient.invalidateQueries({ queryKey: ['dashboard-metrics'] });
-queryClient.invalidateQueries({ queryKey: ['period-usage'] });
-queryClient.invalidateQueries({ queryKey: ['billing-usage'] });
-queryClient.invalidateQueries({ queryKey: ['subscription'] });
+export function usePeriodUsage(): UsePeriodUsageReturn {
+  const { tenantId } = useEffectiveTenant();
+  const { subscription, isLoading: subscriptionLoading } = useSubscription(); // <-- NUEVO
+  const queryClient = useQueryClient();
 
-// DESPUÉS
-queryClient.refetchQueries({ queryKey: ['dashboard-metrics'] });
-queryClient.refetchQueries({ queryKey: ['period-usage'] });
-queryClient.refetchQueries({ queryKey: ['billing-usage'] });
-queryClient.refetchQueries({ queryKey: ['subscription'] });
+  const queryKey = ['period-usage', tenantId];
+
+  const { data: usage, isLoading, error, refetch } = useQuery({
+    queryKey,
+    queryFn: () => fetchPeriodUsage(tenantId!, subscription),
+    // NUEVO: Solo ejecutar cuando:
+    // 1. Tenemos tenantId
+    // 2. La suscripción ya terminó de cargar
+    enabled: !!tenantId && !subscriptionLoading,
+    staleTime: 30000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
+
+  return {
+    usage: usage ?? null,
+    // Mostrar loading si falta tenantId O si la suscripción está cargando
+    isLoading: !tenantId ? false : (subscriptionLoading || isLoading),
+    error: error ? (error as Error).message : null,
+    refetch: async () => { 
+      await refetch(); 
+    },
+  };
+}
 ```
 
-### Consideración de Performance
-
-Para evitar sobrecarga en refetch del polling, también agregaremos la opción `type: 'active'` que solo refetcha queries activamente montadas en la UI:
+**2. Agregar logging para debug:**
 
 ```typescript
-queryClient.refetchQueries({ 
-  queryKey: ['dashboard-metrics'],
-  type: 'active' // Solo refetcha si el componente está montado
+console.log('[usePeriodUsage] State:', {
+  tenantId,
+  subscriptionLoading,
+  hasSubscription: !!subscription,
+  periodFromSubscription: subscription?.current_period_start 
+    ? 'yes' : 'will-fallback',
 });
 ```
 
-## Resultado Esperado
+---
 
-1. Nuevo chat llega vía WhatsApp
-2. `useChatRealtimeSync` detecta el INSERT (o polling cada 30s)
-3. `refetchQueries` fuerza refetch inmediato
-4. Dashboard, Métricas y Facturación se actualizan visualmente sin necesidad de navegar o hacer focus
+## Verificación de "Conversaciones Fuera de Plan"
 
-## Sección Técnica
-
-### Diferencia entre invalidateQueries y refetchQueries
-
-| Método | Marca Stale | Fuerza Refetch | Cuándo Refetcha |
-|--------|-------------|----------------|-----------------|
-| `invalidateQueries` | ✅ | ❌ | En próximo trigger (mount, focus, etc.) |
-| `refetchQueries` | ✅ | ✅ | Inmediatamente |
-
-### Código Completo de la Función Actualizada
+La sección **SÍ está operativa**. Confirmado en el código:
 
 ```typescript
-const invalidateAllChatCaches = useCallback(() => {
-  const now = Date.now();
-  if (now - lastInvalidationRef.current < 1000) {
-    return;
-  }
-  lastInvalidationRef.current = now;
-
-  console.log('[ChatRealtimeSync] 🔄 Refetching all chat-related caches');
-  
-  // Refetch forzado de todas las queries activas
-  queryClient.refetchQueries({ 
-    queryKey: ['dashboard-metrics'],
-    type: 'active' 
-  });
-  
-  queryClient.refetchQueries({ 
-    queryKey: ['period-usage'],
-    type: 'active' 
-  });
-  
-  queryClient.refetchQueries({ 
-    queryKey: ['billing-usage'],
-    type: 'active' 
-  });
-  
-  queryClient.refetchQueries({ 
-    queryKey: ['subscription'],
-    type: 'active' 
-  });
-}, [queryClient]);
+// src/hooks/use-period-usage.ts líneas 159-161
+const conversationsExtra = Math.max(0, conversationsUsed - conversationsLimit);
+const extraCostUSD = conversationsExtra * EXTRA_CONVERSATION_COST_USD; // $0.30
 ```
 
+### Límites por Plan
+| Plan | Límite | Costo Extra |
+|------|--------|-------------|
+| Basic | 300 | $0.30/conv |
+| Pro | 1,000 | $0.30/conv |
+| Enterprise | 4,000 | $0.30/conv |
+
+### Comportamiento Actual (Correcto)
+- Estetica Online: 156 conversaciones, límite 300
+- 156 < 300 → 0 conversaciones extra
+- Costo extra: $0.00 USD
+
+### Cuando Supere el Límite
+Si Estetica Online llegara a 350 conversaciones:
+- 350 - 300 = 50 conversaciones extra
+- 50 × $0.30 = **$15.00 USD**
+- El panel cambiará de gris a naranja
+
+---
+
+## Archivos a Modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/hooks/use-period-usage.ts` | Agregar `subscriptionLoading` a la condición `enabled` de React Query |
+
+## Resultado Esperado
+
+1. Admin hace clic en "Ver como cliente" para Estetica Online
+2. El hook espera a que `useSubscription` termine de cargar
+3. Se obtiene `current_period_start: 2026-01-16`
+4. Dashboard muestra: **"16 ene - 15 feb 2026"**
+
+---
+
+## Notas Técnicas
+
+### Por qué el Fallback existe
+El fallback al mes calendario es necesario para casos donde:
+- Tenants muy nuevos sin suscripción
+- Errores de conectividad
+
+Pero **no debería activarse** cuando hay datos válidos en la suscripción.
+
+### Cache de React Query
+El `queryKey` incluye `tenantId`, por lo que cada tenant tiene su propio cache. Al corregir el timing, cada impersonación cargará los datos correctos.
