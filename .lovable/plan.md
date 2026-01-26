@@ -1,50 +1,94 @@
 
-# Plan: Corregir Período de Facturación en Modo Impersonación
+
+# Plan: Corregir Período de Facturación - Usar Fecha de Creación del Tenant
 
 ## Problema Identificado
 
-Cuando un admin impersona un cliente, el período de facturación muestra **"1 ene - 31 ene 2026"** en lugar del período correcto basado en la fecha de creación del cliente (ej: "16 ene - 15 feb 2026" para Estetica Online).
+La UI muestra **"1 ene - 31 ene 2026"** cuando debería mostrar **"15 ene - 14 feb 2026"** para Estetica Online.
 
-### Causa Raíz
-1. `usePeriodUsage` usa `useSubscription` para obtener las fechas del período
-2. Cuando se impersona, `useSubscription` hace una query asíncrona para cargar los datos del tenant
-3. React Query ejecuta `fetchPeriodUsage` **antes** de que la suscripción termine de cargar
-4. Con `subscription = null`, el código cae al **fallback** que usa el mes calendario actual
-5. El cache guarda este resultado incorrecto
+**Causa raíz:** El código actual prioriza las fechas de `subscriptions.current_period_start/end`, pero cuando el admin impersona un cliente, hay una condición de carrera donde la query de suscripción no ha terminado y el sistema cae al fallback del mes calendario.
 
-### Datos en Base de Datos (CORRECTOS)
-```
-Estetica Online (6fea8edb-fcaa-4724-86c3-3865398e4aa8):
-- current_period_start: 2026-01-16
-- current_period_end: 2026-02-16
-- plan: basic
-```
+**Datos en base de datos (correctos):**
+| Campo | Valor |
+|-------|-------|
+| `tenants.created_at` | 2026-01-16 |
+| `subscriptions.current_period_start` | 2026-01-16 |
+| `subscriptions.current_period_end` | 2026-02-16 |
+
+**Requerimiento del usuario:** El período de facturación debe ser **SIEMPRE** 1 mes desde la fecha de la columna "Creado" del tenant (visible en Admin > Clientes).
 
 ---
 
 ## Solución
 
-Modificar `usePeriodUsage` para que **espere** a que la suscripción esté cargada antes de ejecutar la query de período.
+Modificar `usePeriodUsage` para que **siempre** calcule el período basado en `tenants.created_at`, ignorando las fechas de la tabla `subscriptions`. Esto garantiza:
 
-### Cambios en `src/hooks/use-period-usage.ts`
+1. Consistencia visual entre Admin y vista de cliente
+2. No hay dependencia de timing con `useSubscription`
+3. La lógica es más simple y predecible
 
-**1. Agregar dependencia al estado de carga de suscripción:**
+---
+
+## Cambios Técnicos
+
+### Archivo: `src/hooks/use-period-usage.ts`
+
+**1. Eliminar prioridad de suscripción, usar siempre `tenants.created_at`:**
+
+```typescript
+async function fetchPeriodUsage(
+  tenantId: string,
+  subscription: Subscription | null
+): Promise<PeriodUsage> {
+  let periodStart: Date;
+  let periodEnd: Date;
+  
+  // ============================================
+  // SIEMPRE calcular basado en fecha de creación del tenant
+  // ============================================
+  const { data: tenantData, error: tenantError } = await supabase
+    .from('tenants')
+    .select('created_at, plan')
+    .eq('id', tenantId)
+    .single();
+  
+  if (tenantError || !tenantData?.created_at) {
+    // FALLBACK: Usar el mes actual si no hay fecha de creación
+    const now = new Date();
+    periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  } else {
+    // Calcular período basado en fecha de creación del tenant
+    const createdAt = new Date(tenantData.created_at);
+    const calculated = calculateBillingPeriod(createdAt);
+    periodStart = calculated.periodStart;
+    periodEnd = calculated.periodEnd;
+  }
+  
+  // ============================================
+  // USAR PLAN DEL TENANT (no de suscripción)
+  // ============================================
+  const currentPlan: PlanId = (tenantData?.plan as PlanId) || 'basic';
+  
+  // ... resto del código sin cambios
+}
+```
+
+**2. Simplificar dependencias del hook:**
+
+Como ya no dependemos de `useSubscription` para las fechas, podemos eliminar la condición de `subscriptionLoading`:
 
 ```typescript
 export function usePeriodUsage(): UsePeriodUsageReturn {
-  const { tenantId } = useEffectiveTenant();
-  const { subscription, isLoading: subscriptionLoading } = useSubscription(); // <-- NUEVO
+  const { tenantId, tenantPlan } = useEffectiveTenant();
   const queryClient = useQueryClient();
 
   const queryKey = ['period-usage', tenantId];
 
   const { data: usage, isLoading, error, refetch } = useQuery({
     queryKey,
-    queryFn: () => fetchPeriodUsage(tenantId!, subscription),
-    // NUEVO: Solo ejecutar cuando:
-    // 1. Tenemos tenantId
-    // 2. La suscripción ya terminó de cargar
-    enabled: !!tenantId && !subscriptionLoading,
+    queryFn: () => fetchPeriodUsage(tenantId!),
+    enabled: !!tenantId,
     staleTime: 30000,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
@@ -52,57 +96,45 @@ export function usePeriodUsage(): UsePeriodUsageReturn {
 
   return {
     usage: usage ?? null,
-    // Mostrar loading si falta tenantId O si la suscripción está cargando
-    isLoading: !tenantId ? false : (subscriptionLoading || isLoading),
+    isLoading: tenantId ? isLoading : false,
     error: error ? (error as Error).message : null,
-    refetch: async () => { 
-      await refetch(); 
-    },
+    refetch: async () => { await refetch(); },
   };
 }
 ```
 
-**2. Agregar logging para debug:**
+---
 
-```typescript
-console.log('[usePeriodUsage] State:', {
-  tenantId,
-  subscriptionLoading,
-  hasSubscription: !!subscription,
-  periodFromSubscription: subscription?.current_period_start 
-    ? 'yes' : 'will-fallback',
-});
+## Flujo Corregido
+
+```text
+Admin hace clic en "Ver como cliente"
+            ↓
+useEffectiveTenant() devuelve tenantId impersonado
+            ↓
+usePeriodUsage() consulta tenants.created_at
+            ↓
+created_at = 2026-01-16
+            ↓
+calculateBillingPeriod(2026-01-16) = {
+  periodStart: 2026-01-16
+  periodEnd: 2026-02-15
+}
+            ↓
+UI muestra: "16 ene - 15 feb 2026"
 ```
 
 ---
 
-## Verificación de "Conversaciones Fuera de Plan"
+## Verificación de Límite por Plan
 
-La sección **SÍ está operativa**. Confirmado en el código:
+Para el límite (300/1000/4000) se usará el campo `plan` de la tabla `tenants`, consistente con lo que se muestra en Admin > Clientes:
 
-```typescript
-// src/hooks/use-period-usage.ts líneas 159-161
-const conversationsExtra = Math.max(0, conversationsUsed - conversationsLimit);
-const extraCostUSD = conversationsExtra * EXTRA_CONVERSATION_COST_USD; // $0.30
-```
-
-### Límites por Plan
-| Plan | Límite | Costo Extra |
-|------|--------|-------------|
-| Basic | 300 | $0.30/conv |
-| Pro | 1,000 | $0.30/conv |
-| Enterprise | 4,000 | $0.30/conv |
-
-### Comportamiento Actual (Correcto)
-- Estetica Online: 156 conversaciones, límite 300
-- 156 < 300 → 0 conversaciones extra
-- Costo extra: $0.00 USD
-
-### Cuando Supere el Límite
-Si Estetica Online llegara a 350 conversaciones:
-- 350 - 300 = 50 conversaciones extra
-- 50 × $0.30 = **$15.00 USD**
-- El panel cambiará de gris a naranja
+| Cliente | Plan | Límite |
+|---------|------|--------|
+| Estetica Online | basic | 300 |
+| Casa Buona | pro | 1,000 |
+| Growth Partners | pro | 1,000 |
 
 ---
 
@@ -110,25 +142,15 @@ Si Estetica Online llegara a 350 conversaciones:
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/hooks/use-period-usage.ts` | Agregar `subscriptionLoading` a la condición `enabled` de React Query |
-
-## Resultado Esperado
-
-1. Admin hace clic en "Ver como cliente" para Estetica Online
-2. El hook espera a que `useSubscription` termine de cargar
-3. Se obtiene `current_period_start: 2026-01-16`
-4. Dashboard muestra: **"16 ene - 15 feb 2026"**
+| `src/hooks/use-period-usage.ts` | Usar `tenants.created_at` y `tenants.plan` directamente, eliminar dependencia de `useSubscription` para fechas |
 
 ---
 
-## Notas Técnicas
+## Resultado Esperado
 
-### Por qué el Fallback existe
-El fallback al mes calendario es necesario para casos donde:
-- Tenants muy nuevos sin suscripción
-- Errores de conectividad
+1. Estetica Online (creado 15 ene) → Período: **"16 ene - 15 feb 2026"**
+2. Casa Buona (creado 17 ene) → Período: **"17 ene - 16 feb 2026"**
+3. Growthpartners Demo (creado 10 ene) → Período: **"10 ene - 9 feb 2026"**
 
-Pero **no debería activarse** cuando hay datos válidos en la suscripción.
+Cada cliente tendrá su período de facturación correcto basado en su fecha de creación.
 
-### Cache de React Query
-El `queryKey` incluye `tenantId`, por lo que cada tenant tiene su propio cache. Al corregir el timing, cada impersonación cargará los datos correctos.
