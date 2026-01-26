@@ -28,6 +28,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useImpersonation } from '@/contexts/ImpersonationContext';
 import { countConversationsForBillingPeriod } from '@/lib/api/conversation-counter';
+import { Switch } from '@/components/ui/switch';
 import { Loader2, Building2, CheckCircle, XCircle, Copy, Eye, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -61,6 +62,7 @@ export default function AdminClients() {
   const [isLoadingRealCounts, setIsLoadingRealCounts] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   // Cargar tenants del backend
   useEffect(() => {
@@ -199,6 +201,30 @@ export default function AdminClients() {
     }
     
     setImpersonatingId(null);
+  };
+
+  // Handler para toggle de estado activo/inactivo
+  const handleToggleStatus = async (tenantId: string, newStatus: boolean) => {
+    setTogglingId(tenantId);
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-toggle-tenant-status', {
+        body: { tenantId, isActive: newStatus }
+      });
+      
+      if (error) throw error;
+      
+      // Actualizar estado local
+      setTenants(prev => prev.map(t => 
+        t.id === tenantId ? { ...t, is_active: newStatus } : t
+      ));
+      
+      toast.success(newStatus ? 'Cliente activado' : 'Cliente desactivado');
+    } catch (err) {
+      console.error('[AdminClients] Toggle status error:', err);
+      toast.error('Error al cambiar estado del cliente');
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   return (
@@ -370,13 +396,20 @@ export default function AdminClients() {
                             )}
                           </TableCell>
                           <TableCell>
-                            {tenant.is_active ? (
-                              <Badge variant="default" className="bg-green-600 hover:bg-green-700">
-                                Activo
-                              </Badge>
-                            ) : (
-                              <Badge variant="destructive">Inactivo</Badge>
-                            )}
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={tenant.is_active !== false}
+                                onCheckedChange={(checked) => handleToggleStatus(tenant.id, checked)}
+                                disabled={togglingId === tenant.id}
+                              />
+                              {togglingId === tenant.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                              ) : (
+                                <span className={tenant.is_active !== false ? 'text-green-600 text-sm' : 'text-destructive text-sm'}>
+                                  {tenant.is_active !== false ? 'Activo' : 'Inactivo'}
+                                </span>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell>
                             {tenant.whatsapp_phone_id ? (
