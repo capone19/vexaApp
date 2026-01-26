@@ -71,10 +71,13 @@ export async function countConversations(
     // QUERY SIMPLE - Misma lógica que la sección de Chats
     // 1 session_id único = 1 chat
     // ============================================
+    // IMPORTANTE: Agregar límite alto para traer TODOS los mensajes
+    // Supabase tiene un límite por defecto de 1000 filas
     const { data, error } = await externalSupabase
       .from('n8n_chat_histories')
       .select('session_id, created_at')
-      .eq('tenant_id', tenantId);
+      .eq('tenant_id', tenantId)
+      .limit(50000); // Límite alto para facturación/métricas
 
     if (error) {
       console.error('[countConversations] Error:', error);
@@ -124,6 +127,17 @@ export async function countConversations(
     });
     
     const totalConversations = sessionMessageCounts.size;
+    
+    console.log('[countConversations] ✓ Counted:', {
+      tenantId,
+      totalMessages,
+      totalConversations,
+      dateRange: startDate && endDate 
+        ? `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`
+        : 'ALL TIME',
+      rawDataCount: data.length,
+      filteredCount: filteredData.length,
+    });
 
     // Clasificar cada sesión para el funnel
     const byStage = { tofu: 0, mofu: 0, hotLeads: 0 };
