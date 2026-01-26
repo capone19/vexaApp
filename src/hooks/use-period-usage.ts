@@ -205,16 +205,28 @@ async function fetchPeriodUsage(
 
 export function usePeriodUsage(): UsePeriodUsageReturn {
   const { tenantId } = useEffectiveTenant();
-  const { subscription } = useSubscription();
+  const { subscription, isLoading: subscriptionLoading } = useSubscription();
   const queryClient = useQueryClient();
 
   // Query key incluye tenantId para cache separado por tenant
   const queryKey = ['period-usage', tenantId];
 
+  // Debug: Estado de sincronización
+  console.log('[usePeriodUsage] State:', {
+    tenantId,
+    subscriptionLoading,
+    hasSubscription: !!subscription,
+    periodFromSubscription: subscription?.current_period_start 
+      ? 'yes' : 'will-fallback',
+  });
+
   const { data: usage, isLoading, error, refetch } = useQuery({
     queryKey,
     queryFn: () => fetchPeriodUsage(tenantId!, subscription),
-    enabled: !!tenantId,
+    // IMPORTANTE: Solo ejecutar cuando:
+    // 1. Tenemos tenantId
+    // 2. La suscripción ya terminó de cargar (evita fallback incorrecto)
+    enabled: !!tenantId && !subscriptionLoading,
     staleTime: 30000, // 30 segundos - se invalida externamente por realtime
     refetchOnWindowFocus: true,
     refetchOnMount: true,
@@ -222,7 +234,8 @@ export function usePeriodUsage(): UsePeriodUsageReturn {
 
   return {
     usage: usage ?? null,
-    isLoading: tenantId ? isLoading : false,
+    // Mostrar loading si falta tenantId O si la suscripción está cargando
+    isLoading: !tenantId ? false : (subscriptionLoading || isLoading),
     error: error ? (error as Error).message : null,
     refetch: async () => { 
       await refetch(); 
