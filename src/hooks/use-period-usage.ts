@@ -176,9 +176,11 @@ async function fetchPeriodUsage(
     conversationsLimit,
     conversationsExtra,
     extraCostUSD,
-    period: `${periodStart.toISOString().split('T')[0]} to ${periodEnd.toISOString().split('T')[0]}`,
+    periodStart: periodStart.toISOString().split('T')[0],
+    periodEnd: periodEnd.toISOString().split('T')[0],
     daysRemaining,
     currentPlan,
+    note: 'Period = 1 mes desde fecha de creación del tenant',
   });
 
   return {
