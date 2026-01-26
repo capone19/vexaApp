@@ -1,14 +1,16 @@
 // ============================================
-// VEXA - Hook para Dashboard Metrics (con React Query + Realtime)
+// VEXA - Hook para Dashboard Metrics (con React Query)
 // ============================================
 // Usa la función centralizada countConversations para garantizar
 // consistencia con Facturación y Admin.
+// 
+// NOTA: La sincronización realtime ahora es GLOBAL
+// Se maneja en MainLayout via useChatRealtimeSync.
 // ============================================
 
-import { useEffect, useRef, useCallback } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { externalSupabase, type ExternalBooking } from '@/integrations/supabase/external-client';
-import { countConversations, classifySession } from '@/lib/api/conversation-counter';
+import { countConversations } from '@/lib/api/conversation-counter';
 import type { DashboardMetrics, Appointment, DailyMetric, TopService } from '@/lib/types';
 import { format, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -316,10 +318,16 @@ async function fetchDashboardMetrics(
 export function useDashboardMetrics({
   tenantId,
   dateRange,
-  enableRealtime = true,
+  enableRealtime = true, // Mantenemos el parámetro por compatibilidad pero ya no se usa aquí
 }: UseDashboardMetricsOptions): UseDashboardMetricsReturn {
-  const queryClient = useQueryClient();
-  const channelRef = useRef<ReturnType<typeof externalSupabase.channel> | null>(null);
+  // ============================================
+  // NOTA: La suscripción realtime ahora es GLOBAL
+  // ============================================
+  // La sincronización en tiempo real se maneja en MainLayout
+  // a través de useChatRealtimeSync, que invalida todos los
+  // caches relacionados (incluyendo este) cuando llegan
+  // nuevos mensajes o bookings.
+  // ============================================
 
   // Calcular fechas - usar undefined si no hay filtro para traer todo
   const startDate = dateRange?.startDate;
@@ -334,6 +342,7 @@ export function useDashboardMetrics({
   ];
 
   // Usar React Query para cache automático
+  // La invalidación viene de useChatRealtimeSync en MainLayout
   const { data, isLoading, error, refetch } = useQuery({
     queryKey,
     queryFn: () => fetchDashboardMetrics(tenantId!, startDate, endDate),
@@ -342,63 +351,6 @@ export function useDashboardMetrics({
     refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
-
-  // Función para invalidar cache y refetch
-  const handleRealtimeUpdate = useCallback(() => {
-    console.log('[useDashboardMetrics] Realtime update - invalidating cache');
-    queryClient.invalidateQueries({ queryKey: ['dashboard-metrics', tenantId] });
-  }, [queryClient, tenantId]);
-
-  // Suscripción a Realtime para bookings
-  useEffect(() => {
-    if (!enableRealtime || !tenantId) return;
-
-    // Limpiar canal previo
-    if (channelRef.current) {
-      externalSupabase.removeChannel(channelRef.current);
-    }
-
-    const channel = externalSupabase
-      .channel(`dashboard-metrics-${tenantId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'bookings',
-          filter: `tenant_id=eq.${tenantId}`,
-        },
-        (payload) => {
-          console.log('[useDashboardMetrics] Realtime booking event:', payload.eventType);
-          handleRealtimeUpdate();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'n8n_chat_histories',
-          filter: `tenant_id=eq.${tenantId}`,
-        },
-        (payload) => {
-          console.log('[useDashboardMetrics] Realtime chat event:', payload.eventType);
-          handleRealtimeUpdate();
-        }
-      )
-      .subscribe((status) => {
-        console.log('[useDashboardMetrics] Subscription status:', status);
-      });
-
-    channelRef.current = channel;
-
-    return () => {
-      if (channelRef.current) {
-        externalSupabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
-    };
-  }, [enableRealtime, tenantId, handleRealtimeUpdate]);
 
   return {
     metrics: data?.metrics ?? (tenantId ? null : emptyMetrics),

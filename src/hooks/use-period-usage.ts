@@ -5,8 +5,11 @@
 // El período se calcula basado en current_period_start de la suscripción
 // o la fecha de creación del tenant (ciclos mensuales).
 // ============================================
+// ACTUALIZADO: Ahora usa React Query para cache compartido
+// y sincronización con otros hooks vía invalidación.
+// ============================================
 
-import { useState, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenant } from './use-effective-tenant';
 import { useSubscription } from './use-subscription';
@@ -58,6 +61,12 @@ interface UsePeriodUsageReturn {
   refetch: () => Promise<void>;
 }
 
+interface Subscription {
+  current_period_start?: string;
+  current_period_end?: string;
+  plan?: string;
+}
+
 /**
  * Calcula el período de facturación actual basado en la fecha de inicio.
  * Los períodos son ciclos mensuales desde la fecha de inicio.
@@ -85,139 +94,136 @@ function calculateBillingPeriod(startDate: Date): { periodStart: Date; periodEnd
   return { periodStart, periodEnd };
 }
 
+/**
+ * Función de fetch separada para usar con React Query
+ */
+async function fetchPeriodUsage(
+  tenantId: string,
+  subscription: Subscription | null
+): Promise<PeriodUsage> {
+  let periodStart: Date;
+  let periodEnd: Date;
+  
+  // PRIORIDAD 1: Usar fechas de la suscripción si existen
+  if (subscription?.current_period_start && subscription?.current_period_end) {
+    periodStart = new Date(subscription.current_period_start);
+    periodEnd = new Date(subscription.current_period_end);
+  } else {
+    // PRIORIDAD 2: Calcular basado en fecha de creación del tenant
+    const { data: tenantData, error: tenantError } = await supabase
+      .from('tenants')
+      .select('created_at')
+      .eq('id', tenantId)
+      .single();
+    
+    if (tenantError || !tenantData?.created_at) {
+      // FALLBACK: Usar el mes actual si no hay fecha de creación
+      const now = new Date();
+      periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    } else {
+      // Calcular período basado en fecha de creación
+      const createdAt = new Date(tenantData.created_at);
+      const calculated = calculateBillingPeriod(createdAt);
+      periodStart = calculated.periodStart;
+      periodEnd = calculated.periodEnd;
+    }
+  }
+
+  // Calcular días del período
+  const now = new Date();
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const daysTotal = Math.ceil((periodEnd.getTime() - periodStart.getTime()) / msPerDay) + 1;
+  const daysElapsed = Math.max(0, Math.ceil((now.getTime() - periodStart.getTime()) / msPerDay));
+  const daysRemaining = Math.max(0, Math.ceil((periodEnd.getTime() - now.getTime()) / msPerDay));
+
+  // ============================================
+  // USAR FUNCIÓN CENTRALIZADA DE CONTEO
+  // ============================================
+  const conversationData = await countConversationsForBillingPeriod(
+    tenantId,
+    periodStart,
+    periodEnd
+  );
+
+  const conversationsUsed = conversationData.totalConversations;
+  const totalMessages = conversationData.totalMessages;
+  const avgMessagesPerConversation = conversationData.avgMessagesPerConversation;
+
+  // Obtener el plan actual y límites
+  const currentPlan: PlanId = (subscription?.plan as PlanId) || 'basic';
+  const conversationsLimit = getConversationLimit(currentPlan);
+  const whatsappLimit = getWhatsAppLimit(currentPlan);
+  const campaignsEnabled = hasCampaignsEnabled(currentPlan);
+
+  // Calcular conversaciones extra y costo
+  const conversationsExtra = Math.max(0, conversationsUsed - conversationsLimit);
+  const extraCostUSD = conversationsExtra * EXTRA_CONVERSATION_COST_USD;
+
+  // WhatsApp conectados (por ahora hardcodeado)
+  const whatsappConnected = 1;
+
+  // Campañas
+  const campaignsUsed = 0;
+
+  const conversationsPercentage = conversationsLimit > 0 
+    ? Math.round((conversationsUsed / conversationsLimit) * 100) 
+    : 0;
+
+  console.log('[usePeriodUsage] ✓ Billing usage loaded:', {
+    tenantId,
+    conversationsUsed,
+    conversationsLimit,
+    conversationsExtra,
+    extraCostUSD,
+    period: `${periodStart.toISOString().split('T')[0]} to ${periodEnd.toISOString().split('T')[0]}`,
+    daysRemaining,
+    currentPlan,
+  });
+
+  return {
+    conversationsUsed,
+    conversationsLimit,
+    conversationsPercentage,
+    conversationsExtra,
+    extraCostUSD,
+    totalMessages,
+    avgMessagesPerConversation,
+    whatsappConnected,
+    whatsappLimit,
+    campaignsUsed,
+    campaignsEnabled,
+    periodStart,
+    periodEnd,
+    daysRemaining,
+    daysTotal,
+    daysElapsed,
+  };
+}
+
 export function usePeriodUsage(): UsePeriodUsageReturn {
   const { tenantId } = useEffectiveTenant();
   const { subscription } = useSubscription();
-  const [usage, setUsage] = useState<PeriodUsage | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const fetchUsage = useCallback(async () => {
-    if (!tenantId) {
-      setUsage(null);
-      setIsLoading(false);
-      return;
-    }
+  // Query key incluye tenantId para cache separado por tenant
+  const queryKey = ['period-usage', tenantId];
 
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      let periodStart: Date;
-      let periodEnd: Date;
-      
-      // PRIORIDAD 1: Usar fechas de la suscripción si existen
-      if (subscription?.current_period_start && subscription?.current_period_end) {
-        periodStart = new Date(subscription.current_period_start);
-        periodEnd = new Date(subscription.current_period_end);
-      } else {
-        // PRIORIDAD 2: Calcular basado en fecha de creación del tenant
-        const { data: tenantData, error: tenantError } = await supabase
-          .from('tenants')
-          .select('created_at')
-          .eq('id', tenantId)
-          .single();
-        
-        if (tenantError || !tenantData?.created_at) {
-          // FALLBACK: Usar el mes actual si no hay fecha de creación
-          const now = new Date();
-          periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-          periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-        } else {
-          // Calcular período basado en fecha de creación
-          const createdAt = new Date(tenantData.created_at);
-          const calculated = calculateBillingPeriod(createdAt);
-          periodStart = calculated.periodStart;
-          periodEnd = calculated.periodEnd;
-        }
-      }
-
-      // Calcular días del período
-      const now = new Date();
-      const msPerDay = 24 * 60 * 60 * 1000;
-      const daysTotal = Math.ceil((periodEnd.getTime() - periodStart.getTime()) / msPerDay) + 1;
-      const daysElapsed = Math.max(0, Math.ceil((now.getTime() - periodStart.getTime()) / msPerDay));
-      const daysRemaining = Math.max(0, Math.ceil((periodEnd.getTime() - now.getTime()) / msPerDay));
-
-      // ============================================
-      // USAR FUNCIÓN CENTRALIZADA DE CONTEO
-      // ============================================
-      const conversationData = await countConversationsForBillingPeriod(
-        tenantId,
-        periodStart,
-        periodEnd
-      );
-
-      const conversationsUsed = conversationData.totalConversations;
-      const totalMessages = conversationData.totalMessages;
-      const avgMessagesPerConversation = conversationData.avgMessagesPerConversation;
-
-      // Obtener el plan actual y límites
-      const currentPlan: PlanId = (subscription?.plan as PlanId) || 'basic';
-      const conversationsLimit = getConversationLimit(currentPlan);
-      const whatsappLimit = getWhatsAppLimit(currentPlan);
-      const campaignsEnabled = hasCampaignsEnabled(currentPlan);
-
-      // Calcular conversaciones extra y costo
-      const conversationsExtra = Math.max(0, conversationsUsed - conversationsLimit);
-      const extraCostUSD = conversationsExtra * EXTRA_CONVERSATION_COST_USD;
-
-      // WhatsApp conectados (por ahora hardcodeado)
-      const whatsappConnected = 1;
-
-      // Campañas
-      let campaignsUsed = 0;
-
-      const conversationsPercentage = conversationsLimit > 0 
-        ? Math.round((conversationsUsed / conversationsLimit) * 100) 
-        : 0;
-
-      setUsage({
-        conversationsUsed,
-        conversationsLimit,
-        conversationsPercentage,
-        conversationsExtra,
-        extraCostUSD,
-        totalMessages,
-        avgMessagesPerConversation,
-        whatsappConnected,
-        whatsappLimit,
-        campaignsUsed,
-        campaignsEnabled,
-        periodStart,
-        periodEnd,
-        daysRemaining,
-        daysTotal,
-        daysElapsed,
-      });
-
-      console.log('[usePeriodUsage] ✓ Billing usage loaded:', {
-        tenantId,
-        conversationsUsed,
-        conversationsLimit,
-        conversationsExtra,
-        extraCostUSD,
-        period: `${periodStart.toISOString().split('T')[0]} to ${periodEnd.toISOString().split('T')[0]}`,
-        daysRemaining,
-        currentPlan,
-      });
-    } catch (err) {
-      console.error('[usePeriodUsage] Error:', err);
-      setError(err instanceof Error ? err.message : 'Error cargando uso del período');
-      setUsage(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [tenantId, subscription]);
-
-  useEffect(() => {
-    fetchUsage();
-  }, [fetchUsage]);
+  const { data: usage, isLoading, error, refetch } = useQuery({
+    queryKey,
+    queryFn: () => fetchPeriodUsage(tenantId!, subscription),
+    enabled: !!tenantId,
+    staleTime: 30000, // 30 segundos - se invalida externamente por realtime
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
 
   return {
-    usage,
-    isLoading,
-    error,
-    refetch: fetchUsage,
+    usage: usage ?? null,
+    isLoading: tenantId ? isLoading : false,
+    error: error ? (error as Error).message : null,
+    refetch: async () => { 
+      await refetch(); 
+    },
   };
 }
