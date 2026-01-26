@@ -26,28 +26,40 @@ export function useChatRealtimeSync({
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const lastInvalidationRef = useRef<number>(0);
 
-  // Invalidar todos los caches relacionados con chats
+  // Refetch forzado de todos los caches relacionados con chats
   const invalidateAllChatCaches = useCallback(() => {
-    // Debounce: evitar múltiples invalidaciones en menos de 1 segundo
+    // Debounce: evitar múltiples refetch en menos de 1 segundo
     const now = Date.now();
     if (now - lastInvalidationRef.current < 1000) {
       return;
     }
     lastInvalidationRef.current = now;
 
-    console.log('[ChatRealtimeSync] 🔄 Invalidating all chat-related caches');
+    console.log('[ChatRealtimeSync] 🔄 Refetching all chat-related caches');
     
-    // Invalidar dashboard metrics (todas las variantes de fecha)
-    queryClient.invalidateQueries({ queryKey: ['dashboard-metrics'] });
+    // Refetch forzado de dashboard metrics (solo queries activas)
+    queryClient.refetchQueries({ 
+      queryKey: ['dashboard-metrics'],
+      type: 'active' 
+    });
     
-    // Invalidar uso del período (billing)
-    queryClient.invalidateQueries({ queryKey: ['period-usage'] });
+    // Refetch uso del período (billing)
+    queryClient.refetchQueries({ 
+      queryKey: ['period-usage'],
+      type: 'active' 
+    });
     
-    // Invalidar cualquier cache de billing adicional
-    queryClient.invalidateQueries({ queryKey: ['billing-usage'] });
+    // Refetch cualquier cache de billing adicional
+    queryClient.refetchQueries({ 
+      queryKey: ['billing-usage'],
+      type: 'active' 
+    });
     
-    // Invalidar subscription por si el uso afecta límites
-    queryClient.invalidateQueries({ queryKey: ['subscription'] });
+    // Refetch subscription por si el uso afecta límites
+    queryClient.refetchQueries({ 
+      queryKey: ['subscription'],
+      type: 'active' 
+    });
   }, [queryClient]);
 
   // Suscripción Realtime
