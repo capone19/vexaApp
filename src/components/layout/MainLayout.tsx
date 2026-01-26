@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
+import { useChatRealtimeSync } from "@/hooks/use-chat-realtime-sync";
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -18,6 +20,22 @@ export function MainLayout({ children }: MainLayoutProps) {
   const isMobile = useIsMobile();
   const { isImpersonating } = useImpersonation();
   const { isAdmin } = useAuthContext();
+  const { tenantId } = useEffectiveTenant();
+  
+  // ============================================
+  // SINCRONIZACIÓN GLOBAL DE CHATS EN TIEMPO REAL
+  // ============================================
+  // Este hook escucha eventos de n8n_chat_histories y bookings
+  // para invalidar automáticamente los caches de:
+  // - Dashboard metrics
+  // - Period usage (billing)
+  // - Cualquier otro cache relacionado
+  // ============================================
+  useChatRealtimeSync({
+    tenantId,
+    enablePollingFallback: true,
+    pollingIntervalMs: 30000, // 30 segundos como fallback
+  });
   
   // Agregar padding top cuando admin está impersonando
   const showImpersonationPadding = isAdmin && isImpersonating;
