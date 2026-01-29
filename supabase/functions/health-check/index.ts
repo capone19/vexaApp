@@ -188,27 +188,29 @@ Deno.serve(async (req) => {
     }
     
     const token = authHeader.replace('Bearer ', '');
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: `Bearer ${token}` } }
-    });
     
-    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    // Use getClaims for stateless JWT validation
+    const { data: claims, error: authError } = await supabaseAdmin.auth.getClaims(token);
     
-    if (authError || !user) {
+    if (authError || !claims?.claims?.sub) {
+      console.error('[health-check] Auth error:', authError);
       return new Response(
         JSON.stringify({ error: 'Invalid token' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     
-    if (user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+    const userEmail = claims.claims.email as string | undefined;
+    
+    if (userEmail?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+      console.error('[health-check] Unauthorized access attempt:', userEmail);
       return new Response(
         JSON.stringify({ error: 'Admin access required' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     
-    console.log(`Health check initiated by admin: ${user.email}`);
+    console.log(`[health-check] Initiated by admin: ${userEmail}`);
     
     // Run all checks in parallel
     const edgeFunctions = [
