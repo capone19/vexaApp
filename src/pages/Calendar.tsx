@@ -17,6 +17,7 @@ import { SkeletonCard } from '@/components/shared/SkeletonCard';
 import { useExternalBookings } from '@/hooks/use-external-bookings';
 import { useAuth } from '@/hooks/use-auth';
 import { useEffectiveTenant } from '@/hooks/use-effective-tenant';
+import { formatCurrency } from '@/lib/format-currency';
 import type { Appointment, AppointmentSource, AppointmentStatus, AppointmentType } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { BlockingModeProvider, useBlockingMode } from '@/components/calendar/BlockingModeContext';
@@ -29,7 +30,7 @@ type CalendarView = 'month' | 'week' | 'day';
 
 const CalendarContent = () => {
   const { isLoading: authLoading } = useAuth();
-  const { tenantId } = useEffectiveTenant();
+  const { tenantId, tenantCurrency } = useEffectiveTenant();
   const [view, setView] = useState<CalendarView>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -165,13 +166,12 @@ const CalendarContent = () => {
     setFilterSource('all');
   };
 
-  // Formatear precio
+  // Formatear precio usando la divisa del tenant
   const formatPrice = (price?: number, currency?: string) => {
     if (!price) return null;
-    return new Intl.NumberFormat('es-MX', {
-      style: 'currency',
-      currency: currency || 'MXN',
-    }).format(price);
+    // Si el booking tiene su propia moneda, usarla; sino usar la del tenant
+    const currencyToUse = currency || tenantCurrency;
+    return formatCurrency(price, currencyToUse as 'CLP' | 'BOB' | 'USD');
   };
 
   // Empty State

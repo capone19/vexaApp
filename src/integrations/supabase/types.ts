@@ -1257,6 +1257,7 @@ export type Database = {
       tenants: {
         Row: {
           created_at: string | null
+          display_currency: string | null
           id: string
           is_active: boolean | null
           name: string
@@ -1269,6 +1270,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          display_currency?: string | null
           id?: string
           is_active?: boolean | null
           name: string
@@ -1281,6 +1283,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          display_currency?: string | null
           id?: string
           is_active?: boolean | null
           name?: string

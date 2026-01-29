@@ -12,6 +12,7 @@ import { SkeletonCard } from '@/components/shared/SkeletonCard';
 import { useDashboardMetrics } from '@/hooks/use-dashboard-metrics';
 import { useEffectiveTenant } from '@/hooks/use-effective-tenant';
 import { useBillingPeriod } from '@/hooks/use-billing-period';
+import { formatCurrency } from '@/lib/format-currency';
 import { cn } from '@/lib/utils';
 
 // Empty State Component
@@ -27,12 +28,8 @@ const EmptyState = () => (
   </div>
 );
 
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('es-BO', { style: 'currency', currency: 'BOB', maximumFractionDigits: 0 }).format(value);
-};
-
 const Results = () => {
-  const { tenantId } = useEffectiveTenant();
+  const { tenantId, tenantCurrency } = useEffectiveTenant();
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodPreset>('current');
 
   // Usar el hook de período de facturación
@@ -42,6 +39,9 @@ const Results = () => {
     tenantId,
     dateRange: startDate && endDate ? { startDate, endDate } : undefined,
   });
+
+  // Helper para formatear moneda con la divisa del tenant
+  const formatRevenue = (value: number) => formatCurrency(value, tenantCurrency);
 
   // Check if there's any data - must be before useMemo hooks
   const hasData = metrics && (metrics.servicesBooked > 0 || metrics.revenue > 0);
@@ -135,7 +135,7 @@ const Results = () => {
           />
           <KPICard
             title="Revenue Generado"
-            value={formatCurrency(metrics?.revenue || 0)}
+            value={formatRevenue(metrics?.revenue || 0)}
             icon={DollarSign}
             variant="warning"
           />
@@ -209,7 +209,7 @@ const Results = () => {
                   <div className="space-y-2">
                     <div className="text-sm text-muted-foreground">Revenue Total (Período)</div>
                     <div className="text-3xl font-bold text-primary">
-                      {formatCurrency(metrics?.revenue || 0)}
+                      {formatRevenue(metrics?.revenue || 0)}
                     </div>
                   </div>
 
@@ -220,8 +220,8 @@ const Results = () => {
                       <div className="text-xs text-muted-foreground">Ticket Promedio</div>
                       <div className="text-lg font-semibold">
                         {metrics && metrics.servicesBooked > 0 
-                          ? formatCurrency(metrics.revenue / metrics.servicesBooked)
-                          : formatCurrency(0)
+                          ? formatRevenue(metrics.revenue / metrics.servicesBooked)
+                          : formatRevenue(0)
                         }
                       </div>
                     </div>
@@ -269,7 +269,7 @@ const Results = () => {
                           </div>
                           <div className="flex items-center gap-3">
                             <span className="text-xs text-muted-foreground">
-                              {formatCurrency(service.revenue)}
+                              {formatRevenue(service.revenue)}
                             </span>
                             <Badge variant="secondary" className="text-xs">
                               {service.count} {service.count === 1 ? 'venta' : 'ventas'}

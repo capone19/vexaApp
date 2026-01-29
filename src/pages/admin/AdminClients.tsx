@@ -25,6 +25,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { useImpersonation } from '@/contexts/ImpersonationContext';
 import { countConversationsForBillingPeriod } from '@/lib/api/conversation-counter';
@@ -33,6 +40,7 @@ import { Loader2, Building2, CheckCircle, XCircle, Copy, Eye, RefreshCw } from '
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
+import type { DisplayCurrency } from '@/lib/format-currency';
 
 interface Tenant {
   id: string;
@@ -43,6 +51,7 @@ interface Tenant {
   whatsapp_phone_id: string | null;
   created_at: string | null;
   owner_email: string | null;
+  display_currency?: DisplayCurrency;
   chat_count: number;      // Viene del backend (puede estar desactualizado)
   chat_count_real?: number; // Calculado en frontend con función centralizada
   chat_limit: number;
@@ -63,6 +72,7 @@ export default function AdminClients() {
   const [error, setError] = useState<string | null>(null);
   const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [updatingCurrencyId, setUpdatingCurrencyId] = useState<string | null>(null);
 
   // Cargar tenants del backend
   useEffect(() => {
@@ -193,6 +203,7 @@ export default function AdminClients() {
       name: tenant.name,
       plan: tenant.plan,
       slug: tenant.slug,
+      currency: tenant.display_currency,
     });
 
     if (success) {
@@ -201,6 +212,30 @@ export default function AdminClients() {
     }
     
     setImpersonatingId(null);
+  };
+
+  // Handler para cambiar la divisa del tenant
+  const handleChangeCurrency = async (tenantId: string, currency: DisplayCurrency) => {
+    setUpdatingCurrencyId(tenantId);
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-update-tenant-currency', {
+        body: { tenantId, currency }
+      });
+      
+      if (error) throw error;
+      
+      // Actualizar estado local
+      setTenants(prev => prev.map(t => 
+        t.id === tenantId ? { ...t, display_currency: currency } : t
+      ));
+      
+      toast.success(`Divisa actualizada a ${currency}`);
+    } catch (err) {
+      console.error('[AdminClients] Update currency error:', err);
+      toast.error('Error al cambiar la divisa');
+    } finally {
+      setUpdatingCurrencyId(null);
+    }
   };
 
   // Handler para toggle de estado activo/inactivo
@@ -286,6 +321,7 @@ export default function AdminClients() {
                       <TableHead>Tenant ID</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Plan</TableHead>
+                      <TableHead>Divisa</TableHead>
                       <TableHead>Uso de Chats</TableHead>
                       <TableHead>Chats Extra</TableHead>
                       <TableHead>Cobro Extra</TableHead>
@@ -347,6 +383,27 @@ export default function AdminClients() {
                             <Badge variant={getPlanBadgeVariant(tenant.plan)}>
                               {tenant.plan.charAt(0).toUpperCase() + tenant.plan.slice(1)}
                             </Badge>
+                          </TableCell>
+                          {/* Divisa */}
+                          <TableCell>
+                            <Select
+                              value={tenant.display_currency || 'USD'}
+                              onValueChange={(val) => handleChangeCurrency(tenant.id, val as DisplayCurrency)}
+                              disabled={updatingCurrencyId === tenant.id}
+                            >
+                              <SelectTrigger className="w-[90px] h-8">
+                                {updatingCurrencyId === tenant.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <SelectValue />
+                                )}
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="USD">USD</SelectItem>
+                                <SelectItem value="CLP">CLP</SelectItem>
+                                <SelectItem value="BOB">BOB</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </TableCell>
                           <TableCell>
                             <div className="space-y-1 min-w-[140px]">
