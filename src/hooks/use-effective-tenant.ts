@@ -17,6 +17,7 @@ interface EffectiveTenantInfo {
   tenantName: string | null;
   tenantPlan: string | null;
   tenantCurrency: DisplayCurrency;
+  tenantCreatedAt: Date | null;  // Fecha de creación para período de facturación
 }
 
 export function useEffectiveTenant(): EffectiveTenantInfo {
@@ -55,15 +56,19 @@ export function useEffectiveTenant(): EffectiveTenantInfo {
       tenantName: impersonatedTenant.name,
       tenantPlan: impersonatedTenant.plan,
       tenantCurrency: impersonatedTenant.currency || 'USD',
+      tenantCreatedAt: impersonatedTenant.createdAt 
+        ? new Date(impersonatedTenant.createdAt) 
+        : null,
     };
   }
 
-  // Caso normal: usar el tenant del usuario
+  // Caso normal: usar el tenant del usuario (createdAt se carga desde BD en usePeriodUsage)
   return {
     tenantId: user?.tenantId || null,
     isImpersonating: false,
     tenantName: null,
     tenantPlan: null,
     tenantCurrency: userTenantCurrency,
+    tenantCreatedAt: null,  // Será cargado desde BD cuando se necesite
   };
 }
