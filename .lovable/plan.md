@@ -1,130 +1,75 @@
 
-# Plan: Agregar Columna de Divisa por Cliente en Admin
+# Plan: Corregir Período de Facturación en Impersonación + Columna "Próximo Cobro"
 
-## Resumen
+## Problema 1: Período Incorrecto al Impersonar
 
-Agregar una columna "Divisa" en el panel de Admin → Clientes que permita seleccionar entre CLP, BOB, USD para cada cliente. Esta divisa se propagará al resto de la aplicación para mostrar los ingresos en la moneda correcta.
-
----
-
-## Alcance del Cambio
-
-### Dónde se aplicará la divisa del cliente:
-- Dashboard → Ingresos totales
-- Resultados → Revenue Generado, Revenue Total, Ticket Promedio, Servicios Top
-- Calendario → Precios de citas/servicios
-- Admin Dashboard → Revenue por tenant (cuando hay múltiples)
-- Notificaciones → Valor del servicio
-
-### Excepciones (siempre en USD):
-- Cobros de planes (suscripciones)
-- Cobro de conversación adicional ($0.30 USD)
-- Panel de facturación del cliente
-
----
-
-## Cambios Técnicos
-
-### 1. Base de Datos: Nueva columna en `tenants`
-
-```sql
-ALTER TABLE tenants 
-ADD COLUMN display_currency text DEFAULT 'USD' 
-CHECK (display_currency IN ('CLP', 'BOB', 'USD'));
+### Diagnóstico
+El log de consola muestra el problema:
+```
+[usePeriodUsage] No se pudo obtener created_at del tenant, usando fallback
+tenantCreatedAt: undefined
+periodStart: "2026-01-01"  ← Mes actual (fallback)
 ```
 
-**Nota:** Esta columna solo afecta la moneda de VISUALIZACIÓN, no cambia los datos de bookings.
+**Causa raíz:** Cuando el admin impersona un cliente, el hook `usePeriodUsage` intenta leer `tenants.created_at` directamente de la base de datos, pero **RLS bloquea el acceso** porque el admin no tiene una relación `user_roles` con el tenant impersonado.
 
----
-
-### 2. Backend: `admin-list-tenants` Edge Function
-
-**Archivo:** `supabase/functions/admin-list-tenants/index.ts`
-
-**Cambio:** Incluir `display_currency` en el SELECT de tenants:
-```typescript
-.select(`
-  id, name, slug, plan, is_active, whatsapp_phone_id,
-  display_currency,  // NUEVO
-  created_at,
-  subscriptions (...)
-`)
-```
-
----
-
-### 3. Backend: Nueva Edge Function `admin-update-tenant-currency`
-
-**Archivo:** `supabase/functions/admin-update-tenant-currency/index.ts`
-
-**Funcionalidad:**
-- Recibe: `{ tenantId: string, currency: 'CLP' | 'BOB' | 'USD' }`
-- Valida que el usuario sea admin
-- Actualiza `tenants.display_currency`
-- Retorna éxito/error
-
----
-
-### 4. Frontend: Panel Admin de Clientes
-
-**Archivo:** `src/pages/admin/AdminClients.tsx`
+### Solución
+Pasar la fecha de creación del tenant impersonado desde el contexto de impersonación (que ya tiene esa info desde `admin-list-tenants`).
 
 **Cambios:**
-1. Agregar `display_currency` a la interfaz `Tenant`
-2. Nueva columna "Divisa" en la tabla con `<Select>`
-3. Handler para actualizar divisa llamando a la edge function
-4. Opciones: CLP (Peso Chileno), BOB (Boliviano), USD (Dólar)
 
-```typescript
-interface Tenant {
-  // ... campos existentes
-  display_currency?: 'CLP' | 'BOB' | 'USD';
-}
-
-// En la tabla:
-<TableHead>Divisa</TableHead>
-
-// Celda:
-<TableCell>
-  <Select
-    value={tenant.display_currency || 'USD'}
-    onValueChange={(val) => handleChangeCurrency(tenant.id, val)}
-  >
-    <SelectItem value="CLP">CLP</SelectItem>
-    <SelectItem value="BOB">BOB</SelectItem>
-    <SelectItem value="USD">USD</SelectItem>
-  </Select>
-</TableCell>
-```
+1. **ImpersonationContext**: Agregar `createdAt` a `ImpersonatedTenant`
+2. **AdminClients.tsx**: Pasar `created_at` al iniciar impersonación
+3. **useEffectiveTenant**: Exponer `tenantCreatedAt`
+4. **usePeriodUsage**: Usar `tenantCreatedAt` del hook en lugar de consultar la BD
 
 ---
 
-### 5. Context: Exponer divisa del tenant
+## Problema 2: Columna "Próximo Cobro" en Admin
 
-**Archivo:** `src/contexts/ImpersonationContext.tsx`
+### Diseño
+Agregar una columna "Próx. Cobro" que muestre la fecha del próximo cobro para cada cliente, calculada dinámicamente.
 
-**Cambios:**
-- Agregar `currency` a `ImpersonatedTenant`:
+**Cálculo:** 
+- Basado en `created_at` del tenant
+- El próximo cobro es el siguiente aniversario mensual
+- Ejemplo: Si `created_at` es 16 enero, próximo cobro es 16 febrero
+
+---
+
+## Cambios Técnicos Detallados
+
+### 1. ImpersonationContext.tsx
+
 ```typescript
 interface ImpersonatedTenant {
   id: string;
   name: string;
   plan: string;
   slug: string;
-  currency?: 'CLP' | 'BOB' | 'USD';  // NUEVO
+  currency?: 'CLP' | 'BOB' | 'USD';
+  createdAt?: string;  // NUEVO: Fecha de creación del tenant
 }
 ```
 
----
+### 2. AdminClients.tsx - Inicio de Impersonación
 
-### 6. Hook: `useEffectiveTenant` con divisa
+```typescript
+const handleImpersonate = async (tenant: Tenant) => {
+  // ...
+  const success = await startImpersonation({
+    id: tenant.id,
+    name: tenant.name,
+    plan: tenant.plan,
+    slug: tenant.slug,
+    currency: tenant.display_currency,
+    createdAt: tenant.created_at || undefined,  // NUEVO
+  });
+  // ...
+};
+```
 
-**Archivo:** `src/hooks/use-effective-tenant.ts`
-
-**Cambios:**
-- Agregar `tenantCurrency` al retorno
-- Si está impersonando, usar la divisa del tenant impersonado
-- Si no, cargar la divisa del tenant del usuario
+### 3. useEffectiveTenant.ts
 
 ```typescript
 interface EffectiveTenantInfo {
@@ -132,104 +77,147 @@ interface EffectiveTenantInfo {
   isImpersonating: boolean;
   tenantName: string | null;
   tenantPlan: string | null;
-  tenantCurrency: 'CLP' | 'BOB' | 'USD';  // NUEVO
+  tenantCurrency: DisplayCurrency;
+  tenantCreatedAt: Date | null;  // NUEVO
+}
+
+// En la función:
+if (isAdmin && isImpersonating && impersonatedTenant) {
+  return {
+    // ...
+    tenantCreatedAt: impersonatedTenant.createdAt 
+      ? new Date(impersonatedTenant.createdAt) 
+      : null,
+  };
 }
 ```
 
----
-
-### 7. Utility: Función formatCurrency centralizada
-
-**Archivo:** `src/lib/format-currency.ts` (NUEVO)
+### 4. usePeriodUsage.ts
 
 ```typescript
-export type DisplayCurrency = 'CLP' | 'BOB' | 'USD';
+export function usePeriodUsage(): UsePeriodUsageReturn {
+  const { tenantId, tenantCreatedAt } = useEffectiveTenant();  // NUEVO: obtener createdAt
+  // ...
 
-export function formatCurrency(
-  value: number, 
-  currency: DisplayCurrency = 'USD'
-): string {
-  const locales: Record<DisplayCurrency, string> = {
-    CLP: 'es-CL',
-    BOB: 'es-BO',
-    USD: 'en-US',
-  };
+  const { data: usage, ... } = useQuery({
+    queryKey: ['period-usage', tenantId, tenantCreatedAt?.toISOString()],  // Incluir en cache key
+    queryFn: () => fetchPeriodUsage(tenantId!, tenantCreatedAt),  // NUEVO: pasar createdAt
+    // ...
+  });
+}
 
-  return new Intl.NumberFormat(locales[currency], {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: currency === 'CLP' ? 0 : 2,
-  }).format(value);
+// Modificar fetchPeriodUsage:
+async function fetchPeriodUsage(
+  tenantId: string, 
+  providedCreatedAt?: Date | null  // NUEVO parámetro
+): Promise<PeriodUsage> {
+  let periodStart: Date;
+  let periodEnd: Date;
+  
+  // NUEVO: Si ya tenemos createdAt (de impersonación), usarlo
+  if (providedCreatedAt) {
+    const calculated = calculateBillingPeriod(providedCreatedAt);
+    periodStart = calculated.periodStart;
+    periodEnd = calculated.periodEnd;
+  } else {
+    // Consultar BD (caso normal sin impersonación)
+    const { data: tenantData } = await supabase
+      .from('tenants')
+      .select('created_at, plan')
+      .eq('id', tenantId)
+      .single();
+    
+    if (tenantData?.created_at) {
+      const calculated = calculateBillingPeriod(new Date(tenantData.created_at));
+      periodStart = calculated.periodStart;
+      periodEnd = calculated.periodEnd;
+    } else {
+      // Fallback...
+    }
+  }
+  
+  // ... resto de la lógica igual
 }
 ```
 
 ---
 
-### 8. Páginas a Actualizar (Consumir divisa del tenant)
+### 5. AdminClients.tsx - Nueva Columna "Próx. Cobro"
+
+**Ubicación:** Después de "Creado"
+
+```typescript
+// Función para calcular próximo cobro
+const getNextBillingDate = (createdAt: string | null): Date | null => {
+  if (!createdAt) return null;
+  
+  const created = new Date(createdAt);
+  const now = new Date();
+  const dayOfMonth = created.getDate();
+  
+  // Calcular próximo aniversario
+  let nextBilling = new Date(now.getFullYear(), now.getMonth(), dayOfMonth);
+  
+  // Si ya pasó este mes, es el siguiente
+  if (nextBilling <= now) {
+    nextBilling.setMonth(nextBilling.getMonth() + 1);
+  }
+  
+  return nextBilling;
+};
+
+// En la tabla:
+<TableHead>Próx. Cobro</TableHead>
+
+// Celda:
+<TableCell>
+  {tenant.created_at ? (
+    <span className="text-muted-foreground">
+      {format(getNextBillingDate(tenant.created_at)!, 'd MMM', { locale: es })}
+    </span>
+  ) : '-'}
+</TableCell>
+```
+
+---
+
+## Flujo Corregido
+
+```text
+Admin clica "Ver como cliente" en AdminClients
+        ↓
+startImpersonation({ ..., createdAt: "2025-01-16T..." })
+        ↓
+ImpersonationContext almacena createdAt
+        ↓
+Usuario navega a Facturación
+        ↓
+usePeriodUsage() → useEffectiveTenant() → tenantCreatedAt: "2025-01-16"
+        ↓
+fetchPeriodUsage(tenantId, new Date("2025-01-16"))
+        ↓
+Usa createdAt sin consultar BD (evita RLS)
+        ↓
+Período correcto: 16 ene - 15 feb ✓
+```
+
+---
+
+## Resumen de Archivos
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/pages/Dashboard.tsx` | Reemplazar `formatCurrency` local con la versión centralizada usando `tenantCurrency` |
-| `src/pages/Results.tsx` | Igual que Dashboard |
-| `src/pages/Calendar.tsx` | Usar `tenantCurrency` para `formatPrice()` |
-| `src/pages/Notifications.tsx` | Usar `tenantCurrency` |
-| `src/pages/admin/AdminDashboard.tsx` | Mantener USD para métricas agregadas de todos los tenants |
-
-**Ejemplo de cambio en Dashboard.tsx:**
-```typescript
-// Antes
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat("es-BO", { style: "currency", currency: "BOB" }).format(value);
-
-// Después
-import { formatCurrency } from '@/lib/format-currency';
-const { tenantCurrency } = useEffectiveTenant();
-
-// Uso:
-<p>{formatCurrency(metrics.revenue, tenantCurrency)}</p>
-```
+| `src/contexts/ImpersonationContext.tsx` | Agregar `createdAt` a la interfaz |
+| `src/hooks/use-effective-tenant.ts` | Exponer `tenantCreatedAt` |
+| `src/hooks/use-period-usage.ts` | Recibir y usar `tenantCreatedAt` |
+| `src/pages/admin/AdminClients.tsx` | Pasar `createdAt` + nueva columna "Próx. Cobro" |
 
 ---
 
-## Flujo de Datos
+## Validación Post-Implementación
 
-```text
-Admin selecciona divisa
-        ↓
-admin-update-tenant-currency (edge function)
-        ↓
-UPDATE tenants SET display_currency = 'CLP'
-        ↓
-Cliente carga Dashboard
-        ↓
-useEffectiveTenant() → tenantCurrency: 'CLP'
-        ↓
-formatCurrency(revenue, 'CLP') → "$150.000 CLP"
-```
-
----
-
-## Archivos a Crear/Modificar
-
-| Tipo | Archivo |
-|------|---------|
-| SQL Migration | Nueva columna `display_currency` en `tenants` |
-| Edge Function (NUEVO) | `supabase/functions/admin-update-tenant-currency/index.ts` |
-| Edge Function (EDITAR) | `supabase/functions/admin-list-tenants/index.ts` |
-| Utility (NUEVO) | `src/lib/format-currency.ts` |
-| Hook (EDITAR) | `src/hooks/use-effective-tenant.ts` |
-| Context (EDITAR) | `src/contexts/ImpersonationContext.tsx` |
-| Page (EDITAR) | `src/pages/admin/AdminClients.tsx` |
-| Page (EDITAR) | `src/pages/Dashboard.tsx` |
-| Page (EDITAR) | `src/pages/Results.tsx` |
-| Page (EDITAR) | `src/pages/Calendar.tsx` |
-| Page (EDITAR) | `src/pages/Notifications.tsx` |
-
----
-
-## Notas Importantes
-
-1. **Valor por defecto:** USD para tenants sin divisa configurada
-2. **No afecta datos históricos:** Solo cambia cómo se MUESTRA el número, no el valor almacenado
-3. **Excepción USD:** Facturación y cobros extra siempre en USD (ya están así)
-4. **Impersonación:** Cuando admin impersona, ve la divisa configurada para ese cliente
+1. **Test impersonación:** Admin impersona un cliente con `created_at` = día 16
+   - Verificar que el período mostrado sea "16 ene - 15 feb" (no "1 ene - 1 feb")
+   
+2. **Test columna:** Verificar que "Próx. Cobro" muestre la fecha correcta
+   - Si hoy es 29 enero y `created_at` = 16 enero → Próx. Cobro = "16 feb"
