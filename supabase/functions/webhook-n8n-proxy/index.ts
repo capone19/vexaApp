@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,6 +15,37 @@ serve(async (req) => {
   }
 
   try {
+    // SECURITY: Validate JWT token before processing
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      console.warn("[webhook-n8n-proxy] No auth header, rejecting");
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claims, error: authError } = await supabase.auth.getClaims(token);
+
+    if (authError || !claims?.claims?.sub) {
+      console.warn("[webhook-n8n-proxy] Invalid token:", authError?.message);
+      return new Response(
+        JSON.stringify({ success: false, error: "Invalid token" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log("[webhook-n8n-proxy] Authenticated user:", claims.claims.sub);
+
+    // Continue with existing logic
     const payload = await req.json();
     
     console.log("[webhook-n8n-proxy] Forwarding to n8n:", payload.section_key);
