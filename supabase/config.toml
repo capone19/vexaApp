@@ -20,3 +20,12 @@ verify_jwt = false
 
 [functions.admin-toggle-tenant-status]
 verify_jwt = false
+
+[functions.admin-impersonate]
+verify_jwt = false
+
+[functions.admin-get-tenant-names]
+verify_jwt = false
+
+[functions.health-check]
+verify_jwt = false
