@@ -39,11 +39,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Verify JWT and get user
+    // Verify JWT using getClaims (proper method for token validation)
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const { data: claims, error: authError } = await supabase.auth.getClaims(token);
     
-    if (authError || !user) {
+    if (authError || !claims?.claims?.sub) {
       console.error('[admin-list-tenants] Auth error:', authError);
       return new Response(
         JSON.stringify({ error: 'Invalid token' }),
@@ -51,10 +51,13 @@ Deno.serve(async (req) => {
       );
     }
 
+    const userEmail = claims.claims.email as string | undefined;
+    console.log('[admin-list-tenants] Authenticated user:', userEmail);
+
     // Verify admin email
     const ADMIN_EMAIL = 'contacto@vexalatam.com';
-    if (user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
-      console.error('[admin-list-tenants] Unauthorized access attempt:', user.email);
+    if (userEmail?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+      console.error('[admin-list-tenants] Unauthorized access attempt:', userEmail);
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

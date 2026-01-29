@@ -30,11 +30,11 @@ Deno.serve(async (req) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // Verify the requesting user is admin
+    // Verify the requesting user is admin using getClaims (proper method for token validation)
     const token = authHeader.replace('Bearer ', '');
-    const { data: claims, error: claimsError } = await supabaseAdmin.auth.getUser(token);
+    const { data: claims, error: claimsError } = await supabaseAdmin.auth.getClaims(token);
     
-    if (claimsError || !claims.user) {
+    if (claimsError || !claims?.claims?.sub) {
       console.error('[admin-list-pending-users] Auth error:', claimsError);
       return new Response(
         JSON.stringify({ error: 'Token inválido' }),
@@ -42,16 +42,19 @@ Deno.serve(async (req) => {
       );
     }
 
+    const userEmail = claims.claims.email as string | undefined;
+    console.log('[admin-list-pending-users] Authenticated user:', userEmail);
+
     // Check if user is admin
-    if (claims.user.email !== ADMIN_EMAIL) {
-      console.error('[admin-list-pending-users] Unauthorized access attempt by:', claims.user.email);
+    if (userEmail !== ADMIN_EMAIL) {
+      console.error('[admin-list-pending-users] Unauthorized access attempt by:', userEmail);
       return new Response(
         JSON.stringify({ error: 'Acceso denegado - Solo administradores' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('[admin-list-pending-users] Admin verified:', claims.user.email);
+    console.log('[admin-list-pending-users] Admin verified:', userEmail);
 
     // Get all profiles
     const { data: profiles, error: profilesError } = await supabaseAdmin
