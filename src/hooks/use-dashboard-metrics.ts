@@ -168,18 +168,53 @@ async function fetchDashboardMetrics(
   // Para datos diarios, necesitamos hacer una query adicional con los mensajes completos
   if (startDate && endDate) {
     try {
-      // Query para obtener datos diarios (con límite razonable para gráficos)
-      const { data: chatMessagesData, error: chatError } = await externalSupabase
-        .from('n8n_chat_histories')
-        .select('id, session_id, created_at')
-        .eq('tenant_id', tenantId)
-        .gte('created_at', startDate.toISOString())
-        .lt('created_at', new Date(endDate.getTime() + 24 * 60 * 60 * 1000).toISOString())
-        .limit(50000);
+      // ============================================
+      // PAGINACIÓN para obtener TODOS los mensajes del rango
+      // El servidor externo limita a 1,000 filas por query
+      // ============================================
+      const PAGE_SIZE = 1000;
+      let allChatMessages: Array<{ id: number; session_id: string; created_at: string }> = [];
+      let offset = 0;
+      let hasMore = true;
+      
+      const endOfRange = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+      
+      while (hasMore) {
+        const { data: pageData, error: pageError } = await externalSupabase
+          .from('n8n_chat_histories')
+          .select('id, session_id, created_at')
+          .eq('tenant_id', tenantId)
+          .gte('created_at', startDate.toISOString())
+          .lt('created_at', endOfRange.toISOString())
+          .order('created_at', { ascending: true })
+          .range(offset, offset + PAGE_SIZE - 1);
+        
+        if (pageError) {
+          console.warn('[useDashboardMetrics] Error fetching daily data page:', pageError);
+          break;
+        }
+        
+        if (!pageData || pageData.length === 0) {
+          hasMore = false;
+        } else {
+          allChatMessages.push(...pageData);
+          offset += pageData.length;
+          if (pageData.length < PAGE_SIZE) hasMore = false;
+        }
+        
+        // Límite de seguridad: 50,000 mensajes para datos diarios
+        if (offset >= 50000) {
+          console.warn('[useDashboardMetrics] Hit safety limit for daily data');
+          hasMore = false;
+        }
+      }
+      
+      console.log('[useDashboardMetrics] Daily data fetched:', allChatMessages.length, 'messages in', Math.ceil(offset / PAGE_SIZE), 'pages');
+      
+      // Usar allChatMessages para el procesamiento
+      const chatMessagesData = allChatMessages;
 
-      if (chatError) {
-        console.warn('[useDashboardMetrics] Error fetching daily data:', chatError);
-      } else if (chatMessagesData) {
+      if (chatMessagesData.length > 0) {
         const days = eachDayOfInterval({ start: startDate, end: endDate });
         
         // Group messages by day and session
