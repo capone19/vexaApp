@@ -16,6 +16,7 @@ interface ImpersonatedTenant {
   name: string;
   plan: string;
   slug: string;
+  currency?: 'CLP' | 'BOB' | 'USD';
 }
 
 interface ImpersonationContextValue {

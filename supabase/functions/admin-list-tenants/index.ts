@@ -75,6 +75,7 @@ Deno.serve(async (req) => {
         is_active,
         whatsapp_phone_id,
         whatsapp_business_id,
+        display_currency,
         created_at,
         subscriptions (
           price_usd,

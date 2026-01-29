@@ -21,6 +21,8 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useEffectiveTenant } from '@/hooks/use-effective-tenant';
+import { formatCurrency } from '@/lib/format-currency';
 import {
   Bell,
   CalendarCheck,
@@ -120,15 +122,8 @@ const getStatusBadge = (status?: AppointmentStatus) => {
   }
 };
 
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat('es-CL', {
-    style: 'currency',
-    currency: 'CLP',
-    maximumFractionDigits: 0,
-  }).format(value);
-
 // Componente para el detalle de la notificación según su tipo
-function NotificationDetailContent({ notification }: { notification: Notification }) {
+function NotificationDetailContent({ notification, tenantCurrency }: { notification: Notification; tenantCurrency: 'CLP' | 'BOB' | 'USD' }) {
   const { type, metadata } = notification;
   const Icon = getNotificationIcon(type);
   const colorClass = getNotificationColor(type);
@@ -230,7 +225,7 @@ function NotificationDetailContent({ notification }: { notification: Notificatio
               </div>
               <div className="flex-1">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Valor del servicio</p>
-                <p className="font-semibold text-foreground text-lg">{formatCurrency(metadata.ticketValue)}</p>
+                <p className="font-semibold text-foreground text-lg">{formatCurrency(metadata.ticketValue, tenantCurrency)}</p>
               </div>
             </div>
           )}
@@ -284,6 +279,7 @@ function NotificationDetailContent({ notification }: { notification: Notificatio
 }
 
 export default function Notifications() {
+  const { tenantCurrency } = useEffectiveTenant();
   const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
   const [activeTab, setActiveTab] = useState<'all' | 'unread'>('all');
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
@@ -529,7 +525,7 @@ export default function Notifications() {
             <ScrollArea className="h-[calc(100%-80px)]">
               <div className="pb-6">
                 {selectedNotification && (
-                  <NotificationDetailContent notification={selectedNotification} />
+                  <NotificationDetailContent notification={selectedNotification} tenantCurrency={tenantCurrency} />
                 )}
               </div>
             </ScrollArea>
@@ -543,7 +539,7 @@ export default function Notifications() {
             </DialogHeader>
             <div className="pt-2">
               {selectedNotification && (
-                <NotificationDetailContent notification={selectedNotification} />
+                <NotificationDetailContent notification={selectedNotification} tenantCurrency={tenantCurrency} />
               )}
             </div>
           </DialogContent>

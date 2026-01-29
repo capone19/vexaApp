@@ -10,6 +10,7 @@ import { useDashboardMetrics } from "@/hooks/use-dashboard-metrics";
 import { usePeriodUsage } from "@/hooks/use-period-usage";
 import { useBillingPeriod } from "@/hooks/use-billing-period";
 import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
+import { formatCurrency } from "@/lib/format-currency";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import {
@@ -46,7 +47,7 @@ import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function Dashboard() {
-  const { tenantId } = useEffectiveTenant();
+  const { tenantId, tenantCurrency } = useEffectiveTenant();
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodPreset>("current");
   const isMobile = useIsMobile();
   
@@ -61,12 +62,7 @@ export default function Dashboard() {
     dateRange: startDate && endDate ? { startDate, endDate } : undefined,
   });
 
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat("es-BO", {
-      style: "currency",
-      currency: "BOB",
-      maximumFractionDigits: 0,
-    }).format(value);
+  const formatRevenue = (value: number) => formatCurrency(value, tenantCurrency);
 
   // Empty State Component
   const EmptyState = () => (
@@ -482,7 +478,7 @@ export default function Dashboard() {
             </div>
             <span className="text-xs md:text-sm font-medium text-muted-foreground">Ingresos totales</span>
           </div>
-          <p className="text-xl md:text-2xl font-semibold text-foreground">{formatCurrency(metrics.revenue)}</p>
+          <p className="text-xl md:text-2xl font-semibold text-foreground">{formatRevenue(metrics.revenue)}</p>
         </div>
 
         {/* KPI Cards - Responsive Grid */}
