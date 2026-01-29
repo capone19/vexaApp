@@ -47,6 +47,54 @@ serve(async (req) => {
 
     const tenantId = payload.tenant_id as string | undefined;
     
+    // Initialize Supabase client with service role for internal queries
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    
+    // SECURITY: Validate tenant ownership if tenant_id is provided
+    if (tenantId) {
+      const authHeader = req.headers.get("Authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+          global: { headers: { Authorization: authHeader } }
+        });
+        
+        const token = authHeader.replace("Bearer ", "");
+        const { data: claims, error: authError } = await supabaseAuth.auth.getClaims(token);
+        
+        if (!authError && claims?.claims?.sub) {
+          // Use service role to check membership (bypasses RLS)
+          const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+          
+          const { data: membership, error: membershipError } = await supabaseAdmin
+            .from("user_roles")
+            .select("id")
+            .eq("user_id", claims.claims.sub)
+            .eq("tenant_id", tenantId)
+            .single();
+          
+          if (membershipError || !membership) {
+            console.warn(
+              "[human-message-proxy] User not member of tenant:",
+              claims.claims.sub,
+              "->",
+              tenantId
+            );
+            return new Response(
+              JSON.stringify({ success: false, error: "Forbidden" }),
+              {
+                status: 403,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              }
+            );
+          }
+          
+          console.log("[human-message-proxy] Tenant ownership verified for user:", claims.claims.sub);
+        }
+      }
+    }
+
     console.log(
       "[human-message-proxy] Forwarding message for session:",
       payload.session_id,
@@ -57,39 +105,31 @@ serve(async (req) => {
     // Determinar el webhook URL basado en el tenant
     let webhookUrl = DEFAULT_WEBHOOK_URL;
 
-    if (tenantId) {
-      // Crear cliente Supabase con service role para bypasear RLS
-      const supabaseUrl = Deno.env.get("SUPABASE_URL");
-      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (tenantId && supabaseUrl && supabaseServiceKey) {
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-      if (supabaseUrl && supabaseServiceKey) {
-        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      // Buscar webhook específico para este tenant
+      const { data: webhookConfig, error: webhookError } = await supabase
+        .from("tenant_webhooks")
+        .select("webhook_url")
+        .eq("tenant_id", tenantId)
+        .eq("webhook_type", "human_message")
+        .eq("is_active", true)
+        .single();
 
-        // Buscar webhook específico para este tenant
-        const { data: webhookConfig, error: webhookError } = await supabase
-          .from("tenant_webhooks")
-          .select("webhook_url")
-          .eq("tenant_id", tenantId)
-          .eq("webhook_type", "human_message")
-          .eq("is_active", true)
-          .single();
+      if (webhookError) {
+        console.log(
+          "[human-message-proxy] No specific webhook found for tenant, using default:",
+          webhookError.message
+        );
+      }
 
-        if (webhookError) {
-          console.log(
-            "[human-message-proxy] No specific webhook found for tenant, using default:",
-            webhookError.message
-          );
-        }
-
-        if (webhookConfig?.webhook_url) {
-          webhookUrl = webhookConfig.webhook_url;
-          console.log(
-            "[human-message-proxy] Using tenant-specific webhook:",
-            webhookUrl
-          );
-        }
-      } else {
-        console.warn("[human-message-proxy] Missing Supabase env vars, using default webhook");
+      if (webhookConfig?.webhook_url) {
+        webhookUrl = webhookConfig.webhook_url;
+        console.log(
+          "[human-message-proxy] Using tenant-specific webhook:",
+          webhookUrl
+        );
       }
     }
 
