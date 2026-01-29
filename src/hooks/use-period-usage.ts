@@ -92,31 +92,46 @@ function calculateBillingPeriod(startDate: Date): { periodStart: Date; periodEnd
  * Función de fetch que SIEMPRE usa tenants.created_at para el período
  * y tenants.plan para los límites.
  */
-async function fetchPeriodUsage(tenantId: string): Promise<PeriodUsage> {
+async function fetchPeriodUsage(
+  tenantId: string, 
+  providedCreatedAt?: Date | null  // Para impersonación: evita consultar BD (RLS bloqueado)
+): Promise<PeriodUsage> {
   let periodStart: Date;
   let periodEnd: Date;
+  let tenantPlan: string | null = null;
   
   // ============================================
-  // SIEMPRE calcular basado en fecha de creación del tenant
+  // Si ya tenemos createdAt (de impersonación), usarlo directamente
+  // Esto evita el problema de RLS cuando admin impersona
   // ============================================
-  const { data: tenantData, error: tenantError } = await supabase
-    .from('tenants')
-    .select('created_at, plan')
-    .eq('id', tenantId)
-    .single();
-  
-  if (tenantError || !tenantData?.created_at) {
-    console.warn('[usePeriodUsage] No se pudo obtener created_at del tenant, usando fallback');
-    // FALLBACK: Usar el mes actual si no hay fecha de creación
-    const now = new Date();
-    periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-  } else {
-    // Calcular período basado en fecha de creación del tenant
-    const createdAt = new Date(tenantData.created_at);
-    const calculated = calculateBillingPeriod(createdAt);
+  if (providedCreatedAt) {
+    const calculated = calculateBillingPeriod(providedCreatedAt);
     periodStart = calculated.periodStart;
     periodEnd = calculated.periodEnd;
+    console.log('[usePeriodUsage] Usando createdAt desde contexto de impersonación:', providedCreatedAt.toISOString());
+  } else {
+    // Caso normal: consultar BD para obtener created_at
+    const { data: tenantData, error: tenantError } = await supabase
+      .from('tenants')
+      .select('created_at, plan')
+      .eq('id', tenantId)
+      .single();
+    
+    tenantPlan = tenantData?.plan || null;
+    
+    if (tenantError || !tenantData?.created_at) {
+      console.warn('[usePeriodUsage] No se pudo obtener created_at del tenant, usando fallback');
+      // FALLBACK: Usar el mes actual si no hay fecha de creación
+      const now = new Date();
+      periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    } else {
+      // Calcular período basado en fecha de creación del tenant
+      const createdAt = new Date(tenantData.created_at);
+      const calculated = calculateBillingPeriod(createdAt);
+      periodStart = calculated.periodStart;
+      periodEnd = calculated.periodEnd;
+    }
   }
 
   // Calcular días del período
@@ -141,8 +156,23 @@ async function fetchPeriodUsage(tenantId: string): Promise<PeriodUsage> {
 
   // ============================================
   // USAR PLAN DEL TENANT (no de suscripción)
+  // Si viene de impersonación, necesitamos obtener el plan de otra forma
   // ============================================
-  const currentPlan: PlanId = (tenantData?.plan as PlanId) || 'basic';
+  let currentPlan: PlanId = 'basic';
+  
+  if (providedCreatedAt) {
+    // En impersonación, el plan viene del contexto o necesitamos consultarlo
+    // Por ahora consultamos solo el plan (sin created_at que ya tenemos)
+    const { data: planData } = await supabase
+      .from('tenants')
+      .select('plan')
+      .eq('id', tenantId)
+      .single();
+    currentPlan = (planData?.plan as PlanId) || 'basic';
+  } else if (tenantPlan) {
+    currentPlan = tenantPlan as PlanId;
+  }
+  
   const conversationsLimit = getConversationLimit(currentPlan);
   const whatsappLimit = getWhatsAppLimit(currentPlan);
   const campaignsEnabled = hasCampaignsEnabled(currentPlan);
@@ -163,7 +193,7 @@ async function fetchPeriodUsage(tenantId: string): Promise<PeriodUsage> {
 
   console.log('[usePeriodUsage] ✓ Billing usage loaded:', {
     tenantId,
-    tenantCreatedAt: tenantData?.created_at,
+    periodSource: providedCreatedAt ? 'ImpersonationContext' : 'tenants.created_at',
     conversationsUsed,
     conversationsLimit,
     conversationsExtra,
@@ -172,7 +202,6 @@ async function fetchPeriodUsage(tenantId: string): Promise<PeriodUsage> {
     periodEnd: periodEnd.toISOString().split('T')[0],
     daysRemaining,
     currentPlan,
-    source: 'tenants.created_at (always)',
   });
 
   return {
@@ -196,23 +225,24 @@ async function fetchPeriodUsage(tenantId: string): Promise<PeriodUsage> {
 }
 
 export function usePeriodUsage(): UsePeriodUsageReturn {
-  const { tenantId } = useEffectiveTenant();
+  const { tenantId, tenantCreatedAt, isImpersonating } = useEffectiveTenant();
   const queryClient = useQueryClient();
 
-  // Query key incluye tenantId para cache separado por tenant
-  const queryKey = ['period-usage', tenantId];
+  // Query key incluye tenantId y createdAt para cache correcto
+  const queryKey = ['period-usage', tenantId, tenantCreatedAt?.toISOString()];
 
   // Debug: Estado actual
   console.log('[usePeriodUsage] Hook state:', {
     tenantId,
-    source: 'Will use tenants.created_at directly',
+    tenantCreatedAt: tenantCreatedAt?.toISOString(),
+    isImpersonating,
+    source: tenantCreatedAt ? 'ImpersonationContext' : 'Will query tenants table',
   });
 
   const { data: usage, isLoading, error, refetch } = useQuery({
     queryKey,
-    queryFn: () => fetchPeriodUsage(tenantId!),
+    queryFn: () => fetchPeriodUsage(tenantId!, tenantCreatedAt),
     // Solo ejecutar cuando tenemos tenantId
-    // Ya no dependemos de useSubscription para las fechas
     enabled: !!tenantId,
     staleTime: 30000, // 30 segundos
     refetchOnWindowFocus: true,

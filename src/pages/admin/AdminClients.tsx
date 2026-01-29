@@ -204,6 +204,7 @@ export default function AdminClients() {
       plan: tenant.plan,
       slug: tenant.slug,
       currency: tenant.display_currency,
+      createdAt: tenant.created_at || undefined,  // Para cálculo correcto del período de facturación
     });
 
     if (success) {
@@ -212,6 +213,25 @@ export default function AdminClients() {
     }
     
     setImpersonatingId(null);
+  };
+
+  // Calcular próximo cobro basado en fecha de creación del tenant
+  const getNextBillingDate = (createdAt: string | null): Date | null => {
+    if (!createdAt) return null;
+    
+    const created = new Date(createdAt);
+    const now = new Date();
+    const dayOfMonth = created.getDate();
+    
+    // Calcular próximo aniversario mensual
+    let nextBilling = new Date(now.getFullYear(), now.getMonth(), dayOfMonth);
+    
+    // Si ya pasó ese día este mes, es el próximo mes
+    if (nextBilling <= now) {
+      nextBilling.setMonth(nextBilling.getMonth() + 1);
+    }
+    
+    return nextBilling;
   };
 
   // Handler para cambiar la divisa del tenant
@@ -328,6 +348,7 @@ export default function AdminClients() {
                       <TableHead>Estado</TableHead>
                       <TableHead>WhatsApp</TableHead>
                       <TableHead>Creado</TableHead>
+                      <TableHead>Próx. Cobro</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -485,6 +506,13 @@ export default function AdminClients() {
                             {tenant.created_at
                               ? format(new Date(tenant.created_at), 'd MMM yyyy', { locale: es })
                               : '-'}
+                          </TableCell>
+                          <TableCell>
+                            {tenant.created_at ? (
+                              <span className="text-primary font-medium">
+                                {format(getNextBillingDate(tenant.created_at)!, 'd MMM', { locale: es })}
+                              </span>
+                            ) : '-'}
                           </TableCell>
                         </TableRow>
                       );

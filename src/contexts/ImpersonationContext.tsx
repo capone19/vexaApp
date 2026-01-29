@@ -17,6 +17,7 @@ interface ImpersonatedTenant {
   plan: string;
   slug: string;
   currency?: 'CLP' | 'BOB' | 'USD';
+  createdAt?: string;  // Fecha de creación para cálculo de período de facturación
 }
 
 interface ImpersonationContextValue {
