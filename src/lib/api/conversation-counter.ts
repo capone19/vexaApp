@@ -68,25 +68,53 @@ export async function countConversations(
 
   try {
     // ============================================
-    // QUERY SIMPLE - Misma lógica que la sección de Chats
-    // 1 session_id único = 1 chat
+    // PAGINACIÓN - Obtener TODOS los mensajes en lotes de 1000
+    // El servidor externo tiene un límite de 1000 filas por query
     // ============================================
-    // IMPORTANTE: Agregar límite alto para traer TODOS los mensajes
-    // Supabase tiene un límite por defecto de 1000 filas
-    const { data, error } = await externalSupabase
-      .from('n8n_chat_histories')
-      .select('session_id, created_at')
-      .eq('tenant_id', tenantId)
-      .limit(50000); // Límite alto para facturación/métricas
+    const PAGE_SIZE = 1000;
+    let allData: Array<{ session_id: string; created_at: string }> = [];
+    let offset = 0;
+    let hasMore = true;
 
-    if (error) {
-      console.error('[countConversations] Error:', error);
-      throw error;
+    while (hasMore) {
+      const { data, error } = await externalSupabase
+        .from('n8n_chat_histories')
+        .select('session_id, created_at')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: true })
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      if (error) {
+        console.error('[countConversations] Error fetching page:', error);
+        throw error;
+      }
+
+      if (!data || data.length === 0) {
+        hasMore = false;
+      } else {
+        allData.push(...data);
+        offset += data.length;
+        
+        if (data.length < PAGE_SIZE) {
+          hasMore = false;
+        }
+      }
+      
+      // Límite de seguridad: máximo 100,000 mensajes
+      if (offset >= 100000) {
+        console.warn('[countConversations] Hit safety limit of 100,000 messages');
+        hasMore = false;
+      }
     }
 
-    if (!data || data.length === 0) {
+    console.log('[countConversations] Fetched total rows:', allData.length);
+
+    if (allData.length === 0) {
       return emptyCount();
     }
+
+    // Usar allData en lugar de data para el resto del procesamiento
+    const data = allData;
 
     // ============================================
     // FILTRAR POR FECHAS EN JAVASCRIPT (más confiable)
