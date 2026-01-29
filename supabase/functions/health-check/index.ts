@@ -7,9 +7,10 @@ const corsHeaders = {
 
 const ADMIN_EMAIL = 'contacto@vexalatam.com';
 
-// Thresholds for status classification
-const HEALTHY_THRESHOLD_MS = 500;
-const TIMEOUT_MS = 5000;
+// Thresholds for status classification (realistic for edge functions with cold starts)
+const HEALTHY_THRESHOLD_MS = 1500;  // Edge functions can take 1-1.5s on cold start
+const DEGRADED_THRESHOLD_MS = 3000; // Above 3s is concerning
+const TIMEOUT_MS = 8000;            // 8s timeout for cold starts
 
 interface ServiceCheck {
   name: string;
@@ -53,7 +54,7 @@ async function checkLovableCloudDB(supabaseAdmin: any): Promise<ServiceCheck> {
     
     return {
       name: 'Lovable Cloud DB',
-      status: responseTime < HEALTHY_THRESHOLD_MS ? 'healthy' : 'degraded',
+      status: responseTime < HEALTHY_THRESHOLD_MS ? 'healthy' : responseTime < DEGRADED_THRESHOLD_MS ? 'degraded' : 'down',
       response_time_ms: responseTime,
     };
   } catch (e: unknown) {
@@ -102,7 +103,7 @@ async function checkExternalDB(): Promise<ServiceCheck> {
     
     return {
       name: 'External DB (n8n)',
-      status: responseTime < HEALTHY_THRESHOLD_MS ? 'healthy' : 'degraded',
+      status: responseTime < HEALTHY_THRESHOLD_MS ? 'healthy' : responseTime < DEGRADED_THRESHOLD_MS ? 'degraded' : 'down',
       response_time_ms: responseTime,
     };
   } catch (e: unknown) {
@@ -131,10 +132,12 @@ async function checkEdgeFunction(name: string, supabaseUrl: string): Promise<Ser
     clearTimeout(timeoutId);
     const responseTime = Date.now() - start;
     
+    const status = !res.ok ? 'down' : responseTime < HEALTHY_THRESHOLD_MS ? 'healthy' : responseTime < DEGRADED_THRESHOLD_MS ? 'degraded' : 'down';
     return {
       name: `Edge: ${name}`,
-      status: res.ok ? (responseTime < HEALTHY_THRESHOLD_MS ? 'healthy' : 'degraded') : 'down',
+      status,
       response_time_ms: responseTime,
+      ...(responseTime > 1000 && responseTime < DEGRADED_THRESHOLD_MS ? { note: 'Cold start detected' } : {}),
     };
   } catch (e: unknown) {
     clearTimeout(timeoutId);

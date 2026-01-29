@@ -259,7 +259,7 @@ export default function AdminHealthCheck() {
                       <span className={`text-sm font-mono ${
                         service.status === 'down' 
                           ? 'text-muted-foreground' 
-                          : service.response_time_ms >= 500 
+                          : service.response_time_ms >= 1500 
                             ? 'text-yellow-600' 
                             : 'text-green-600'
                       }`}>
@@ -283,15 +283,15 @@ export default function AdminHealthCheck() {
             <div className="flex flex-wrap gap-6 justify-center text-sm">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-green-500" />
-                <span>Healthy (&lt;500ms)</span>
+                <span>Healthy (&lt;1.5s)</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                <span>Degraded (≥500ms)</span>
+                <span>Degraded (1.5s - 3s)</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-red-500" />
-                <span>Down (error/timeout)</span>
+                <span>Down (&gt;3s / error)</span>
               </div>
             </div>
           </CardContent>
