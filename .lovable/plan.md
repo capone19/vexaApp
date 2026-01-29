@@ -1,128 +1,194 @@
 
-# Plan: Agregar Switch para Activar/Desactivar Clientes
+# Plan: Página de Health Check para Panel Admin
 
-## Resumen Ejecutivo
+## Resumen
 
-Implementar un componente Switch en la columna "Estado" del panel Admin > Clientes que permita activar o desactivar clientes de forma instantánea. El switch reemplazará el Badge estático actual.
+Crear una nueva sección en el panel de administración que muestre el estado de salud de todos los servicios críticos de VEXA, incluyendo edge functions, bases de datos y webhooks externos. Las métricas se almacenarán para análisis histórico.
 
 ---
 
-## Contexto Técnico
+## Servicios a Monitorear
 
-### Tabla y Campo Afectado
-- **Tabla:** `public.tenants`
-- **Campo:** `is_active` (BOOLEAN, default: `true`)
-- **Valores:** `true` = Activo, `false` = Inactivo
+| Servicio | Tipo | Endpoint/Target | Criticidad |
+|----------|------|-----------------|------------|
+| Lovable Cloud DB | Base de datos | Query simple a `tenants` | Alta |
+| External DB (n8n) | Base de datos | Query simple a `n8n_chat_histories` | Alta |
+| Edge: save-agent-settings | Edge Function | POST con payload mínimo | Media |
+| Edge: admin-toggle-tenant-status | Edge Function | Health endpoint | Media |
+| Edge: webhook-n8n-proxy | Edge Function | Health endpoint | Alta |
+| n8n Webhook | Externo | HEAD request a n8n | Media |
 
-### Estado Actual del Campo
-El campo `is_active` actualmente es **informativo**:
-- Se usa para estadísticas en Admin Dashboard (clientes totales vs activos)
-- Se muestra como Badge visual en la lista de clientes
-- **NO bloquea** login, webhooks, ni procesamiento de mensajes
+---
 
-### Políticas RLS
-Los usuarios normales **no pueden** hacer UPDATE en la tabla `tenants`. Solo el service role tiene acceso completo, por lo que se requiere una edge function para realizar la actualización de forma segura.
+## Arquitectura
+
+```text
+┌─────────────────────┐
+│  AdminHealthCheck   │
+│     (React Page)    │
+└─────────┬───────────┘
+          │
+          ▼
+┌─────────────────────┐     ┌─────────────────────┐
+│  Edge Function:     │────▶│  health_checks      │
+│  health-check       │     │  (tabla histórico)  │
+└─────────────────────┘     └─────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────┐
+│  Ping a cada servicio en paralelo       │
+│  - Supabase DBs                         │
+│  - Edge Functions                       │
+│  - n8n Webhook                          │
+└─────────────────────────────────────────┘
+```
 
 ---
 
 ## Implementación
 
-### 1. Crear Edge Function: `admin-toggle-tenant-status`
+### 1. Crear Tabla para Historial de Health Checks
 
-Nueva función en `supabase/functions/admin-toggle-tenant-status/index.ts`:
+Nueva migración SQL:
 
-```typescript
-// Endpoint: POST /admin-toggle-tenant-status
-// Body: { tenantId: string, isActive: boolean }
+```sql
+CREATE TABLE public.health_checks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  checked_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  service_name TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('healthy', 'degraded', 'down')),
+  response_time_ms INTEGER NOT NULL,
+  error_message TEXT,
+  metadata JSONB
+);
 
-// 1. Verificar que el usuario sea admin (email = contacto@vexalatam.com)
-// 2. Validar parámetros de entrada
-// 3. Actualizar is_active en tabla tenants usando service role
-// 4. Registrar acción en audit_logs para trazabilidad
-// 5. Retornar estado actualizado
+-- Índices para consultas rápidas
+CREATE INDEX idx_health_checks_service ON public.health_checks(service_name);
+CREATE INDEX idx_health_checks_checked_at ON public.health_checks(checked_at DESC);
+
+-- RLS: Solo admins pueden leer
+ALTER TABLE public.health_checks ENABLE ROW LEVEL SECURITY;
+
+-- Política para lectura (via service role desde edge function)
+-- No se necesita política de usuario ya que solo se accede via edge function
 ```
 
-**Características:**
-- Usa `SUPABASE_SERVICE_ROLE_KEY` para bypass de RLS
-- Valida que solo admins puedan ejecutar
-- Registra en `audit_logs` quién hizo el cambio
-- Retorna el nuevo estado para actualización optimista de UI
+### 2. Crear Edge Function: `health-check`
 
-### 2. Modificar Vista de Clientes
+Nueva función en `supabase/functions/health-check/index.ts`:
 
-En `src/pages/admin/AdminClients.tsx`:
+**Responsabilidades:**
+- Verificar que el solicitante sea admin
+- Ejecutar pings a todos los servicios en paralelo
+- Medir tiempo de respuesta de cada uno
+- Guardar resultados en tabla `health_checks`
+- Retornar estado actual de todos los servicios
 
-**A. Importar Switch:**
+**Lógica de cada ping:**
 ```typescript
-import { Switch } from '@/components/ui/switch';
-```
-
-**B. Agregar estado de loading por tenant:**
-```typescript
-const [togglingId, setTogglingId] = useState<string | null>(null);
-```
-
-**C. Handler para toggle:**
-```typescript
-const handleToggleStatus = async (tenantId: string, newStatus: boolean) => {
-  setTogglingId(tenantId);
+// Para bases de datos
+const checkDB = async (client, name) => {
+  const start = Date.now();
   try {
-    const { data, error } = await supabase.functions.invoke('admin-toggle-tenant-status', {
-      body: { tenantId, isActive: newStatus }
+    await client.from('tenants').select('id').limit(1);
+    return { 
+      service: name, 
+      status: 'healthy', 
+      responseTime: Date.now() - start 
+    };
+  } catch (e) {
+    return { 
+      service: name, 
+      status: 'down', 
+      responseTime: Date.now() - start,
+      error: e.message 
+    };
+  }
+};
+
+// Para edge functions (HEAD request ligero)
+const checkEdgeFunction = async (name) => {
+  const start = Date.now();
+  try {
+    // Endpoint especial /health que solo retorna 200
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
+      method: 'OPTIONS'
     });
-    
-    if (error) throw error;
-    
-    // Actualizar estado local
-    setTenants(prev => prev.map(t => 
-      t.id === tenantId ? { ...t, is_active: newStatus } : t
-    ));
-    
-    toast.success(newStatus ? 'Cliente activado' : 'Cliente desactivado');
-  } catch (err) {
-    toast.error('Error al cambiar estado');
-  } finally {
-    setTogglingId(null);
+    return {
+      service: `edge:${name}`,
+      status: res.ok ? 'healthy' : 'degraded',
+      responseTime: Date.now() - start
+    };
+  } catch (e) {
+    return {
+      service: `edge:${name}`,
+      status: 'down',
+      responseTime: Date.now() - start,
+      error: e.message
+    };
   }
 };
 ```
 
-**D. Reemplazar Badge por Switch:**
-```typescript
-// Antes (líneas 333-340):
-<Badge>Activo/Inactivo</Badge>
+### 3. Crear Página: `AdminHealthCheck.tsx`
 
-// Después:
-<div className="flex items-center gap-2">
-  <Switch
-    checked={tenant.is_active !== false}
-    onCheckedChange={(checked) => handleToggleStatus(tenant.id, checked)}
-    disabled={togglingId === tenant.id}
-  />
-  <span className={tenant.is_active !== false ? 'text-green-600' : 'text-destructive'}>
-    {tenant.is_active !== false ? 'Activo' : 'Inactivo'}
-  </span>
-</div>
+Nueva página en `src/pages/admin/AdminHealthCheck.tsx`:
+
+**Componentes de UI:**
+- **Estado General:** Indicador grande (verde/amarillo/rojo) con timestamp del último check
+- **Tabla de Servicios:** Lista de todos los servicios con:
+  - Nombre del servicio
+  - Estado (badge con color)
+  - Tiempo de respuesta (ms)
+  - Último error (si aplica)
+- **Botón "Run Health Check":** Ejecuta verificación manual
+- **Gráfico Histórico:** Línea temporal mostrando uptime por servicio (últimas 24h)
+- **Auto-refresh:** Toggle para verificación automática cada 60 segundos
+
+**Diseño visual:**
+```text
+┌─────────────────────────────────────────────────────────────┐
+│  Estado de Servicios                    [🔄 Verificar Ahora]│
+│  Última verificación: hace 2 minutos                        │
+├─────────────────────────────────────────────────────────────┤
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐                     │
+│  │ 🟢 6/6   │ │ 45ms     │ │ 99.9%    │                     │
+│  │ Healthy  │ │ Avg Time │ │ Uptime   │                     │
+│  └──────────┘ └──────────┘ └──────────┘                     │
+├─────────────────────────────────────────────────────────────┤
+│  Servicio              Estado    Tiempo    Último Check     │
+│  ─────────────────────────────────────────────────────────  │
+│  Lovable Cloud DB      🟢 OK     23ms      hace 2 min       │
+│  External DB (n8n)     🟢 OK     45ms      hace 2 min       │
+│  save-agent-settings   🟢 OK     120ms     hace 2 min       │
+│  webhook-n8n-proxy     🟡 Slow   890ms     hace 2 min       │
+│  n8n Webhook           🔴 Down   ---       hace 2 min       │
+└─────────────────────────────────────────────────────────────┘
 ```
 
----
+### 4. Actualizar Navegación Admin
 
-## Flujo de Usuario
+Modificar `src/components/layout/AdminLayout.tsx`:
 
-```text
-Admin en Panel Clientes
-         ↓
-Ve Switch en columna "Estado" (ON = verde)
-         ↓
-Hace clic en Switch para desactivar
-         ↓
-Switch muestra loading (disabled)
-         ↓
-Edge function valida admin + actualiza BD
-         ↓
-Switch cambia a OFF + texto "Inactivo" (rojo)
-         ↓
-Toast: "Cliente desactivado"
+```typescript
+import { Activity } from 'lucide-react';
+
+const navItems = [
+  { path: '/admin/dashboard', label: 'Dashboard', icon: BarChart3 },
+  { path: '/admin/onboarding', label: 'Onboarding', icon: UserPlus },
+  { path: '/admin/clientes', label: 'Clientes', icon: Users },
+  { path: '/admin/tickets', label: 'Tickets', icon: Ticket },
+  { path: '/admin/health', label: 'Health', icon: Activity }, // NUEVO
+];
+```
+
+### 5. Agregar Ruta en App.tsx
+
+```typescript
+const AdminHealthCheck = lazy(() => import("./pages/admin/AdminHealthCheck"));
+
+// En Routes:
+<Route path="/admin/health" element={<AdminRoute><AdminHealthCheck /></AdminRoute>} />
 ```
 
 ---
@@ -131,42 +197,71 @@ Toast: "Cliente desactivado"
 
 | Archivo | Acción | Descripción |
 |---------|--------|-------------|
-| `supabase/functions/admin-toggle-tenant-status/index.ts` | **Crear** | Edge function para toggle seguro |
-| `src/pages/admin/AdminClients.tsx` | **Modificar** | Agregar Switch y handler |
+| `src/pages/admin/AdminHealthCheck.tsx` | **Crear** | Página principal de health check |
+| `supabase/functions/health-check/index.ts` | **Crear** | Edge function para ejecutar pings |
+| `supabase/config.toml` | **Modificar** | Registrar nueva edge function |
+| `src/components/layout/AdminLayout.tsx` | **Modificar** | Agregar enlace "Health" en navegación |
+| `src/App.tsx` | **Modificar** | Agregar ruta `/admin/health` |
+| **Migración SQL** | **Crear** | Tabla `health_checks` para historial |
 
 ---
 
-## Consideraciones de Seguridad
+## Umbrales de Estado
 
-1. **Validación de Admin:** Solo el email `contacto@vexalatam.com` puede ejecutar
-2. **Audit Trail:** Cada cambio se registra en `audit_logs` con:
-   - `admin_user_id`
-   - `action: 'tenant_status_toggle'`
-   - `old_values: { is_active: true }`
-   - `new_values: { is_active: false }`
-3. **No auto-desactivación:** Agregar validación para que el admin no pueda desactivar su propio tenant (si aplicable)
+| Estado | Condición | Color |
+|--------|-----------|-------|
+| Healthy | Respuesta OK y tiempo < 500ms | 🟢 Verde |
+| Degraded | Respuesta OK pero tiempo ≥ 500ms | 🟡 Amarillo |
+| Down | Error o timeout (>5s) | 🔴 Rojo |
 
 ---
 
-## Extensiones Futuras (No Incluidas en Este Plan)
+## Sección Técnica
 
-Actualmente `is_active = false` es solo informativo. Para hacerlo funcional se podría:
+### Edge Function: health-check
 
-| Funcionalidad | Impacto |
-|---------------|---------|
-| Bloquear login | Usuarios del tenant no pueden entrar |
-| Pausar WhatsApp | Mensajes entrantes no se procesan |
-| Banner de suspensión | Cliente ve aviso al entrar |
-| Suspender facturación | No se cobran extras |
+```typescript
+// Estructura de respuesta
+interface HealthCheckResult {
+  timestamp: string;
+  overall_status: 'healthy' | 'degraded' | 'down';
+  services: Array<{
+    name: string;
+    status: 'healthy' | 'degraded' | 'down';
+    response_time_ms: number;
+    error?: string;
+  }>;
+  summary: {
+    total: number;
+    healthy: number;
+    degraded: number;
+    down: number;
+    avg_response_time_ms: number;
+  };
+}
+```
 
-Estas extensiones requerirían modificaciones adicionales en `ProtectedRoute`, `webhook-n8n-proxy`, etc.
+### Consulta de Historial (Últimas 24h)
+
+```sql
+SELECT 
+  service_name,
+  date_trunc('hour', checked_at) as hour,
+  COUNT(*) as checks,
+  COUNT(*) FILTER (WHERE status = 'healthy') as healthy_count,
+  AVG(response_time_ms) as avg_response_time
+FROM health_checks
+WHERE checked_at > now() - interval '24 hours'
+GROUP BY service_name, date_trunc('hour', checked_at)
+ORDER BY hour DESC;
+```
 
 ---
 
 ## Resultado Esperado
 
-El admin podrá:
-1. Ver el estado actual de cada cliente como un Switch interactivo
-2. Activar/desactivar clientes con un solo clic
-3. Ver feedback visual inmediato (loading + toast)
-4. Tener registro de auditoría de todos los cambios
+1. Nueva sección "Health" visible solo para admin en el sidebar
+2. Vista en tiempo real del estado de todos los servicios críticos
+3. Capacidad de ejecutar health checks manuales
+4. Historial de 24h para análisis de patrones de degradación
+5. Alertas visuales claras cuando un servicio esté caído o lento
