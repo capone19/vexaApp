@@ -42,9 +42,9 @@ export interface CounterOptions {
  * - HOT: 11+ mensajes (leads calientes, alta intención)
  */
 export function classifySession(messageCount: number): 'tofu' | 'mofu' | 'hot' {
-  if (messageCount >= 11) return 'hot';
-  if (messageCount >= 7) return 'mofu';
-  return 'tofu';
+  if (messageCount >= 9) return 'hot';   // 9+ mensajes (alta intención)
+  if (messageCount >= 3) return 'mofu';  // 3-8 mensajes (en progreso)
+  return 'tofu';                          // 1-2 mensajes (bajo interés)
 }
 
 /**
