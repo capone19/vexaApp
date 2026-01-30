@@ -55,6 +55,7 @@ const mainNavItems: NavItem[] = [
     children: [
       { title: "Plantillas", href: "/marketing/plantillas" },
       { title: "Performance", href: "/marketing/performance" },
+      { title: "Créditos", href: "/marketing/creditos" },
     ],
   },
 ];

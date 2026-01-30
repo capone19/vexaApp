@@ -5,6 +5,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+// Precios por tipo de mensaje (en USD) - debe coincidir con src/lib/messaging-pricing.ts
+const MESSAGE_PRICES: Record<string, number> = {
+  marketing: 0.15,
+  utility: 0.04,
+  authentication: 0.04,
+  service: 0,
+};
+
 interface TemplateParameter {
   type: 'text' | 'image' | 'document' | 'video';
   text?: string;
@@ -15,7 +23,7 @@ interface TemplateParameter {
 
 interface SendMessageInput {
   templateId: string;
-  to: string; // Phone number with country code
+  to: string;
   headerParameters?: TemplateParameter[];
   bodyParameters?: TemplateParameter[];
   buttonParameters?: Array<{ index: number; subType: string; parameters: TemplateParameter[] }>;
@@ -45,8 +53,9 @@ Deno.serve(async (req) => {
 
     const input = await req.json();
     const isBulk = 'recipients' in input;
+    const recipientCount = isBulk ? (input as SendBulkInput).recipients.length : 1;
     
-    console.log('[ycloud-send-message] Mode:', isBulk ? 'bulk' : 'single');
+    console.log('[ycloud-send-message] Mode:', isBulk ? 'bulk' : 'single', 'Recipients:', recipientCount);
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -102,17 +111,57 @@ Deno.serve(async (req) => {
       throw new Error('Template must be approved before sending messages');
     }
 
-    console.log('[ycloud-send-message] Using template:', template.name);
+    console.log('[ycloud-send-message] Using template:', template.name, 'Category:', template.category);
 
+    // ========================================
+    // SISTEMA DE CRÉDITOS - Verificar saldo
+    // ========================================
+    const messagePrice = MESSAGE_PRICES[template.category?.toLowerCase()] ?? MESSAGE_PRICES.marketing;
+    const estimatedCost = messagePrice * recipientCount;
+
+    console.log('[ycloud-send-message] Price per message:', messagePrice, 'Estimated cost:', estimatedCost);
+
+    // Obtener saldo actual
+    const { data: credits, error: creditsError } = await supabase
+      .from('tenant_messaging_credits')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (creditsError && creditsError.code !== 'PGRST116') {
+      console.error('[ycloud-send-message] Error fetching credits:', creditsError);
+      throw new Error('Error al verificar saldo de créditos');
+    }
+
+    const currentBalance = credits?.balance_usd ?? 0;
+
+    // Verificar si hay saldo suficiente (solo si el mensaje no es gratis)
+    if (messagePrice > 0 && currentBalance < estimatedCost) {
+      console.log('[ycloud-send-message] Insufficient balance:', currentBalance, 'Required:', estimatedCost);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Saldo insuficiente. Tienes $${currentBalance.toFixed(2)} USD y necesitas $${estimatedCost.toFixed(2)} USD para enviar ${recipientCount} mensaje(s).`,
+          balance: currentBalance,
+          required: estimatedCost,
+        }),
+        {
+          status: 402,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // ========================================
+    // FUNCIÓN DE ENVÍO
+    // ========================================
     const sendMessage = async (
       to: string,
       headerParams?: TemplateParameter[],
       bodyParams?: TemplateParameter[]
     ) => {
-      // Build template components for YCloud
       const components: Array<Record<string, unknown>> = [];
 
-      // Header parameters
       if (headerParams && headerParams.length > 0) {
         components.push({
           type: 'header',
@@ -120,7 +169,6 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Body parameters
       if (bodyParams && bodyParams.length > 0) {
         components.push({
           type: 'body',
@@ -168,12 +216,15 @@ Deno.serve(async (req) => {
       };
     };
 
+    // ========================================
+    // ENVÍO DE MENSAJES
+    // ========================================
+    const results: Array<{ success: boolean; to: string; messageId?: string; error?: string }> = [];
+    let successCount = 0;
+    let errorCount = 0;
+
     if (isBulk) {
-      // Bulk send
       const bulkInput = input as SendBulkInput;
-      const results = [];
-      let successCount = 0;
-      let errorCount = 0;
 
       for (const recipient of bulkInput.recipients) {
         const result = await sendMessage(
@@ -190,13 +241,79 @@ Deno.serve(async (req) => {
       }
 
       console.log('[ycloud-send-message] Bulk complete. Success:', successCount, 'Errors:', errorCount);
+    } else {
+      const singleInput = input as SendMessageInput;
+      const result = await sendMessage(
+        singleInput.to,
+        singleInput.headerParameters,
+        singleInput.bodyParameters
+      );
+      results.push(result);
+      if (result.success) successCount++;
+      else errorCount++;
+    }
 
+    // ========================================
+    // SISTEMA DE CRÉDITOS - Descontar saldo
+    // ========================================
+    const actualCost = messagePrice * successCount;
+
+    if (actualCost > 0 && successCount > 0) {
+      const newBalance = currentBalance - actualCost;
+      
+      // Actualizar saldo
+      const { error: updateError } = await supabase
+        .from('tenant_messaging_credits')
+        .upsert({
+          tenant_id: tenantId,
+          balance_usd: newBalance,
+          total_consumed_usd: (credits?.total_consumed_usd ?? 0) + actualCost,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'tenant_id',
+        });
+
+      if (updateError) {
+        console.error('[ycloud-send-message] Error updating balance:', updateError);
+      }
+
+      // Registrar transacción
+      const { error: txError } = await supabase
+        .from('messaging_transactions')
+        .insert({
+          tenant_id: tenantId,
+          type: 'consumption',
+          amount_usd: -actualCost,
+          balance_after: newBalance,
+          message_count: successCount,
+          message_type: template.category?.toLowerCase() || 'marketing',
+          template_id: template.id,
+          description: `Envío de ${successCount} mensaje(s) - ${template.name}`,
+          metadata: {
+            template_name: template.name,
+            failed_count: errorCount,
+          },
+        });
+
+      if (txError) {
+        console.error('[ycloud-send-message] Error recording transaction:', txError);
+      }
+
+      console.log('[ycloud-send-message] Deducted', actualCost, 'USD. New balance:', newBalance);
+    }
+
+    // ========================================
+    // RESPUESTA
+    // ========================================
+    if (isBulk) {
       return new Response(
         JSON.stringify({
           success: true,
           sent: successCount,
           failed: errorCount,
-          total: bulkInput.recipients.length,
+          total: (input as SendBulkInput).recipients.length,
+          cost: actualCost,
+          newBalance: currentBalance - actualCost,
           results,
         }),
         {
@@ -204,23 +321,17 @@ Deno.serve(async (req) => {
         }
       );
     } else {
-      // Single send
-      const singleInput = input as SendMessageInput;
-      const result = await sendMessage(
-        singleInput.to,
-        singleInput.headerParameters,
-        singleInput.bodyParameters
-      );
-
-      if (!result.success) {
-        throw new Error(result.error);
+      if (!results[0].success) {
+        throw new Error(results[0].error);
       }
 
       return new Response(
         JSON.stringify({
           success: true,
-          messageId: result.messageId,
+          messageId: results[0].messageId,
           message: 'Mensaje enviado correctamente',
+          cost: actualCost,
+          newBalance: currentBalance - actualCost,
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

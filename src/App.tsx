@@ -22,6 +22,7 @@ const Results = lazy(() => import("./pages/Results"));
 const Marketing = lazy(() => import("./pages/Marketing"));
 const MarketingTemplates = lazy(() => import("./pages/MarketingTemplates"));
 const MarketingPerformance = lazy(() => import("./pages/MarketingPerformance"));
+const MarketingCredits = lazy(() => import("./pages/MarketingCredits"));
 const Reports = lazy(() => import("./pages/Reports"));
 const Billing = lazy(() => import("./pages/Billing"));
 const Notifications = lazy(() => import("./pages/Notifications"));
@@ -91,6 +92,7 @@ const App = () => (
               <Route path="/marketing" element={<ProtectedRoute><PremiumRoute feature="El módulo de Marketing"><Marketing /></PremiumRoute></ProtectedRoute>} />
               <Route path="/marketing/plantillas" element={<ProtectedRoute><PremiumRoute feature="Las plantillas de WhatsApp"><MarketingTemplates /></PremiumRoute></ProtectedRoute>} />
               <Route path="/marketing/performance" element={<ProtectedRoute><PremiumRoute feature="El análisis de performance"><MarketingPerformance /></PremiumRoute></ProtectedRoute>} />
+              <Route path="/marketing/creditos" element={<ProtectedRoute><PremiumRoute feature="El sistema de créditos de mensajería"><MarketingCredits /></PremiumRoute></ProtectedRoute>} />
               <Route path="/reportes" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
               <Route path="/facturacion" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
               <Route path="/notificaciones" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />

@@ -463,11 +463,13 @@ export type Database = {
       }
       campaigns: {
         Row: {
+          actual_cost_usd: number | null
           completed_at: string | null
           created_at: string | null
           created_by: string | null
           delivered_count: number | null
           description: string | null
+          estimated_cost_usd: number | null
           failed_count: number | null
           id: string
           name: string
@@ -484,11 +486,13 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          actual_cost_usd?: number | null
           completed_at?: string | null
           created_at?: string | null
           created_by?: string | null
           delivered_count?: number | null
           description?: string | null
+          estimated_cost_usd?: number | null
           failed_count?: number | null
           id?: string
           name: string
@@ -505,11 +509,13 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          actual_cost_usd?: number | null
           completed_at?: string | null
           created_at?: string | null
           created_by?: string | null
           delivered_count?: number | null
           description?: string | null
+          estimated_cost_usd?: number | null
           failed_count?: number | null
           id?: string
           name?: string
@@ -897,6 +903,73 @@ export type Database = {
           },
         ]
       }
+      messaging_transactions: {
+        Row: {
+          amount_usd: number
+          balance_after: number
+          campaign_id: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          message_count: number | null
+          message_type: string | null
+          metadata: Json | null
+          template_id: string | null
+          tenant_id: string
+          type: string
+        }
+        Insert: {
+          amount_usd: number
+          balance_after: number
+          campaign_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          message_count?: number | null
+          message_type?: string | null
+          metadata?: Json | null
+          template_id?: string | null
+          tenant_id: string
+          type: string
+        }
+        Update: {
+          amount_usd?: number
+          balance_after?: number
+          campaign_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          message_count?: number | null
+          message_type?: string | null
+          metadata?: Json | null
+          template_id?: string | null
+          tenant_id?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messaging_transactions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messaging_transactions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messaging_transactions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       metrics_daily: {
         Row: {
           avg_response_time_seconds: number | null
@@ -1211,6 +1284,44 @@ export type Database = {
             foreignKeyName: "tenant_addons_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_messaging_credits: {
+        Row: {
+          balance_usd: number | null
+          created_at: string | null
+          id: string
+          tenant_id: string
+          total_consumed_usd: number | null
+          total_purchased_usd: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          balance_usd?: number | null
+          created_at?: string | null
+          id?: string
+          tenant_id: string
+          total_consumed_usd?: number | null
+          total_purchased_usd?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          balance_usd?: number | null
+          created_at?: string | null
+          id?: string
+          tenant_id?: string
+          total_consumed_usd?: number | null
+          total_purchased_usd?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_messaging_credits_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
