@@ -277,7 +277,11 @@ Deno.serve(async (req) => {
         console.error('[ycloud-send-message] Error updating balance:', updateError);
       }
 
-      // Registrar transacción
+      // Registrar transacción con los teléfonos destinatarios para atribución
+      const successfulRecipients = results
+        .filter(r => r.success)
+        .map(r => r.to);
+
       const { error: txError } = await supabase
         .from('messaging_transactions')
         .insert({
@@ -292,6 +296,7 @@ Deno.serve(async (req) => {
           metadata: {
             template_name: template.name,
             failed_count: errorCount,
+            recipients: successfulRecipients, // Para atribución de ventas
           },
         });
 
