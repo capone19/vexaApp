@@ -12,6 +12,10 @@ import { WEBHOOKS } from "@/lib/constants";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
 import { useChatLabels } from "@/hooks/use-chat-labels";
+import {
+  Dialog,
+  DialogContent,
+} from "@/components/ui/dialog";
 
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -109,6 +113,7 @@ export default function Chats() {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [labelFilterIds, setLabelFilterIds] = useState<string[]>([]);
   const [labelsManagerOpen, setLabelsManagerOpen] = useState(false);
+  const [expandedImage, setExpandedImage] = useState<string | null>(null);
   
   // Chat labels hook
   const {
@@ -788,14 +793,14 @@ export default function Chats() {
                         </div>
                       )}
                       
-                      {/* Renderizar media si existe */}
+                      {/* Renderizar media si existe - estilo WhatsApp */}
                       {hasMedia && msg.media?.type === 'image' && (
                         <div className="mb-2">
                           <img 
                             src={msg.media.url} 
                             alt={msg.media.caption || "Imagen"}
-                            className="max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                            onClick={() => window.open(msg.media!.url, '_blank')}
+                            className="w-48 h-auto max-h-48 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => setExpandedImage(msg.media!.url)}
                             loading="lazy"
                           />
                           {msg.media.caption && (
@@ -948,6 +953,24 @@ export default function Chats() {
         onUpdateLabel={updateLabel}
         onDeleteLabel={deleteLabel}
       />
+      
+      {/* Modal para imagen expandida - estilo WhatsApp */}
+      <Dialog open={!!expandedImage} onOpenChange={() => setExpandedImage(null)}>
+        <DialogContent className="max-w-[90vw] max-h-[90vh] p-0 bg-black/95 border-none">
+          <div 
+            className="flex items-center justify-center w-full h-full cursor-pointer"
+            onClick={() => setExpandedImage(null)}
+          >
+            {expandedImage && (
+              <img 
+                src={expandedImage} 
+                alt="Imagen expandida"
+                className="max-w-full max-h-[85vh] object-contain"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }
