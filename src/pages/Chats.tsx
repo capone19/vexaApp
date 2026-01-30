@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -17,9 +18,9 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 
-import { format } from "date-fns";
+import { format, isToday, isYesterday, differenceInDays, differenceInHours } from "date-fns";
 import { es } from "date-fns/locale";
-import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio, Tags, FileText } from "lucide-react";
+import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio, Tags, FileText, Clock } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -33,6 +34,28 @@ import { LabelBadge } from "@/components/chats/LabelBadge";
 import { LabelFilterBar } from "@/components/chats/LabelFilterBar";
 import { LabelSelector } from "@/components/chats/LabelSelector";
 import { LabelsManagerDialog } from "@/components/chats/LabelsManagerDialog";
+
+// Formatear timestamp estilo WhatsApp
+function formatWhatsAppTimestamp(date: Date): string {
+  // Hoy: mostrar hora
+  if (isToday(date)) {
+    return format(date, "HH:mm", { locale: es });
+  }
+  
+  // Ayer
+  if (isYesterday(date)) {
+    return "Ayer";
+  }
+  
+  // Dentro de la última semana: día de la semana
+  const daysDiff = differenceInDays(new Date(), date);
+  if (daysDiff < 7) {
+    return format(date, "EEEE", { locale: es }); // Lunes, Martes, etc.
+  }
+  
+  // Más de 7 días: formato yy-MM-dd
+  return format(date, "yy-MM-dd");
+}
 
 type IntentLabel = "alta_intencion" | "en_progreso" | null;
 type FilterTab = "todos" | "alta_intencion" | "en_progreso";
@@ -82,6 +105,7 @@ function IntentBadge({ label }: { label: IntentLabel }) {
 }
 
 export default function Chats() {
+  const navigate = useNavigate();
   const { user, isLoading: authLoading } = useAuth();
   const { tenantId: effectiveTenantId, isImpersonating } = useEffectiveTenant();
   
@@ -434,7 +458,22 @@ export default function Chats() {
     return processedSessions.find(s => s.sessionId === selectedSessionId);
   }, [processedSessions, selectedSessionId]);
 
+  // Calcular si la ventana de 24 horas expiró (23 horas para seguridad)
+  const lastClientMessageTime = useMemo(() => {
+    if (!selectedSessionId) return null;
+    
+    // Buscar el último mensaje del cliente (type === 'human')
+    const clientMessages = messages
+      .filter(m => m.session_id === selectedSessionId && m.message?.type === 'human')
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    
+    return clientMessages.length > 0 ? new Date(clientMessages[0].created_at) : null;
+  }, [messages, selectedSessionId]);
 
+  const isWindowExpired = useMemo(() => {
+    if (!lastClientMessageTime) return true; // Sin mensajes del cliente = ventana cerrada
+    return differenceInHours(new Date(), lastClientMessageTime) >= 23;
+  }, [lastClientMessageTime]);
   // Empty State Component
   const EmptyState = () => (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center">
@@ -595,7 +634,7 @@ export default function Chats() {
                         {session.phoneNumber}
                       </span>
                       <span className="text-xs text-muted-foreground shrink-0 ml-2">
-                        {format(session.lastMessageAt, "HH:mm", { locale: es })}
+                        {formatWhatsAppTimestamp(session.lastMessageAt)}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground line-clamp-1 mb-2">
@@ -890,9 +929,40 @@ export default function Chats() {
       {chatMessagesContent}
       
       {/* Input para agente humano - FUERA del useMemo para estabilidad */}
-      {/* Se bloquea cuando el bot está activo */}
+      {/* Se bloquea cuando el bot está activo o cuando la ventana de 24h expiró */}
       {(() => {
         const isBotActive = botStates[selectedSessionId] ?? true;
+        
+        // Si pasaron 23+ horas, mostrar botón de plantillas
+        if (isWindowExpired) {
+          return (
+            <div className="p-3 md:p-4 border-t border-border bg-background">
+              <div className="flex flex-col items-center gap-3 py-2">
+                <div className="flex items-center gap-2 text-amber-500">
+                  <Clock className="h-4 w-4" />
+                  <span className="text-sm font-medium">Ventana de 24h expirada</span>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground">
+                    Han pasado más de 24 horas desde el último mensaje del cliente.
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Para enviar un mensaje, usa una plantilla aprobada.
+                  </p>
+                </div>
+                <Button 
+                  onClick={() => navigate('/marketing/plantillas')}
+                  className="gap-2"
+                >
+                  <FileText className="h-4 w-4" />
+                  Ir a Plantillas
+                </Button>
+              </div>
+            </div>
+          );
+        }
+        
+        // Input normal cuando la ventana está activa
         const isInputDisabled = isBotActive || isSendingMessage;
         return (
           <div className="p-3 md:p-4 border-t border-border bg-background">
