@@ -32,3 +32,15 @@ verify_jwt = false
 
 [functions.admin-update-tenant-currency]
 verify_jwt = false
+
+[functions.ycloud-templates-sync]
+verify_jwt = false
+
+[functions.ycloud-templates-create]
+verify_jwt = false
+
+[functions.ycloud-templates-delete]
+verify_jwt = false
+
+[functions.ycloud-send-message]
+verify_jwt = false
