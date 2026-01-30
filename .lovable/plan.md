@@ -1,203 +1,238 @@
 
-# Plan: Formato de Timestamps Estilo WhatsApp + Restricción de Ventana 24 Horas
+# Plan: Dashboard de Performance de Marketing (Plantillas WhatsApp)
 
-## Resumen
+## Objetivo
 
-Implementar dos mejoras en la página de Chats:
+Crear un dashboard funcional de Performance de Marketing que mida:
+- Mensajes de plantilla enviados
+- Ventas recuperadas (atribuidas a plantillas)
+- Tasa de conversión
+- ROAS (Return on Ad Spend)
+- Evolución diaria
 
-1. **Formato de timestamps estilo WhatsApp** en la lista de sesiones y dentro de los mensajes
-2. **Bloqueo del input después de 23 horas** para cumplir con la ventana de 24 horas de Meta, mostrando un botón que lleva a plantillas
+Todo filtrado por el **período de facturación** del cliente.
 
 ---
 
-## Parte 1: Formato de Timestamps Estilo WhatsApp
+## Arquitectura de Atribución
 
-### Lógica de Formateo
+El sistema necesita conectar:
 
-| Tiempo transcurrido | Formato a mostrar |
-|---------------------|-------------------|
-| Menos de 24 horas | Hora exacta: `HH:mm` (ej: "14:32") |
-| Entre 24-48 horas (ayer) | `Ayer` |
-| Más de 48 horas, menos de 7 días | Día de la semana: `Lunes`, `Martes`, etc. |
-| Más de 7 días | Fecha corta: `YY-MM-DD` (ej: "25-01-30") |
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           FLUJO DE ATRIBUCIÓN                               │
+└─────────────────────────────────────────────────────────────────────────────┘
 
-### Implementación
+1. ENVÍO DE PLANTILLA
+   ┌──────────────────────┐
+   │ messaging_transactions │
+   │ - template_id         │
+   │ - message_count       │
+   │ - metadata.recipients │ ◄─── Guardar los teléfonos a los que se envió
+   │ - created_at          │
+   └──────────────────────┘
+             │
+             │ Se envía a phone_number
+             ▼
+2. CONVERSACIÓN (DB Externa)
+   ┌──────────────────────┐
+   │ n8n_chat_histories    │
+   │ - session_id          │
+   │ - phone_number        │ ◄─── Vincula teléfono con sesión
+   │ - created_at          │
+   └──────────────────────┘
+             │
+             │ Si hay venta
+             ▼
+3. CONVERSIÓN (DB Externa)
+   ┌──────────────────────┐
+   │ bookings              │
+   │ - session_id          │ ◄─── Vincula sesión con venta
+   │ - contact_phone       │
+   │ - price               │
+   │ - event_date          │
+   └──────────────────────┘
+```
 
-**Crear función helper en `src/pages/Chats.tsx`:**
+**Lógica de atribución**: Una venta se atribuye a una plantilla si:
+1. La plantilla fue enviada a un `phone_number`
+2. Hay un `booking` posterior al envío de la plantilla
+3. El `booking` tiene el mismo `contact_phone` que el destinatario de la plantilla
+4. El `booking` ocurrió dentro de una ventana de 7 días después del envío
+
+---
+
+## Parte 1: Modificar el Edge Function de Envío
+
+**Archivo**: `supabase/functions/ycloud-send-message/index.ts`
+
+Actualmente el metadata solo guarda `template_name` y `failed_count`. Necesitamos guardar también los teléfonos destinatarios para poder hacer la atribución:
 
 ```typescript
-import { 
-  format, 
-  isToday, 
-  isYesterday, 
-  differenceInDays 
-} from "date-fns";
-import { es } from "date-fns/locale";
+// Registrar transacción con los destinatarios
+const { error: txError } = await supabase
+  .from('messaging_transactions')
+  .insert({
+    // ... campos existentes
+    metadata: {
+      template_name: template.name,
+      failed_count: errorCount,
+      recipients: results
+        .filter(r => r.success)
+        .map(r => r.to), // Guardar los teléfonos exitosos
+    },
+  });
+```
 
-// Formatear timestamp estilo WhatsApp
-function formatWhatsAppTimestamp(date: Date): string {
-  const now = new Date();
+---
+
+## Parte 2: Crear Hook de Performance
+
+**Nuevo archivo**: `src/hooks/use-marketing-performance.ts`
+
+```typescript
+interface MarketingPerformanceData {
+  // KPIs principales
+  totalMessagesSent: number;
+  totalCostUsd: number;
+  totalRevenue: number;
+  conversions: number;
+  conversionRate: number; // conversions / unique_recipients
+  roas: number; // revenue / cost
   
-  // Hoy: mostrar hora
-  if (isToday(date)) {
-    return format(date, "HH:mm", { locale: es });
-  }
+  // Datos diarios para gráfico
+  dailyData: Array<{
+    date: string;
+    messagesSent: number;
+    cost: number;
+    conversions: number;
+    revenue: number;
+  }>;
   
-  // Ayer
-  if (isYesterday(date)) {
-    return "Ayer";
-  }
-  
-  // Dentro de la última semana: día de la semana
-  const daysDiff = differenceInDays(now, date);
-  if (daysDiff < 7) {
-    return format(date, "EEEE", { locale: es }); // Lunes, Martes, etc.
-  }
-  
-  // Más de 7 días: formato YY-MM-DD
-  return format(date, "yy-MM-dd");
+  // Top templates
+  topTemplates: Array<{
+    templateId: string;
+    templateName: string;
+    sent: number;
+    conversions: number;
+    revenue: number;
+    conversionRate: number;
+  }>;
 }
 ```
 
-### Archivos a Modificar
+### Lógica del Hook
 
-| Ubicación | Cambio |
-|-----------|--------|
-| **Lista de sesiones** (línea ~598) | Cambiar `format(session.lastMessageAt, "HH:mm")` por `formatWhatsAppTimestamp(session.lastMessageAt)` |
-| **Mensajes individuales** (línea ~869) | Mantener `HH:mm` ya que está dentro del día actual de la conversación |
-
----
-
-## Parte 2: Restricción de Ventana 24 Horas (23 horas)
-
-### Lógica
-
-Cuando han pasado **23 horas o más** desde el último mensaje del cliente (tipo `human`), el input de mensaje se deshabilita y se muestra un botón para ir a plantillas.
-
-### Implementación
-
-**1. Calcular si la ventana expiró:**
-
-```typescript
-import { differenceInHours } from "date-fns";
-
-// Dentro del componente, calcular si pasaron 23+ horas
-const lastClientMessageTime = useMemo(() => {
-  if (!selectedSessionId) return null;
-  
-  // Buscar el último mensaje del cliente (type === 'human')
-  const clientMessages = messages
-    .filter(m => m.session_id === selectedSessionId && m.message?.type === 'human')
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  
-  return clientMessages.length > 0 ? new Date(clientMessages[0].created_at) : null;
-}, [messages, selectedSessionId]);
-
-const isWindowExpired = useMemo(() => {
-  if (!lastClientMessageTime) return true; // Sin mensajes del cliente = ventana cerrada
-  return differenceInHours(new Date(), lastClientMessageTime) >= 23;
-}, [lastClientMessageTime]);
-```
-
-**2. Modificar el área de input (líneas ~894-929):**
-
-```typescript
-{(() => {
-  const isBotActive = botStates[selectedSessionId] ?? true;
-  
-  // Si pasaron 23+ horas, mostrar botón de plantillas
-  if (isWindowExpired) {
-    return (
-      <div className="p-3 md:p-4 border-t border-border bg-background">
-        <div className="flex flex-col items-center gap-3 py-2">
-          <div className="text-center">
-            <p className="text-sm text-muted-foreground">
-              Han pasado más de 24 horas desde el último mensaje del cliente.
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Para enviar un mensaje, usa una plantilla aprobada.
-            </p>
-          </div>
-          <Button 
-            onClick={() => navigate('/marketing/plantillas')}
-            className="gap-2"
-          >
-            <FileText className="h-4 w-4" />
-            Ir a Plantillas
-          </Button>
-        </div>
-      </div>
-    );
-  }
-  
-  // Input normal cuando la ventana está activa
-  return (
-    <div className="p-3 md:p-4 border-t border-border bg-background">
-      {/* ... input existente ... */}
-    </div>
-  );
-})()}
-```
+1. **Obtener transacciones de mensajería** del período (Lovable Cloud)
+2. **Extraer todos los teléfonos** a los que se enviaron plantillas
+3. **Consultar bookings** de esos teléfonos en el período (DB externa)
+4. **Calcular atribución** basada en:
+   - Teléfono coincidente
+   - Booking ocurrió después del envío de plantilla
+   - Dentro de ventana de 7 días
 
 ---
 
-## Diagrama de Flujo
+## Parte 3: Actualizar la Página de Performance
+
+**Archivo**: `src/pages/MarketingPerformance.tsx`
+
+### Cambios principales:
+
+1. **Eliminar tabs/subsecciones** - Una sola vista simplificada
+2. **Usar PeriodFilter** - Filtrar por período de facturación
+3. **KPIs reales**:
+   - Mensajes Enviados (de messaging_transactions)
+   - Ventas Recuperadas (bookings atribuidos)
+   - Tasa de Conversión
+   - ROAS
+4. **Gráfico de evolución diaria** con datos reales
+5. **Top Templates** (si hay datos)
+
+### UI Simplificada
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│                    Usuario Abre Chat                         │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-         ┌────────────────────────────────────────┐
-         │  ¿Último mensaje del cliente < 23 hrs? │
-         └────────────────────────────────────────┘
-                    │                    │
-                   SÍ                   NO
-                    │                    │
-                    ▼                    ▼
-    ┌───────────────────────┐   ┌───────────────────────┐
-    │   Mostrar Input       │   │  Mostrar mensaje de   │
-    │   normal de mensaje   │   │  "ventana expirada"   │
-    │   (según bot toggle)  │   │  + Botón "Ir a        │
-    │                       │   │    Plantillas"        │
-    └───────────────────────┘   └───────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│  Performance de Marketing               [Período: Actual ▼]         │
+│  15 ene - 14 feb, 2025                                              │
+├─────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐│
+│  │ Mensajes     │ │ Ventas       │ │ Conversión   │ │ ROAS         ││
+│  │ Enviados     │ │ Recuperadas  │ │              │ │              ││
+│  │              │ │              │ │              │ │              ││
+│  │    127       │ │   $4,280     │ │   12.5%      │ │    2.8x      ││
+│  │              │ │              │ │              │ │              ││
+│  │ Gasto: $19   │ │ 16 ventas    │ │ 16/127       │ │ $4280/$19    ││
+│  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘│
+│                                                                      │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                    Evolución del Período                       │  │
+│  │                                                                │  │
+│  │         ___                                                    │  │
+│  │    ___/    \___         Mensajes: ───                         │  │
+│  │   /            \___    Conversiones: - - -                    │  │
+│  │  ──────────────────                                            │  │
+│  │  15   17   19   21   23   25   27   29   31                    │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                      │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │  Top Plantillas                                                │  │
+│  │  ────────────────────────────────────────────────────────────  │  │
+│  │  1. promo_febrero        45 enviados  │ 8 ventas │ 17.8% conv │  │
+│  │  2. recordatorio_cita    38 enviados  │ 5 ventas │ 13.2% conv │  │
+│  │  3. bienvenida           44 enviados  │ 3 ventas │  6.8% conv │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Archivos a Modificar
+## Archivos a Crear/Modificar
 
-| Archivo | Cambios |
-|---------|---------|
-| `src/pages/Chats.tsx` | • Agregar imports de `isToday`, `isYesterday`, `differenceInDays`, `differenceInHours`<br>• Agregar función `formatWhatsAppTimestamp`<br>• Agregar `useNavigate` hook<br>• Agregar cálculo de `lastClientMessageTime` y `isWindowExpired`<br>• Modificar timestamp en lista de sesiones<br>• Modificar área de input para manejar ventana expirada |
+| Archivo | Acción | Descripción |
+|---------|--------|-------------|
+| `src/hooks/use-marketing-performance.ts` | **Crear** | Hook que calcula métricas de performance |
+| `src/pages/MarketingPerformance.tsx` | **Modificar** | Reemplazar contenido mock con datos reales |
+| `supabase/functions/ycloud-send-message/index.ts` | **Modificar** | Guardar destinatarios en metadata |
 
 ---
 
-## Resumen de Imports a Agregar
+## Consideraciones Técnicas
+
+### Normalización de Teléfonos
+
+Para hacer match entre el teléfono de envío y el de booking, normalizar a formato `+XXXXXXXXXXX`:
 
 ```typescript
-// Al inicio del archivo
-import { useNavigate } from 'react-router-dom';
-import { 
-  format, 
-  isToday, 
-  isYesterday, 
-  differenceInDays,
-  differenceInHours 
-} from "date-fns";
+function normalizePhone(phone: string): string {
+  return phone.replace(/\s|-|\(|\)/g, '').replace(/^0+/, '+');
+}
 ```
+
+### Ventana de Atribución
+
+- Default: 7 días después del envío de plantilla
+- Una venta solo se atribuye a la plantilla más reciente enviada a ese teléfono
+
+### Rendimiento
+
+- Paginar transacciones si hay muchas
+- Cache de bookings ya procesados
+- Usar `useMemo` para cálculos pesados
 
 ---
 
-## Resultado Esperado
+## Datos de Entrada (Resumen)
 
-**Lista de Sesiones:**
-- Mensajes de hoy: `14:32`
-- Mensajes de ayer: `Ayer`  
-- Hace 3 días: `Lunes`
-- Hace 2 semanas: `25-01-15`
+**Desde Lovable Cloud (`messaging_transactions`)**:
+- Todas las transacciones tipo `consumption` del período
+- template_id, message_count, amount_usd, metadata.recipients
 
-**Input de Mensaje:**
-- Si última respuesta del cliente < 23 hrs → Input habilitado (según estado del bot)
-- Si última respuesta del cliente ≥ 23 hrs → Mensaje de advertencia + Botón "Ir a Plantillas"
+**Desde DB Externa (`bookings`)**:
+- Todos los bookings del período
+- contact_phone, price, event_date, session_id
+
+**Cálculos**:
+- Conversión = booking.contact_phone está en los recipients de una plantilla enviada en los últimos 7 días
+- ROAS = total_revenue / total_cost
+
