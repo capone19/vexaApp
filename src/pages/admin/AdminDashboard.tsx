@@ -2,9 +2,10 @@
 // VEXA Admin - Dashboard de Métricas Globales
 // ============================================
 // Muestra métricas agregadas de TODOS los clientes
+// Usa countConversations() para alinearse con el conteo de clientes
 // ============================================
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { 
@@ -22,6 +23,7 @@ import { AdminLayout } from '@/components/layout/AdminLayout';
 import { KPICard } from '@/components/shared/KPICard';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { supabase } from '@/integrations/supabase/client';
+import { countConversations } from '@/lib/api/conversation-counter';
 
 interface GlobalMetrics {
   // Métricas de hoy
@@ -87,125 +89,149 @@ export default function AdminDashboard() {
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
 
       // ============================================
-      // 1. OBTENER TODOS LOS MENSAJES DE CHAT
+      // 1. OBTENER LISTA DE TENANTS VIA EDGE FUNCTION
+      // (Bypass de RLS usando service_role)
       // ============================================
-      const { data: allMessages, error: chatsError } = await externalSupabase
-        .from('n8n_chat_histories')
-        .select('session_id, created_at')
-        .order('created_at', { ascending: false });
-
-      if (chatsError) {
-        console.error('[AdminDashboard] Error fetching chats:', chatsError);
-        throw chatsError;
+      const { data: tenantsResponse, error: tenantsError } = await supabase.functions.invoke('admin-list-tenants');
+      
+      if (tenantsError) {
+        console.error('[AdminDashboard] Error fetching tenants:', tenantsError);
+        throw new Error('Error obteniendo lista de clientes');
       }
 
+      const tenants = tenantsResponse?.tenants || [];
+      const totalClients = tenants.length;
+      const activeClients = tenants.filter((t: any) => t.is_active !== false).length;
+      
+      // Obtener IDs de tenants activos
+      const activeTenantIds = tenants
+        .filter((t: any) => t.is_active !== false)
+        .map((t: any) => t.id);
+
+      console.log('[AdminDashboard] Tenants encontrados:', { totalClients, activeClients, activeTenantIds });
+
       // ============================================
-      // CONTEO CORRECTO:
-      // - Total mensajes = filas en la tabla
-      // - Total chats = session_ids únicos
-      // - Chats de hoy = session_ids con AL MENOS 1 mensaje hoy
-      // - Chats del mes = session_ids con AL MENOS 1 mensaje este mes
+      // 2. CONTAR CHATS USANDO countConversations()
+      // (Función centralizada con paginación)
       // ============================================
-      
-      const totalMessages = allMessages?.length || 0;
-      
-      // Contar session_ids únicos (total histórico)
-      const allSessionIds = new Set(allMessages?.map(m => m.session_id) || []);
-      const totalChats = allSessionIds.size;
+      let globalTodayChats = 0;
+      let globalTodayMessages = 0;
+      let globalPeriodChats = 0;
+      let globalPeriodMessages = 0;
+      let globalTotalChats = 0;
+      let globalTotalMessages = 0;
 
-      // Filtrar mensajes de HOY
-      const todayMessagesData = allMessages?.filter(m => {
-        const msgDate = new Date(m.created_at);
-        return msgDate >= todayStart;
-      }) || [];
-      
-      const todayMessages = todayMessagesData.length;
-      const todaySessionIds = new Set(todayMessagesData.map(m => m.session_id));
-      const todayChats = todaySessionIds.size;
+      // Procesar en batches de 5 para no saturar
+      const BATCH_SIZE = 5;
+      for (let i = 0; i < activeTenantIds.length; i += BATCH_SIZE) {
+        const batch = activeTenantIds.slice(i, i + BATCH_SIZE);
+        
+        // Ejecutar en paralelo: Total, Mes, Hoy para cada tenant del batch
+        const batchPromises = batch.flatMap((tenantId: string) => [
+          // Total histórico
+          countConversations({ tenantId }),
+          // Este mes
+          countConversations({ tenantId, startDate: monthStart, endDate: now }),
+          // Hoy
+          countConversations({ tenantId, startDate: todayStart, endDate: now }),
+        ]);
 
-      // Filtrar mensajes del MES
-      const monthMessagesData = allMessages?.filter(m => {
-        const msgDate = new Date(m.created_at);
-        return msgDate >= monthStart;
-      }) || [];
-      
-      const periodMessages = monthMessagesData.length;
-      const monthSessionIds = new Set(monthMessagesData.map(m => m.session_id));
-      const periodChats = monthSessionIds.size;
+        const results = await Promise.all(batchPromises);
 
-      console.log('[AdminDashboard] Chats contados:', {
-        todayChats,
-        todayMessages,
-        periodChats,
-        periodMessages,
-        totalChats,
-        totalMessages,
-        todayStart: todayStart.toISOString(),
-        monthStart: monthStart.toISOString(),
+        // Procesar resultados (cada tenant tiene 3 resultados: total, mes, hoy)
+        for (let j = 0; j < batch.length; j++) {
+          const totalResult = results[j * 3];
+          const periodResult = results[j * 3 + 1];
+          const todayResult = results[j * 3 + 2];
+
+          globalTotalChats += totalResult.totalConversations;
+          globalTotalMessages += totalResult.totalMessages;
+          globalPeriodChats += periodResult.totalConversations;
+          globalPeriodMessages += periodResult.totalMessages;
+          globalTodayChats += todayResult.totalConversations;
+          globalTodayMessages += todayResult.totalMessages;
+        }
+      }
+
+      console.log('[AdminDashboard] Chats contados (centralizado):', {
+        globalTodayChats,
+        globalTodayMessages,
+        globalPeriodChats,
+        globalPeriodMessages,
+        globalTotalChats,
+        globalTotalMessages,
       });
 
       // ============================================
-      // 2. OBTENER TODOS LOS BOOKINGS
+      // 3. OBTENER TODOS LOS BOOKINGS CON PAGINACIÓN
       // ============================================
-      const { data: allBookings, error: bookingsError } = await externalSupabase
-        .from('bookings')
-        .select('id, price, created_at, event_date');
+      const PAGE_SIZE = 1000;
+      let allBookings: Array<{ id: string; price: number | null; created_at: string; event_date: string | null }> = [];
+      let offset = 0;
+      let hasMore = true;
 
-      if (bookingsError) {
-        console.error('[AdminDashboard] Error fetching bookings:', bookingsError);
+      while (hasMore) {
+        const { data, error: bookingsError } = await externalSupabase
+          .from('bookings')
+          .select('id, price, created_at, event_date')
+          .order('created_at', { ascending: false })
+          .range(offset, offset + PAGE_SIZE - 1);
+
+        if (bookingsError) {
+          console.error('[AdminDashboard] Error fetching bookings page:', bookingsError);
+          hasMore = false;
+        } else if (!data || data.length === 0) {
+          hasMore = false;
+        } else {
+          allBookings.push(...data);
+          offset += data.length;
+          if (data.length < PAGE_SIZE) hasMore = false;
+        }
+
+        // Límite de seguridad
+        if (offset >= 50000) {
+          console.warn('[AdminDashboard] Hit bookings safety limit of 50,000');
+          hasMore = false;
+        }
       }
 
-      const totalBookings = allBookings?.length || 0;
-      const totalRevenue = allBookings?.reduce((sum, b) => sum + (b.price || 0), 0) || 0;
+      console.log('[AdminDashboard] Bookings totales obtenidos:', allBookings.length);
+
+      const totalBookings = allBookings.length;
+      const totalRevenue = allBookings.reduce((sum, b) => sum + (b.price || 0), 0);
 
       // Bookings de hoy (por fecha de creación)
-      const todayBookingsData = allBookings?.filter(b => {
+      const todayBookingsData = allBookings.filter(b => {
         const bookingDate = new Date(b.created_at);
         return bookingDate >= todayStart;
-      }) || [];
+      });
       
       const todayBookings = todayBookingsData.length;
       const todayRevenue = todayBookingsData.reduce((sum, b) => sum + (b.price || 0), 0);
 
       // Bookings del mes
-      const monthBookingsData = allBookings?.filter(b => {
+      const monthBookingsData = allBookings.filter(b => {
         const bookingDate = new Date(b.created_at);
         return bookingDate >= monthStart;
-      }) || [];
+      });
       
       const periodBookings = monthBookingsData.length;
       const periodRevenue = monthBookingsData.reduce((sum, b) => sum + (b.price || 0), 0);
 
       // ============================================
-      // 3. OBTENER CLIENTES (TENANTS)
-      // ============================================
-        const { data: tenants, error: tenantsError } = await supabase
-          .from('tenants')
-          .select('id, name, is_active');
-
-        if (tenantsError) {
-          console.error('[AdminDashboard] Error fetching tenants:', tenantsError);
-        }
-
-        const totalClients = tenants?.length || 0;
-        // El campo is_active puede ser true, false o null
-        // Si es null o true, se considera activo (solo false es inactivo)
-        const activeClients = tenants?.filter(t => t.is_active !== false).length || 0;
-
-      // ============================================
       // 4. ACTUALIZAR ESTADO
       // ============================================
       setMetrics({
-        todayChats,
-        todayMessages,
+        todayChats: globalTodayChats,
+        todayMessages: globalTodayMessages,
         todayBookings,
         todayRevenue,
-        periodChats,
-        periodMessages,
+        periodChats: globalPeriodChats,
+        periodMessages: globalPeriodMessages,
         periodBookings,
         periodRevenue,
-        totalChats,
-        totalMessages,
+        totalChats: globalTotalChats,
+        totalMessages: globalTotalMessages,
         totalBookings,
         totalRevenue,
         activeClients,
@@ -435,4 +461,3 @@ export default function AdminDashboard() {
     </AdminLayout>
   );
 }
-
