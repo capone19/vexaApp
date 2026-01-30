@@ -1254,6 +1254,53 @@ export type Database = {
           },
         ]
       }
+      tenant_ycloud_config: {
+        Row: {
+          api_key: string
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          last_synced_at: string | null
+          phone_number: string | null
+          phone_number_id: string | null
+          tenant_id: string
+          updated_at: string | null
+          waba_id: string
+        }
+        Insert: {
+          api_key: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_synced_at?: string | null
+          phone_number?: string | null
+          phone_number_id?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          waba_id: string
+        }
+        Update: {
+          api_key?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_synced_at?: string | null
+          phone_number?: string | null
+          phone_number_id?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          waba_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_ycloud_config_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           created_at: string | null
