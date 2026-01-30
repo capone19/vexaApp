@@ -768,6 +768,10 @@ export default function Chats() {
                 // Skip si message object no existe
                 if (!msg.message || typeof msg.message !== 'object') return null;
                 
+                // Filtrar mensajes técnicos que comienzan con "TENEMOS TEXTO E IMAGEN"
+                if (hasContent && msg.message.content!.trim().startsWith('TENEMOS TEXTO E IMAGEN')) {
+                  return null;
+                }
                 const isFromClient = msg.message.type === 'human';
                 
                 return (
