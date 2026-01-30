@@ -1,293 +1,203 @@
 
-# Plan: Sistema de Envío de Plantillas + Compra de Créditos
+# Plan: Formato de Timestamps Estilo WhatsApp + Restricción de Ventana 24 Horas
 
 ## Resumen
 
-Implementar dos funcionalidades faltantes:
+Implementar dos mejoras en la página de Chats:
 
-1. **Envío de mensajes con plantillas aprobadas** - Agregar un diálogo/modal para enviar mensajes desde plantillas aprobadas, ya sea individual o masivo
-2. **Página de compra de créditos** - Redireccionar los botones "¿Cómo agregar créditos?" a una página de compra con Mercado Pago (preparada para cuando proporciones la API)
+1. **Formato de timestamps estilo WhatsApp** en la lista de sesiones y dentro de los mensajes
+2. **Bloqueo del input después de 23 horas** para cumplir con la ventana de 24 horas de Meta, mostrando un botón que lleva a plantillas
 
 ---
 
-## Parte 1: Funcionalidad de Envío de Plantillas
+## Parte 1: Formato de Timestamps Estilo WhatsApp
 
-### Estado Actual
-- Las plantillas se muestran en cards pero no hay opción de "Enviar"
-- La Edge Function `ycloud-send-message` ya está lista y soporta:
-  - Envío individual (un destinatario)
-  - Envío masivo (múltiples destinatarios)
-  - Verificación de saldo
-  - Descuento automático de créditos
+### Lógica de Formateo
 
-### Cambios Requeridos
+| Tiempo transcurrido | Formato a mostrar |
+|---------------------|-------------------|
+| Menos de 24 horas | Hora exacta: `HH:mm` (ej: "14:32") |
+| Entre 24-48 horas (ayer) | `Ayer` |
+| Más de 48 horas, menos de 7 días | Día de la semana: `Lunes`, `Martes`, etc. |
+| Más de 7 días | Fecha corta: `YY-MM-DD` (ej: "25-01-30") |
 
-**Nuevo componente: `src/components/marketing/SendTemplateDialog.tsx`**
+### Implementación
 
-Diálogo para enviar mensajes con las siguientes secciones:
+**Crear función helper en `src/pages/Chats.tsx`:**
+
+```typescript
+import { 
+  format, 
+  isToday, 
+  isYesterday, 
+  differenceInDays 
+} from "date-fns";
+import { es } from "date-fns/locale";
+
+// Formatear timestamp estilo WhatsApp
+function formatWhatsAppTimestamp(date: Date): string {
+  const now = new Date();
+  
+  // Hoy: mostrar hora
+  if (isToday(date)) {
+    return format(date, "HH:mm", { locale: es });
+  }
+  
+  // Ayer
+  if (isYesterday(date)) {
+    return "Ayer";
+  }
+  
+  // Dentro de la última semana: día de la semana
+  const daysDiff = differenceInDays(now, date);
+  if (daysDiff < 7) {
+    return format(date, "EEEE", { locale: es }); // Lunes, Martes, etc.
+  }
+  
+  // Más de 7 días: formato YY-MM-DD
+  return format(date, "yy-MM-dd");
+}
+```
+
+### Archivos a Modificar
+
+| Ubicación | Cambio |
+|-----------|--------|
+| **Lista de sesiones** (línea ~598) | Cambiar `format(session.lastMessageAt, "HH:mm")` por `formatWhatsAppTimestamp(session.lastMessageAt)` |
+| **Mensajes individuales** (línea ~869) | Mantener `HH:mm` ya que está dentro del día actual de la conversación |
+
+---
+
+## Parte 2: Restricción de Ventana 24 Horas (23 horas)
+
+### Lógica
+
+Cuando han pasado **23 horas o más** desde el último mensaje del cliente (tipo `human`), el input de mensaje se deshabilita y se muestra un botón para ir a plantillas.
+
+### Implementación
+
+**1. Calcular si la ventana expiró:**
+
+```typescript
+import { differenceInHours } from "date-fns";
+
+// Dentro del componente, calcular si pasaron 23+ horas
+const lastClientMessageTime = useMemo(() => {
+  if (!selectedSessionId) return null;
+  
+  // Buscar el último mensaje del cliente (type === 'human')
+  const clientMessages = messages
+    .filter(m => m.session_id === selectedSessionId && m.message?.type === 'human')
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  
+  return clientMessages.length > 0 ? new Date(clientMessages[0].created_at) : null;
+}, [messages, selectedSessionId]);
+
+const isWindowExpired = useMemo(() => {
+  if (!lastClientMessageTime) return true; // Sin mensajes del cliente = ventana cerrada
+  return differenceInHours(new Date(), lastClientMessageTime) >= 23;
+}, [lastClientMessageTime]);
+```
+
+**2. Modificar el área de input (líneas ~894-929):**
+
+```typescript
+{(() => {
+  const isBotActive = botStates[selectedSessionId] ?? true;
+  
+  // Si pasaron 23+ horas, mostrar botón de plantillas
+  if (isWindowExpired) {
+    return (
+      <div className="p-3 md:p-4 border-t border-border bg-background">
+        <div className="flex flex-col items-center gap-3 py-2">
+          <div className="text-center">
+            <p className="text-sm text-muted-foreground">
+              Han pasado más de 24 horas desde el último mensaje del cliente.
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Para enviar un mensaje, usa una plantilla aprobada.
+            </p>
+          </div>
+          <Button 
+            onClick={() => navigate('/marketing/plantillas')}
+            className="gap-2"
+          >
+            <FileText className="h-4 w-4" />
+            Ir a Plantillas
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  
+  // Input normal cuando la ventana está activa
+  return (
+    <div className="p-3 md:p-4 border-t border-border bg-background">
+      {/* ... input existente ... */}
+    </div>
+  );
+})()}
+```
+
+---
+
+## Diagrama de Flujo
 
 ```text
-┌─────────────────────────────────────────────────────────────────────┐
-│                     Enviar Plantilla: {nombre}                      │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  📋 Modo de envío:                                                  │
-│  ○ Envío individual (un número)                                     │
-│  ○ Envío masivo (múltiples números)                                 │
-│                                                                     │
-│  ─────────────────────────────────────────────────────────────────  │
-│                                                                     │
-│  [Si individual]                                                    │
-│  Número de WhatsApp:                                                │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │ +56 9 1234 5678                                              │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-│                                                                     │
-│  [Si masivo]                                                        │
-│  Ingresa los números (uno por línea o separados por coma):         │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │ +56912345678                                                  │   │
-│  │ +56998765432                                                  │   │
-│  │ +56911111111                                                  │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-│  Destinatarios detectados: 3                                        │
-│                                                                     │
-│  [Si plantilla tiene variables {{1}}, {{2}}, etc.]                 │
-│  Variables del mensaje:                                             │
-│  Variable 1: [_____________________]                                │
-│  Variable 2: [_____________________]                                │
-│                                                                     │
-│  ─────────────────────────────────────────────────────────────────  │
-│                                                                     │
-│  💰 Resumen de costo:                                               │
-│  • 3 mensajes × $0.15 (Marketing) = $0.45 USD                       │
-│  • Tu saldo actual: $125.50 USD                                     │
-│  • Saldo después del envío: $125.05 USD                             │
-│                                                                     │
-│  ⚠️ [Si saldo insuficiente]                                        │
-│  No tienes saldo suficiente. [Agregar créditos]                     │
-│                                                                     │
-├─────────────────────────────────────────────────────────────────────┤
-│                                       [Cancelar]  [Enviar Mensajes] │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-**Modificar: `src/pages/MarketingTemplates.tsx`**
-
-Agregar botón de envío en cada card de plantilla aprobada:
-
-```typescript
-// En cada card, agregar botón "Enviar" solo si status === 'approved'
-{template.status === 'approved' && (
-  <Button 
-    size="sm" 
-    onClick={() => openSendDialog(template)}
-    className="gap-2"
-  >
-    <Send className="h-4 w-4" />
-    Enviar
-  </Button>
-)}
-```
-
-**Nuevo hook: `src/hooks/use-send-template.ts`**
-
-```typescript
-export const useSendTemplate = () => {
-  const sendMutation = useMutation({
-    mutationFn: async ({ 
-      templateId, 
-      to, 
-      bodyParameters 
-    }: SendInput) => {
-      const { data, error } = await supabase.functions.invoke('ycloud-send-message', {
-        body: { templateId, to, bodyParameters },
-      });
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      toast.success('Mensaje enviado correctamente');
-      queryClient.invalidateQueries(['messaging-credits']);
-    },
-    onError: (error) => {
-      toast.error(error.message || 'Error al enviar mensaje');
-    },
-  });
-
-  return { sendMutation };
-};
+┌─────────────────────────────────────────────────────────────┐
+│                    Usuario Abre Chat                         │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+         ┌────────────────────────────────────────┐
+         │  ¿Último mensaje del cliente < 23 hrs? │
+         └────────────────────────────────────────┘
+                    │                    │
+                   SÍ                   NO
+                    │                    │
+                    ▼                    ▼
+    ┌───────────────────────┐   ┌───────────────────────┐
+    │   Mostrar Input       │   │  Mostrar mensaje de   │
+    │   normal de mensaje   │   │  "ventana expirada"   │
+    │   (según bot toggle)  │   │  + Botón "Ir a        │
+    │                       │   │    Plantillas"        │
+    └───────────────────────┘   └───────────────────────┘
 ```
 
 ---
-
-## Parte 2: Página de Compra de Créditos
-
-### Cambios Requeridos
-
-**Nueva página: `src/pages/MarketingBuyCredits.tsx`**
-
-Página de compra de créditos preparada para Mercado Pago:
-
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│ Marketing > Comprar Créditos                                        │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  Tu saldo actual: $15.00 USD                                        │
-│                                                                     │
-│  ─────────────────────────────────────────────────────────────────  │
-│                                                                     │
-│  💳 Selecciona el monto a recargar:                                 │
-│                                                                     │
-│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐        │
-│  │    $20 USD     │  │    $50 USD     │  │   $100 USD     │        │
-│  │ ~133 mensajes  │  │ ~333 mensajes  │  │ ~666 mensajes  │        │
-│  │  Marketing     │  │  Marketing     │  │  Marketing     │        │
-│  └────────────────┘  └────────────────┘  └────────────────┘        │
-│                                                                     │
-│  ┌────────────────┐  ┌────────────────┐                            │
-│  │   $200 USD     │  │  Otro monto    │                            │
-│  │ ~1333 mensajes │  │   [_______]    │                            │
-│  │   +10% bonus   │  │                │                            │
-│  └────────────────┘  └────────────────┘                            │
-│                                                                     │
-│  ─────────────────────────────────────────────────────────────────  │
-│                                                                     │
-│  📊 Tabla de precios por mensaje:                                   │
-│  • Marketing: $0.15 USD                                             │
-│  • Utilidad: $0.04 USD                                              │
-│  • Autenticación: $0.04 USD                                         │
-│  • Servicio: Gratis                                                 │
-│                                                                     │
-│  ─────────────────────────────────────────────────────────────────  │
-│                                                                     │
-│  Monto seleccionado: $50 USD                                        │
-│                                                                     │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │  🔒 Pagar con Mercado Pago                                   │   │
-│  │                                                              │   │
-│  │  [  Pagar $50 USD  ]                                         │   │
-│  │                                                              │   │
-│  │  Serás redirigido a Mercado Pago para completar el pago      │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-│                                                                     │
-│  💡 Los créditos se acreditan automáticamente al confirmar el pago  │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-**Modificar: `src/pages/MarketingCredits.tsx`**
-
-Cambiar los botones "¿Cómo agregar créditos?" y "Ir a Soporte" para que naveguen a la nueva página:
-
-```typescript
-// Antes:
-<Button onClick={() => window.location.href = '/soporte'}>
-  Ir a Soporte
-</Button>
-
-// Después:
-<Button onClick={() => navigate('/marketing/comprar-creditos')}>
-  Comprar Créditos
-</Button>
-```
-
-**Modificar: `src/App.tsx`**
-
-Agregar nueva ruta:
-
-```typescript
-<Route 
-  path="/marketing/comprar-creditos" 
-  element={
-    <ProtectedRoute>
-      <PremiumRoute feature="Compra de créditos">
-        <MarketingBuyCredits />
-      </PremiumRoute>
-    </ProtectedRoute>
-  } 
-/>
-```
-
----
-
-## Estructura de Mercado Pago (Preparación)
-
-La página de compra quedará preparada para integrar Mercado Pago cuando proporciones la API. El flujo será:
-
-```text
-1. Usuario selecciona monto ($20, $50, $100, $200, personalizado)
-2. Click en "Pagar"
-3. [FUTURO] Llamar Edge Function que crea preferencia de pago en MP
-4. [FUTURO] Redirigir a checkout de Mercado Pago
-5. [FUTURO] Webhook de MP notifica pago exitoso
-6. [FUTURO] Edge Function acredita créditos al tenant
-```
-
-**Por ahora el botón mostrará:**
-- Un mensaje indicando que el pago se procesará manualmente
-- Instrucciones para contactar a VEXA
-- El monto seleccionado se guarda para referencia
-
----
-
-## Archivos a Crear
-
-| Archivo | Descripción |
-|---------|-------------|
-| `src/components/marketing/SendTemplateDialog.tsx` | Diálogo para enviar mensajes |
-| `src/pages/MarketingBuyCredits.tsx` | Página de compra de créditos |
-| `src/hooks/use-send-template.ts` | Hook para envío de mensajes |
 
 ## Archivos a Modificar
 
 | Archivo | Cambios |
 |---------|---------|
-| `src/pages/MarketingTemplates.tsx` | Agregar botón "Enviar" en cards aprobadas |
-| `src/pages/MarketingCredits.tsx` | Cambiar botones a redirigir a compra |
-| `src/App.tsx` | Agregar ruta `/marketing/comprar-creditos` |
-| `src/components/layout/Sidebar.tsx` | Agregar enlace "Comprar" opcional |
+| `src/pages/Chats.tsx` | • Agregar imports de `isToday`, `isYesterday`, `differenceInDays`, `differenceInHours`<br>• Agregar función `formatWhatsAppTimestamp`<br>• Agregar `useNavigate` hook<br>• Agregar cálculo de `lastClientMessageTime` y `isWindowExpired`<br>• Modificar timestamp en lista de sesiones<br>• Modificar área de input para manejar ventana expirada |
 
 ---
 
-## Flujo Completo del Usuario
+## Resumen de Imports a Agregar
 
-### Enviar un Mensaje
-```text
-1. Usuario va a Marketing → Plantillas
-2. Ve plantilla con estado "Aprobado"
-3. Click en botón "Enviar"
-4. Se abre diálogo con:
-   - Campo para número(s) de WhatsApp
-   - Variables si la plantilla las tiene
-   - Resumen de costo
-5. Confirma envío
-6. Sistema verifica saldo → envía via YCloud → descuenta créditos
-7. Toast de éxito/error
-```
-
-### Comprar Créditos
-```text
-1. Usuario va a Marketing → Créditos
-2. Ve su saldo actual
-3. Click en "¿Cómo agregar créditos?" o "Comprar Créditos"
-4. Va a página de compra
-5. Selecciona monto ($20, $50, $100, $200, o personalizado)
-6. [FUTURO] Paga con Mercado Pago
-7. [AHORA] Ve instrucciones para pago manual/contacto
+```typescript
+// Al inicio del archivo
+import { useNavigate } from 'react-router-dom';
+import { 
+  format, 
+  isToday, 
+  isYesterday, 
+  differenceInDays,
+  differenceInHours 
+} from "date-fns";
 ```
 
 ---
 
-## Tiempo Estimado
+## Resultado Esperado
 
-| Tarea | Tiempo |
-|-------|--------|
-| SendTemplateDialog | 2 horas |
-| Hook de envío | 30 min |
-| Modificar MarketingTemplates | 30 min |
-| MarketingBuyCredits | 1.5 horas |
-| Modificar MarketingCredits | 15 min |
-| Rutas y navegación | 15 min |
-| **Total** | **~5 horas** |
+**Lista de Sesiones:**
+- Mensajes de hoy: `14:32`
+- Mensajes de ayer: `Ayer`  
+- Hace 3 días: `Lunes`
+- Hace 2 semanas: `25-01-15`
+
+**Input de Mensaje:**
+- Si última respuesta del cliente < 23 hrs → Input habilitado (según estado del bot)
+- Si última respuesta del cliente ≥ 23 hrs → Mensaje de advertencia + Botón "Ir a Plantillas"
