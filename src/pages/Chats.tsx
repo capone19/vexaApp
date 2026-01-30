@@ -19,7 +19,7 @@ import {
 
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio, Tags } from "lucide-react";
+import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio, Tags, FileText } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -846,7 +846,17 @@ export default function Chats() {
                       )}
                       
                       {/* Renderizar texto solo si hay content válido */}
-                      {hasContent && (
+                      {hasContent && msg.message.content!.trim().toLowerCase().startsWith('comprobante de pago recibido en formato pdf') ? (
+                        <div className="flex items-center gap-3 p-2 bg-muted/50 rounded-lg cursor-default select-none">
+                          <div className="flex-shrink-0 w-10 h-12 bg-red-500/10 rounded flex items-center justify-center">
+                            <FileText className="h-6 w-6 text-red-500" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">Comprobante de pago.pdf</p>
+                            <p className="text-xs text-muted-foreground">PDF • Documento recibido</p>
+                          </div>
+                        </div>
+                      ) : hasContent && (
                         <p className="text-sm leading-relaxed whitespace-pre-wrap">
                           {msg.message.content}
                         </p>
