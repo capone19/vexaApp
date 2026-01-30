@@ -68,17 +68,38 @@ export interface MarketingPerformanceData {
 
 /**
  * Normaliza un número de teléfono para comparación
- * Remueve espacios, guiones y asegura formato consistente
+ * Devuelve solo dígitos (sin +)
  */
 function normalizePhone(phone: string | null): string {
   if (!phone) return '';
-  // Remover todo excepto números y +
-  let normalized = phone.replace(/[^\d+]/g, '');
-  // Si no empieza con +, agregarlo
-  if (!normalized.startsWith('+')) {
-    normalized = '+' + normalized;
+  // Remover todo excepto números
+  return phone.replace(/\D/g, '');
+}
+
+/**
+ * Extrae el número de teléfono del session_id
+ * Formatos soportados:
+ * - 5695961350@s.whatsapp.net -> 5695961350
+ * - 6630543458467.shopify -> 6630543458467
+ * - 6612090519715.Whatsapp -> 6612090519715
+ */
+function extractPhoneFromSessionId(sessionId: string | null): string {
+  if (!sessionId) return '';
+  
+  // Remover sufijos de plataforma (@s.whatsapp.net, .shopify, .Whatsapp, etc.)
+  const atIndex = sessionId.indexOf('@');
+  const dotIndex = sessionId.indexOf('.');
+  
+  let phone = sessionId;
+  
+  if (atIndex > 0) {
+    phone = sessionId.substring(0, atIndex);
+  } else if (dotIndex > 0) {
+    phone = sessionId.substring(0, dotIndex);
   }
-  return normalized;
+  
+  // Solo dejar dígitos
+  return phone.replace(/\D/g, '');
 }
 
 interface UseMarketingPerformanceOptions {
@@ -218,7 +239,8 @@ export function useMarketingPerformance({
     }> = [];
 
     bookings.forEach(booking => {
-      const bookingPhone = normalizePhone(booking.contact_phone);
+      // Extraer teléfono del session_id (formato: numero@s.whatsapp.net o numero.shopify)
+      const bookingPhone = extractPhoneFromSessionId(booking.session_id);
       if (!bookingPhone) return;
       
       const sends = sendsByPhone.get(bookingPhone);
