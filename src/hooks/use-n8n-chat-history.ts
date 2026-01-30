@@ -15,8 +15,13 @@ function deduplicateMessages(messages: N8nChatMessage[]): N8nChatMessage[] {
   const seen = new Map<string, N8nChatMessage>();
   const TIME_WINDOW_MS = 10000; // 10 segundos de ventana
   
-  // Filtrar mensajes con estructura inválida
-  const validMessages = messages.filter(msg => msg.message && typeof msg.message === 'object');
+  // Filtrar mensajes con estructura válida: debe tener message object Y (content O media)
+  const validMessages = messages.filter(msg => {
+    if (!msg.message || typeof msg.message !== 'object') return false;
+    const hasContent = msg.message.content && typeof msg.message.content === 'string' && msg.message.content.trim() !== '';
+    const hasMedia = msg.media !== null && msg.media !== undefined;
+    return hasContent || hasMedia;
+  });
   
   // Ordenar por fecha primero
   const sorted = [...validMessages].sort(
@@ -24,10 +29,11 @@ function deduplicateMessages(messages: N8nChatMessage[]): N8nChatMessage[] {
   );
   
   for (const msg of sorted) {
-    // Crear clave única: session + tipo + contenido normalizado
+    // Crear clave única: session + tipo + contenido normalizado (o media url si no hay contenido)
     const msgType = msg.message?.type || 'unknown';
     const msgContent = msg.message?.content || '';
-    const contentKey = `${msg.session_id}|${msgType}|${msgContent.trim().toLowerCase()}`;
+    const mediaKey = msg.media?.url || '';
+    const contentKey = `${msg.session_id}|${msgType}|${msgContent.trim().toLowerCase()}|${mediaKey}`;
     
     const existing = seen.get(contentKey);
     if (existing) {

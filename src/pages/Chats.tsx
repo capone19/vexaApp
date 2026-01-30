@@ -326,7 +326,12 @@ export default function Chats() {
     const sessionMap = new Map<string, N8nSession>();
     
     messages.forEach(msg => {
-      // Skip messages with missing or invalid message object
+      // Un mensaje es válido si tiene content O media
+      const hasContent = msg.message?.content && typeof msg.message.content === 'string' && msg.message.content.trim() !== '';
+      const hasMedia = msg.media !== null && msg.media !== undefined;
+      
+      // Skip si no tiene ni content ni media, o si message object no existe
+      if (!hasContent && !hasMedia) return;
       if (!msg.message || typeof msg.message !== 'object') return;
       
       const existing = sessionMap.get(msg.session_id);
@@ -336,11 +341,18 @@ export default function Chats() {
       const phoneNumber = msg.phone_number || msg.session_id.split('@')[0] || msg.session_id;
       const displayPhone = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
       
+      // Determinar el contenido a mostrar (texto o indicador de media)
+      const displayContent = hasContent 
+        ? msg.message.content || ''
+        : hasMedia 
+          ? (msg.media?.type === 'image' ? '📷 Imagen' : msg.media?.type === 'audio' ? '🎵 Audio' : msg.media?.type === 'video' ? '🎬 Video' : '📎 Archivo')
+          : '';
+      
       if (!existing) {
         sessionMap.set(msg.session_id, {
           sessionId: msg.session_id,
           phoneNumber: displayPhone,
-          lastMessage: msg.message.content || '',
+          lastMessage: displayContent,
           lastMessageAt: msgDate,
           messageCount: 1,
           contactName: displayPhone,
@@ -358,7 +370,7 @@ export default function Chats() {
         }
         if (msgDate > existing.lastMessageAt) {
           existing.lastMessageAt = msgDate;
-          existing.lastMessage = msg.message.content || '';
+          existing.lastMessage = displayContent;
         }
       }
     });
@@ -741,9 +753,18 @@ export default function Chats() {
           ) : (
             <div className="space-y-4">
               {selectedMessages.map((msg) => {
-                // Skip messages with missing or invalid message object
+                // Un mensaje es válido si tiene content O media
+                const hasContent = msg.message?.content && typeof msg.message.content === 'string' && msg.message.content.trim() !== '';
+                const hasMedia = msg.media !== null && msg.media !== undefined;
+                
+                // Skip si no tiene ni content ni media
+                if (!hasContent && !hasMedia) return null;
+                
+                // Skip si message object no existe
                 if (!msg.message || typeof msg.message !== 'object') return null;
+                
                 const isFromClient = msg.message.type === 'human';
+                
                 return (
                   <div
                     key={msg.id}
@@ -766,9 +787,62 @@ export default function Chats() {
                           <span className="text-[10px] font-medium">VEXA</span>
                         </div>
                       )}
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                        {msg.message.content}
-                      </p>
+                      
+                      {/* Renderizar media si existe */}
+                      {hasMedia && msg.media?.type === 'image' && (
+                        <div className="mb-2">
+                          <img 
+                            src={msg.media.url} 
+                            alt={msg.media.caption || "Imagen"}
+                            className="max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => window.open(msg.media!.url, '_blank')}
+                            loading="lazy"
+                          />
+                          {msg.media.caption && (
+                            <p className="text-xs mt-1 opacity-80">{msg.media.caption}</p>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Renderizar otros tipos de media */}
+                      {hasMedia && msg.media?.type === 'audio' && (
+                        <div className="mb-2">
+                          <audio controls className="max-w-full">
+                            <source src={msg.media.url} type={msg.media.mimeType || 'audio/mpeg'} />
+                            Tu navegador no soporta audio
+                          </audio>
+                        </div>
+                      )}
+                      
+                      {hasMedia && msg.media?.type === 'video' && (
+                        <div className="mb-2">
+                          <video controls className="max-w-full rounded-lg">
+                            <source src={msg.media.url} type={msg.media.mimeType || 'video/mp4'} />
+                            Tu navegador no soporta video
+                          </video>
+                        </div>
+                      )}
+                      
+                      {hasMedia && msg.media?.type === 'document' && (
+                        <div className="mb-2">
+                          <a 
+                            href={msg.media.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 text-sm underline hover:no-underline"
+                          >
+                            📎 {msg.media.filename || 'Documento'}
+                          </a>
+                        </div>
+                      )}
+                      
+                      {/* Renderizar texto solo si hay content válido */}
+                      {hasContent && (
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                          {msg.message.content}
+                        </p>
+                      )}
+                      
                       <p className={cn(
                         "text-[10px] mt-1",
                         isFromClient ? "opacity-70" : "text-muted-foreground"
