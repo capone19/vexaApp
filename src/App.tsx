@@ -106,19 +106,17 @@ const App = () => (
 <Route path="/admin/tickets/:ticketId" element={<AdminRoute><AdminTicketDetail /></AdminRoute>} />
               <Route path="/admin/health" element={<AdminRoute><AdminHealthCheck /></AdminRoute>} />
               
-              {/* VEXA Ads - Módulo Premium Demo - Estructura reestructurada */}
-              <Route path="/vexa-ads" element={<VexaAdsOverview />} />
-              <Route path="/vexa-ads/diagnostico" element={<VexaAdsDiagnostico />} />
-              <Route path="/vexa-ads/estrategia" element={<VexaAdsEstrategia />} />
-              <Route path="/vexa-ads/creativos" element={<VexaAdsCreativos />} />
-              {/* Campañas como sección padre con Presupuesto como sub-sección */}
-              <Route path="/vexa-ads/campanas" element={<VexaAdsCampanas />} />
-              <Route path="/vexa-ads/campanas/presupuesto" element={<VexaAdsCampanas />} />
-              {/* Nueva sección de Análisis */}
-              <Route path="/vexa-ads/analisis" element={<VexaAdsAnalisis />} />
-              <Route path="/vexa-ads/recomendaciones" element={<VexaAdsRecomendaciones />} />
-              <Route path="/vexa-ads/recomendaciones/video" element={<VexaAdsVideoAsesor />} />
-              <Route path="/vexa-ads/configuracion" element={<VexaAdsConfiguracion />} />
+              {/* VEXA Ads - Módulo Premium Demo - Rutas protegidas */}
+              <Route path="/vexa-ads" element={<ProtectedRoute><VexaAdsOverview /></ProtectedRoute>} />
+              <Route path="/vexa-ads/diagnostico" element={<ProtectedRoute><VexaAdsDiagnostico /></ProtectedRoute>} />
+              <Route path="/vexa-ads/estrategia" element={<ProtectedRoute><VexaAdsEstrategia /></ProtectedRoute>} />
+              <Route path="/vexa-ads/creativos" element={<ProtectedRoute><VexaAdsCreativos /></ProtectedRoute>} />
+              <Route path="/vexa-ads/campanas" element={<ProtectedRoute><VexaAdsCampanas /></ProtectedRoute>} />
+              <Route path="/vexa-ads/campanas/presupuesto" element={<ProtectedRoute><VexaAdsCampanas /></ProtectedRoute>} />
+              <Route path="/vexa-ads/analisis" element={<ProtectedRoute><VexaAdsAnalisis /></ProtectedRoute>} />
+              <Route path="/vexa-ads/recomendaciones" element={<ProtectedRoute><VexaAdsRecomendaciones /></ProtectedRoute>} />
+              <Route path="/vexa-ads/recomendaciones/video" element={<ProtectedRoute><VexaAdsVideoAsesor /></ProtectedRoute>} />
+              <Route path="/vexa-ads/configuracion" element={<ProtectedRoute><VexaAdsConfiguracion /></ProtectedRoute>} />
               
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
