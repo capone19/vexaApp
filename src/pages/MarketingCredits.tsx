@@ -2,6 +2,7 @@
 // VEXA - Página de Créditos de Mensajería
 // ============================================
 
+import { useNavigate } from 'react-router-dom';
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,6 +36,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export default function MarketingCredits() {
+  const navigate = useNavigate();
   const {
     balance,
     totalPurchased,
@@ -117,7 +119,12 @@ export default function MarketingCredits() {
                     ${balance.toFixed(2)}
                     <span className="text-lg font-normal text-muted-foreground ml-1">USD</span>
                   </p>
-                  <Button variant="outline" size="sm" className="mt-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-2"
+                    onClick={() => navigate('/marketing/comprar-creditos')}
+                  >
                     <HelpCircle className="h-4 w-4 mr-2" />
                     ¿Cómo agregar créditos?
                   </Button>
@@ -379,11 +386,15 @@ export default function MarketingCredits() {
               <div>
                 <h3 className="font-semibold mb-1">¿Cómo agregar créditos?</h3>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Para agregar créditos a tu cuenta, contacta a nuestro equipo de soporte 
-                  o a tu ejecutivo de cuenta. Los créditos se acreditan en minutos.
+                  Recarga tu saldo para enviar mensajes de WhatsApp a tus clientes.
+                  Los créditos no expiran y puedes usarlos cuando quieras.
                 </p>
-                <Button variant="outline" size="sm" onClick={() => window.location.href = '/soporte'}>
-                  Ir a Soporte
+                <Button 
+                  variant="default" 
+                  size="sm" 
+                  onClick={() => navigate('/marketing/comprar-creditos')}
+                >
+                  Comprar Créditos
                 </Button>
               </div>
             </div>

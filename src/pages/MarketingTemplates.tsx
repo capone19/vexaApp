@@ -19,11 +19,13 @@ import {
   Info,
   RefreshCw,
   Settings,
+  Send,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useYCloudTemplates, type WhatsAppTemplate } from '@/hooks/use-ycloud-templates';
 import { useYCloudConfig } from '@/hooks/use-ycloud-config';
 import { CreateTemplateDialog } from '@/components/marketing/CreateTemplateDialog';
+import { SendTemplateDialog } from '@/components/marketing/SendTemplateDialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -60,6 +62,13 @@ const MarketingTemplates = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<WhatsAppTemplate | null>(null);
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [templateToSend, setTemplateToSend] = useState<WhatsAppTemplate | null>(null);
+
+  const handleSendClick = (template: WhatsAppTemplate) => {
+    setTemplateToSend(template);
+    setSendDialogOpen(true);
+  };
 
   // Filter templates
   const filteredTemplates = templates.filter(template => {
@@ -322,9 +331,25 @@ const MarketingTemplates = () => {
                     <span className="text-xs text-muted-foreground">
                       {template.language || 'es'}
                     </span>
-                    <span className="text-xs text-muted-foreground">
-                      12:51 ✓✓
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {template.status === 'approved' && (
+                        <Button
+                          size="sm"
+                          variant="default"
+                          className="h-7 gap-1.5 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSendClick(template);
+                          }}
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          Enviar
+                        </Button>
+                      )}
+                      <span className="text-xs text-muted-foreground">
+                        12:51 ✓✓
+                      </span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -353,6 +378,13 @@ const MarketingTemplates = () => {
 
       {/* Create Template Dialog */}
       <CreateTemplateDialog open={isCreateOpen} onOpenChange={setIsCreateOpen} />
+
+      {/* Send Template Dialog */}
+      <SendTemplateDialog
+        open={sendDialogOpen}
+        onOpenChange={setSendDialogOpen}
+        template={templateToSend}
+      />
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
