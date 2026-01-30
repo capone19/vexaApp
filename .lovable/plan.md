@@ -1,223 +1,210 @@
 
-# Plan: Corregir Período de Facturación en Impersonación + Columna "Próximo Cobro"
 
-## Problema 1: Período Incorrecto al Impersonar
+# Plan: Preparación para Producción Pública (Sin tocar n8n ni admin email)
 
-### Diagnóstico
-El log de consola muestra el problema:
-```
-[usePeriodUsage] No se pudo obtener created_at del tenant, usando fallback
-tenantCreatedAt: undefined
-periodStart: "2026-01-01"  ← Mes actual (fallback)
-```
+## Resumen
 
-**Causa raíz:** Cuando el admin impersona un cliente, el hook `usePeriodUsage` intenta leer `tenants.created_at` directamente de la base de datos, pero **RLS bloquea el acceso** porque el admin no tiene una relación `user_roles` con el tenant impersonado.
-
-### Solución
-Pasar la fecha de creación del tenant impersonado desde el contexto de impersonación (que ya tiene esa info desde `admin-list-tenants`).
-
-**Cambios:**
-
-1. **ImpersonationContext**: Agregar `createdAt` a `ImpersonatedTenant`
-2. **AdminClients.tsx**: Pasar `created_at` al iniciar impersonación
-3. **useEffectiveTenant**: Exponer `tenantCreatedAt`
-4. **usePeriodUsage**: Usar `tenantCreatedAt` del hook en lugar de consultar la BD
+Este plan corrige **8 vulnerabilidades críticas de seguridad** en las políticas RLS y **1 vulnerabilidad de rutas desprotegidas**, sin afectar ninguna funcionalidad de n8n ni la configuración del admin email.
 
 ---
 
-## Problema 2: Columna "Próximo Cobro" en Admin
+## Problema Identificado
 
-### Diseño
-Agregar una columna "Próx. Cobro" que muestre la fecha del próximo cobro para cada cliente, calculada dinámicamente.
+Las siguientes tablas tienen políticas "Service role has full access" pero están asignadas al rol `public` en lugar de `service_role`:
 
-**Cálculo:** 
-- Basado en `created_at` del tenant
-- El próximo cobro es el siguiente aniversario mensual
-- Ejemplo: Si `created_at` es 16 enero, próximo cobro es 16 febrero
+| Tabla | Riesgo Actual |
+|-------|---------------|
+| `subscriptions` | Cualquiera puede ver planes/precios de todos los clientes |
+| `tenant_webhooks` | URLs de webhooks expuestas públicamente |
+| `tickets` | Tickets de soporte visibles para cualquiera |
+| `ticket_messages` | Conversaciones de soporte expuestas |
+| `agent_settings_ui` | Prompts de IA y configuración visible |
+| `health_checks` | Estado de servicios expuesto |
+| `invoices` | Facturas de todos los clientes visibles |
+| `tenant_addons` | Addons activos expuestos |
 
----
-
-## Cambios Técnicos Detallados
-
-### 1. ImpersonationContext.tsx
-
-```typescript
-interface ImpersonatedTenant {
-  id: string;
-  name: string;
-  plan: string;
-  slug: string;
-  currency?: 'CLP' | 'BOB' | 'USD';
-  createdAt?: string;  // NUEVO: Fecha de creación del tenant
-}
-```
-
-### 2. AdminClients.tsx - Inicio de Impersonación
-
-```typescript
-const handleImpersonate = async (tenant: Tenant) => {
-  // ...
-  const success = await startImpersonation({
-    id: tenant.id,
-    name: tenant.name,
-    plan: tenant.plan,
-    slug: tenant.slug,
-    currency: tenant.display_currency,
-    createdAt: tenant.created_at || undefined,  // NUEVO
-  });
-  // ...
-};
-```
-
-### 3. useEffectiveTenant.ts
-
-```typescript
-interface EffectiveTenantInfo {
-  tenantId: string | null;
-  isImpersonating: boolean;
-  tenantName: string | null;
-  tenantPlan: string | null;
-  tenantCurrency: DisplayCurrency;
-  tenantCreatedAt: Date | null;  // NUEVO
-}
-
-// En la función:
-if (isAdmin && isImpersonating && impersonatedTenant) {
-  return {
-    // ...
-    tenantCreatedAt: impersonatedTenant.createdAt 
-      ? new Date(impersonatedTenant.createdAt) 
-      : null,
-  };
-}
-```
-
-### 4. usePeriodUsage.ts
-
-```typescript
-export function usePeriodUsage(): UsePeriodUsageReturn {
-  const { tenantId, tenantCreatedAt } = useEffectiveTenant();  // NUEVO: obtener createdAt
-  // ...
-
-  const { data: usage, ... } = useQuery({
-    queryKey: ['period-usage', tenantId, tenantCreatedAt?.toISOString()],  // Incluir en cache key
-    queryFn: () => fetchPeriodUsage(tenantId!, tenantCreatedAt),  // NUEVO: pasar createdAt
-    // ...
-  });
-}
-
-// Modificar fetchPeriodUsage:
-async function fetchPeriodUsage(
-  tenantId: string, 
-  providedCreatedAt?: Date | null  // NUEVO parámetro
-): Promise<PeriodUsage> {
-  let periodStart: Date;
-  let periodEnd: Date;
-  
-  // NUEVO: Si ya tenemos createdAt (de impersonación), usarlo
-  if (providedCreatedAt) {
-    const calculated = calculateBillingPeriod(providedCreatedAt);
-    periodStart = calculated.periodStart;
-    periodEnd = calculated.periodEnd;
-  } else {
-    // Consultar BD (caso normal sin impersonación)
-    const { data: tenantData } = await supabase
-      .from('tenants')
-      .select('created_at, plan')
-      .eq('id', tenantId)
-      .single();
-    
-    if (tenantData?.created_at) {
-      const calculated = calculateBillingPeriod(new Date(tenantData.created_at));
-      periodStart = calculated.periodStart;
-      periodEnd = calculated.periodEnd;
-    } else {
-      // Fallback...
-    }
-  }
-  
-  // ... resto de la lógica igual
-}
-```
+Adicionalmente, las rutas de **VEXA Ads** no tienen protección de autenticación.
 
 ---
 
-### 5. AdminClients.tsx - Nueva Columna "Próx. Cobro"
+## Cambios Requeridos
 
-**Ubicación:** Después de "Creado"
+### 1. Migración SQL: Corregir 8 Políticas RLS
+
+**Acción:** Eliminar las políticas incorrectas y recrearlas asignadas a `service_role`.
+
+```sql
+-- ============================================
+-- CORREGIR POLÍTICAS RLS - RESTRINGIR A service_role
+-- ============================================
+
+-- 1. agent_settings_ui
+DROP POLICY IF EXISTS "Service role has full access" ON public.agent_settings_ui;
+CREATE POLICY "Service role has full access" 
+  ON public.agent_settings_ui 
+  FOR ALL 
+  TO service_role 
+  USING (true) 
+  WITH CHECK (true);
+
+-- 2. health_checks
+DROP POLICY IF EXISTS "Service role has full access to health_checks" ON public.health_checks;
+CREATE POLICY "Service role has full access to health_checks" 
+  ON public.health_checks 
+  FOR ALL 
+  TO service_role 
+  USING (true) 
+  WITH CHECK (true);
+
+-- 3. invoices
+DROP POLICY IF EXISTS "Service role has full access to invoices" ON public.invoices;
+CREATE POLICY "Service role has full access to invoices" 
+  ON public.invoices 
+  FOR ALL 
+  TO service_role 
+  USING (true) 
+  WITH CHECK (true);
+
+-- 4. subscriptions
+DROP POLICY IF EXISTS "Service role has full access to subscriptions" ON public.subscriptions;
+CREATE POLICY "Service role has full access to subscriptions" 
+  ON public.subscriptions 
+  FOR ALL 
+  TO service_role 
+  USING (true) 
+  WITH CHECK (true);
+
+-- 5. tenant_addons
+DROP POLICY IF EXISTS "Service role has full access to tenant_addons" ON public.tenant_addons;
+CREATE POLICY "Service role has full access to tenant_addons" 
+  ON public.tenant_addons 
+  FOR ALL 
+  TO service_role 
+  USING (true) 
+  WITH CHECK (true);
+
+-- 6. tenant_webhooks
+DROP POLICY IF EXISTS "Service role has full access to tenant_webhooks" ON public.tenant_webhooks;
+CREATE POLICY "Service role has full access to tenant_webhooks" 
+  ON public.tenant_webhooks 
+  FOR ALL 
+  TO service_role 
+  USING (true) 
+  WITH CHECK (true);
+
+-- 7. ticket_messages
+DROP POLICY IF EXISTS "Service role has full access to ticket_messages" ON public.ticket_messages;
+CREATE POLICY "Service role has full access to ticket_messages" 
+  ON public.ticket_messages 
+  FOR ALL 
+  TO service_role 
+  USING (true) 
+  WITH CHECK (true);
+
+-- 8. tickets
+DROP POLICY IF EXISTS "Service role has full access to tickets" ON public.tickets;
+CREATE POLICY "Service role has full access to tickets" 
+  ON public.tickets 
+  FOR ALL 
+  TO service_role 
+  USING (true) 
+  WITH CHECK (true);
+```
+
+**Impacto:**
+- Las Edge Functions seguirán funcionando (usan `service_role`)
+- Los usuarios normales solo verán datos de su tenant (políticas existentes como `user_belongs_to_tenant` no se tocan)
+- Usuarios no autenticados no podrán acceder a ninguna de estas tablas
+
+---
+
+### 2. Proteger Rutas VEXA Ads
+
+**Archivo:** `src/App.tsx`
+
+**Cambio:** Envolver todas las rutas `/vexa-ads/*` con `<ProtectedRoute>` y opcionalmente `<PremiumRoute>`.
 
 ```typescript
-// Función para calcular próximo cobro
-const getNextBillingDate = (createdAt: string | null): Date | null => {
-  if (!createdAt) return null;
-  
-  const created = new Date(createdAt);
-  const now = new Date();
-  const dayOfMonth = created.getDate();
-  
-  // Calcular próximo aniversario
-  let nextBilling = new Date(now.getFullYear(), now.getMonth(), dayOfMonth);
-  
-  // Si ya pasó este mes, es el siguiente
-  if (nextBilling <= now) {
-    nextBilling.setMonth(nextBilling.getMonth() + 1);
-  }
-  
-  return nextBilling;
-};
+// ANTES (líneas 110-121):
+<Route path="/vexa-ads" element={<VexaAdsOverview />} />
+<Route path="/vexa-ads/diagnostico" element={<VexaAdsDiagnostico />} />
+// ... etc
 
-// En la tabla:
-<TableHead>Próx. Cobro</TableHead>
-
-// Celda:
-<TableCell>
-  {tenant.created_at ? (
-    <span className="text-muted-foreground">
-      {format(getNextBillingDate(tenant.created_at)!, 'd MMM', { locale: es })}
-    </span>
-  ) : '-'}
-</TableCell>
+// DESPUÉS:
+<Route path="/vexa-ads" element={<ProtectedRoute><VexaAdsOverview /></ProtectedRoute>} />
+<Route path="/vexa-ads/diagnostico" element={<ProtectedRoute><VexaAdsDiagnostico /></ProtectedRoute>} />
+<Route path="/vexa-ads/estrategia" element={<ProtectedRoute><VexaAdsEstrategia /></ProtectedRoute>} />
+<Route path="/vexa-ads/creativos" element={<ProtectedRoute><VexaAdsCreativos /></ProtectedRoute>} />
+<Route path="/vexa-ads/campanas" element={<ProtectedRoute><VexaAdsCampanas /></ProtectedRoute>} />
+<Route path="/vexa-ads/campanas/presupuesto" element={<ProtectedRoute><VexaAdsCampanas /></ProtectedRoute>} />
+<Route path="/vexa-ads/analisis" element={<ProtectedRoute><VexaAdsAnalisis /></ProtectedRoute>} />
+<Route path="/vexa-ads/recomendaciones" element={<ProtectedRoute><VexaAdsRecomendaciones /></ProtectedRoute>} />
+<Route path="/vexa-ads/recomendaciones/video" element={<ProtectedRoute><VexaAdsVideoAsesor /></ProtectedRoute>} />
+<Route path="/vexa-ads/configuracion" element={<ProtectedRoute><VexaAdsConfiguracion /></ProtectedRoute>} />
 ```
 
 ---
 
-## Flujo Corregido
+### 3. Habilitar Protección de Contraseñas Filtradas
 
-```text
-Admin clica "Ver como cliente" en AdminClients
-        ↓
-startImpersonation({ ..., createdAt: "2025-01-16T..." })
-        ↓
-ImpersonationContext almacena createdAt
-        ↓
-Usuario navega a Facturación
-        ↓
-usePeriodUsage() → useEffectiveTenant() → tenantCreatedAt: "2025-01-16"
-        ↓
-fetchPeriodUsage(tenantId, new Date("2025-01-16"))
-        ↓
-Usa createdAt sin consultar BD (evita RLS)
-        ↓
-Período correcto: 16 ene - 15 feb ✓
-```
+**Acción:** Habilitar la verificación de contraseñas comprometidas en la configuración de autenticación.
+
+Esta es una configuración de Lovable Cloud que se habilita desde el panel.
+
+---
+
+## Lo Que NO Se Toca
+
+| Componente | Estado |
+|------------|--------|
+| URLs de webhooks n8n | Sin cambios |
+| Edge Functions (human-message-proxy, webhook-n8n-proxy) | Sin cambios |
+| Admin email hardcodeado | Sin cambios |
+| Configuración de CORS | Sin cambios |
+| Políticas RLS de usuarios (`user_belongs_to_tenant`) | Sin cambios |
 
 ---
 
 ## Resumen de Archivos
 
-| Archivo | Cambio |
-|---------|--------|
-| `src/contexts/ImpersonationContext.tsx` | Agregar `createdAt` a la interfaz |
-| `src/hooks/use-effective-tenant.ts` | Exponer `tenantCreatedAt` |
-| `src/hooks/use-period-usage.ts` | Recibir y usar `tenantCreatedAt` |
-| `src/pages/admin/AdminClients.tsx` | Pasar `createdAt` + nueva columna "Próx. Cobro" |
+| Tipo | Archivo/Acción |
+|------|----------------|
+| SQL Migration | Nueva migración para corregir 8 políticas RLS |
+| Frontend | `src/App.tsx` - Proteger rutas VEXA Ads |
+| Config | Habilitar password protection (Lovable Cloud) |
+
+---
+
+## Tiempo Estimado
+
+| Tarea | Tiempo |
+|-------|--------|
+| Migración SQL (8 políticas) | 10 min |
+| Proteger rutas VEXA Ads | 5 min |
+| Habilitar password protection | 2 min |
+| **Total** | **~20 minutos** |
 
 ---
 
 ## Validación Post-Implementación
 
-1. **Test impersonación:** Admin impersona un cliente con `created_at` = día 16
-   - Verificar que el período mostrado sea "16 ene - 15 feb" (no "1 ene - 1 feb")
-   
-2. **Test columna:** Verificar que "Próx. Cobro" muestre la fecha correcta
-   - Si hoy es 29 enero y `created_at` = 16 enero → Próx. Cobro = "16 feb"
+1. **Test RLS:** Intentar acceder a `/rest/v1/subscriptions` sin autenticación → debe retornar array vacío o error 401
+2. **Test VEXA Ads:** Intentar navegar a `/vexa-ads` sin login → debe redirigir a `/auth`
+3. **Test funcionamiento normal:** Verificar que el cliente existente sigue operando correctamente
+
+---
+
+## Estado Final de Seguridad
+
+Después de estos cambios:
+
+| Aspecto | Estado |
+|---------|--------|
+| RLS en tablas sensibles | Restringido a `service_role` + usuarios de tenant |
+| Rutas protegidas | Todas requieren autenticación |
+| Aislamiento multi-tenant | Funcionando (sin cambios) |
+| Edge Functions | Funcionando (sin cambios) |
+| n8n integración | Funcionando (sin cambios) |
+
+La plataforma estará lista para recibir clientes públicos con un nivel de seguridad apropiado para producción.
+
