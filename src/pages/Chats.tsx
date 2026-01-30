@@ -891,7 +891,7 @@ export default function Chats() {
                             <FileText className="h-6 w-6 text-red-500" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">Comprobante de pago.pdf</p>
+                            <p className="text-sm font-medium truncate">Documento.pdf</p>
                             <p className="text-xs text-muted-foreground">PDF • Documento recibido</p>
                           </div>
                         </div>
