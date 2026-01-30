@@ -1,210 +1,211 @@
 
+# Plan: Alinear Métricas del Admin Dashboard con la Lógica Centralizada
 
-# Plan: Preparación para Producción Pública (Sin tocar n8n ni admin email)
+## Resumen del Problema
 
-## Resumen
+El Admin Dashboard (`AdminDashboard.tsx`) no está alineado con la lógica de conteo que usan los clientes porque:
 
-Este plan corrige **8 vulnerabilidades críticas de seguridad** en las políticas RLS y **1 vulnerabilidad de rutas desprotegidas**, sin afectar ninguna funcionalidad de n8n ni la configuración del admin email.
+1. **No usa paginación** → Solo obtiene 1,000 filas (límite de Supabase), pero hay más datos
+2. **No filtra por tenant** → La query intenta obtener todo sin filtro
+3. **La query a `tenants` falla** → RLS bloquea el acceso directo, mostrando 0 clientes
+4. **No usa `countConversations()`** → La función centralizada que ya resuelve estos problemas
 
----
+## Solución
 
-## Problema Identificado
-
-Las siguientes tablas tienen políticas "Service role has full access" pero están asignadas al rol `public` en lugar de `service_role`:
-
-| Tabla | Riesgo Actual |
-|-------|---------------|
-| `subscriptions` | Cualquiera puede ver planes/precios de todos los clientes |
-| `tenant_webhooks` | URLs de webhooks expuestas públicamente |
-| `tickets` | Tickets de soporte visibles para cualquiera |
-| `ticket_messages` | Conversaciones de soporte expuestas |
-| `agent_settings_ui` | Prompts de IA y configuración visible |
-| `health_checks` | Estado de servicios expuesto |
-| `invoices` | Facturas de todos los clientes visibles |
-| `tenant_addons` | Addons activos expuestos |
-
-Adicionalmente, las rutas de **VEXA Ads** no tienen protección de autenticación.
+Modificar `AdminDashboard.tsx` para:
+1. Obtener la lista de tenants activos desde `admin-list-tenants` (Edge Function)
+2. Para cada tenant, llamar a `countConversations()` y sumar los totales
+3. Para bookings, implementar la misma paginación
 
 ---
 
-## Cambios Requeridos
+## Cambios Técnicos
 
-### 1. Migración SQL: Corregir 8 Políticas RLS
+### Archivo: `src/pages/admin/AdminDashboard.tsx`
 
-**Acción:** Eliminar las políticas incorrectas y recrearlas asignadas a `service_role`.
-
-```sql
--- ============================================
--- CORREGIR POLÍTICAS RLS - RESTRINGIR A service_role
--- ============================================
-
--- 1. agent_settings_ui
-DROP POLICY IF EXISTS "Service role has full access" ON public.agent_settings_ui;
-CREATE POLICY "Service role has full access" 
-  ON public.agent_settings_ui 
-  FOR ALL 
-  TO service_role 
-  USING (true) 
-  WITH CHECK (true);
-
--- 2. health_checks
-DROP POLICY IF EXISTS "Service role has full access to health_checks" ON public.health_checks;
-CREATE POLICY "Service role has full access to health_checks" 
-  ON public.health_checks 
-  FOR ALL 
-  TO service_role 
-  USING (true) 
-  WITH CHECK (true);
-
--- 3. invoices
-DROP POLICY IF EXISTS "Service role has full access to invoices" ON public.invoices;
-CREATE POLICY "Service role has full access to invoices" 
-  ON public.invoices 
-  FOR ALL 
-  TO service_role 
-  USING (true) 
-  WITH CHECK (true);
-
--- 4. subscriptions
-DROP POLICY IF EXISTS "Service role has full access to subscriptions" ON public.subscriptions;
-CREATE POLICY "Service role has full access to subscriptions" 
-  ON public.subscriptions 
-  FOR ALL 
-  TO service_role 
-  USING (true) 
-  WITH CHECK (true);
-
--- 5. tenant_addons
-DROP POLICY IF EXISTS "Service role has full access to tenant_addons" ON public.tenant_addons;
-CREATE POLICY "Service role has full access to tenant_addons" 
-  ON public.tenant_addons 
-  FOR ALL 
-  TO service_role 
-  USING (true) 
-  WITH CHECK (true);
-
--- 6. tenant_webhooks
-DROP POLICY IF EXISTS "Service role has full access to tenant_webhooks" ON public.tenant_webhooks;
-CREATE POLICY "Service role has full access to tenant_webhooks" 
-  ON public.tenant_webhooks 
-  FOR ALL 
-  TO service_role 
-  USING (true) 
-  WITH CHECK (true);
-
--- 7. ticket_messages
-DROP POLICY IF EXISTS "Service role has full access to ticket_messages" ON public.ticket_messages;
-CREATE POLICY "Service role has full access to ticket_messages" 
-  ON public.ticket_messages 
-  FOR ALL 
-  TO service_role 
-  USING (true) 
-  WITH CHECK (true);
-
--- 8. tickets
-DROP POLICY IF EXISTS "Service role has full access to tickets" ON public.tickets;
-CREATE POLICY "Service role has full access to tickets" 
-  ON public.tickets 
-  FOR ALL 
-  TO service_role 
-  USING (true) 
-  WITH CHECK (true);
-```
-
-**Impacto:**
-- Las Edge Functions seguirán funcionando (usan `service_role`)
-- Los usuarios normales solo verán datos de su tenant (políticas existentes como `user_belongs_to_tenant` no se tocan)
-- Usuarios no autenticados no podrán acceder a ninguna de estas tablas
-
----
-
-### 2. Proteger Rutas VEXA Ads
-
-**Archivo:** `src/App.tsx`
-
-**Cambio:** Envolver todas las rutas `/vexa-ads/*` con `<ProtectedRoute>` y opcionalmente `<PremiumRoute>`.
+#### 1. Importar la función centralizada
 
 ```typescript
-// ANTES (líneas 110-121):
-<Route path="/vexa-ads" element={<VexaAdsOverview />} />
-<Route path="/vexa-ads/diagnostico" element={<VexaAdsDiagnostico />} />
-// ... etc
+import { countConversations } from '@/lib/api/conversation-counter';
+import { supabase } from '@/integrations/supabase/client';
+```
 
-// DESPUÉS:
-<Route path="/vexa-ads" element={<ProtectedRoute><VexaAdsOverview /></ProtectedRoute>} />
-<Route path="/vexa-ads/diagnostico" element={<ProtectedRoute><VexaAdsDiagnostico /></ProtectedRoute>} />
-<Route path="/vexa-ads/estrategia" element={<ProtectedRoute><VexaAdsEstrategia /></ProtectedRoute>} />
-<Route path="/vexa-ads/creativos" element={<ProtectedRoute><VexaAdsCreativos /></ProtectedRoute>} />
-<Route path="/vexa-ads/campanas" element={<ProtectedRoute><VexaAdsCampanas /></ProtectedRoute>} />
-<Route path="/vexa-ads/campanas/presupuesto" element={<ProtectedRoute><VexaAdsCampanas /></ProtectedRoute>} />
-<Route path="/vexa-ads/analisis" element={<ProtectedRoute><VexaAdsAnalisis /></ProtectedRoute>} />
-<Route path="/vexa-ads/recomendaciones" element={<ProtectedRoute><VexaAdsRecomendaciones /></ProtectedRoute>} />
-<Route path="/vexa-ads/recomendaciones/video" element={<ProtectedRoute><VexaAdsVideoAsesor /></ProtectedRoute>} />
-<Route path="/vexa-ads/configuracion" element={<ProtectedRoute><VexaAdsConfiguracion /></ProtectedRoute>} />
+#### 2. Obtener lista de tenants desde Edge Function
+
+En lugar de consultar directamente la tabla `tenants` (bloqueada por RLS):
+
+```typescript
+// ANTES (líneas 182-188) - NO FUNCIONA por RLS:
+const { data: tenants, error: tenantsError } = await supabase
+  .from('tenants')
+  .select('id, name, is_active');
+
+// DESPUÉS - Usar Edge Function:
+const { data: tenantsResponse } = await supabase.functions.invoke('admin-list-tenants');
+const tenants = tenantsResponse?.tenants || [];
+const totalClients = tenants.length;
+const activeClients = tenants.filter((t: any) => t.is_active !== false).length;
+```
+
+#### 3. Usar `countConversations()` para cada tenant activo
+
+```typescript
+// ANTES (líneas 92-145) - Query única sin paginación:
+const { data: allMessages } = await externalSupabase
+  .from('n8n_chat_histories')
+  .select('session_id, created_at')
+  .order('created_at', { ascending: false });
+
+// DESPUÉS - Iterar sobre cada tenant y usar la función centralizada:
+let globalTodayChats = 0;
+let globalTodayMessages = 0;
+let globalPeriodChats = 0;
+let globalPeriodMessages = 0;
+let globalTotalChats = 0;
+let globalTotalMessages = 0;
+
+// Obtener lista de tenant IDs activos
+const activeTenantIds = tenants
+  .filter((t: any) => t.is_active !== false)
+  .map((t: any) => t.id);
+
+// Para cada tenant, usar la función centralizada
+for (const tenantId of activeTenantIds) {
+  // Conteo TOTAL (histórico)
+  const totalCount = await countConversations({ tenantId });
+  globalTotalChats += totalCount.totalConversations;
+  globalTotalMessages += totalCount.totalMessages;
+  
+  // Conteo del MES
+  const periodCount = await countConversations({
+    tenantId,
+    startDate: monthStart,
+    endDate: now,
+  });
+  globalPeriodChats += periodCount.totalConversations;
+  globalPeriodMessages += periodCount.totalMessages;
+  
+  // Conteo de HOY
+  const todayCount = await countConversations({
+    tenantId,
+    startDate: todayStart,
+    endDate: now,
+  });
+  globalTodayChats += todayCount.totalConversations;
+  globalTodayMessages += todayCount.totalMessages;
+}
+```
+
+#### 4. Paginación para Bookings
+
+```typescript
+// ANTES (líneas 150-156) - Sin paginación:
+const { data: allBookings } = await externalSupabase
+  .from('bookings')
+  .select('id, price, created_at, event_date');
+
+// DESPUÉS - Con paginación:
+const PAGE_SIZE = 1000;
+let allBookings: any[] = [];
+let offset = 0;
+let hasMore = true;
+
+while (hasMore) {
+  const { data, error } = await externalSupabase
+    .from('bookings')
+    .select('id, price, created_at, event_date, currency')
+    .order('created_at', { ascending: false })
+    .range(offset, offset + PAGE_SIZE - 1);
+  
+  if (error || !data || data.length === 0) {
+    hasMore = false;
+  } else {
+    allBookings.push(...data);
+    offset += data.length;
+    if (data.length < PAGE_SIZE) hasMore = false;
+  }
+  
+  // Límite de seguridad
+  if (offset >= 50000) hasMore = false;
+}
+```
+
+#### 5. Optimización: Paralelizar queries de tenants
+
+Para evitar lentitud con muchos clientes:
+
+```typescript
+// Ejecutar en paralelo (máximo 5 a la vez para no saturar)
+const BATCH_SIZE = 5;
+for (let i = 0; i < activeTenantIds.length; i += BATCH_SIZE) {
+  const batch = activeTenantIds.slice(i, i + BATCH_SIZE);
+  const results = await Promise.all(
+    batch.map(tenantId => countConversations({ tenantId }))
+  );
+  results.forEach(count => {
+    globalTotalChats += count.totalConversations;
+    globalTotalMessages += count.totalMessages;
+  });
+}
 ```
 
 ---
 
-### 3. Habilitar Protección de Contraseñas Filtradas
+## Flujo Corregido
 
-**Acción:** Habilitar la verificación de contraseñas comprometidas en la configuración de autenticación.
-
-Esta es una configuración de Lovable Cloud que se habilita desde el panel.
-
----
-
-## Lo Que NO Se Toca
-
-| Componente | Estado |
-|------------|--------|
-| URLs de webhooks n8n | Sin cambios |
-| Edge Functions (human-message-proxy, webhook-n8n-proxy) | Sin cambios |
-| Admin email hardcodeado | Sin cambios |
-| Configuración de CORS | Sin cambios |
-| Políticas RLS de usuarios (`user_belongs_to_tenant`) | Sin cambios |
-
----
-
-## Resumen de Archivos
-
-| Tipo | Archivo/Acción |
-|------|----------------|
-| SQL Migration | Nueva migración para corregir 8 políticas RLS |
-| Frontend | `src/App.tsx` - Proteger rutas VEXA Ads |
-| Config | Habilitar password protection (Lovable Cloud) |
+```text
+Admin abre /admin/dashboard
+        ↓
+1. Llamar admin-list-tenants (Edge Function)
+        ↓
+2. Obtener lista de tenants activos
+        ↓
+3. Para cada tenant:
+   - countConversations() para HOY
+   - countConversations() para MES
+   - countConversations() para TOTAL
+        ↓
+4. Sumar todos los conteos
+        ↓
+5. Bookings con paginación
+        ↓
+6. Mostrar métricas agregadas correctas
+```
 
 ---
 
-## Tiempo Estimado
+## Consideraciones de Rendimiento
 
-| Tarea | Tiempo |
-|-------|--------|
-| Migración SQL (8 políticas) | 10 min |
-| Proteger rutas VEXA Ads | 5 min |
-| Habilitar password protection | 2 min |
-| **Total** | **~20 minutos** |
+| Aspecto | Con 1 cliente | Con 10 clientes |
+|---------|---------------|-----------------|
+| Queries de chats | 3 (hoy, mes, total) | 30 (3 × 10) |
+| Tiempo estimado | ~1 seg | ~3-5 seg |
+| Paginación | Hasta 100k msgs | Por tenant (seguro) |
+
+**Nota:** Con 10 clientes proyectados, el rendimiento será aceptable. Si escala a 50+ clientes, se debería considerar una Edge Function que haga el agregado en el servidor.
+
+---
+
+## Archivos a Modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/admin/AdminDashboard.tsx` | Refactorizar `fetchGlobalMetrics()` para usar `countConversations()` + paginación de bookings + Edge Function para tenants |
 
 ---
 
 ## Validación Post-Implementación
 
-1. **Test RLS:** Intentar acceder a `/rest/v1/subscriptions` sin autenticación → debe retornar array vacío o error 401
-2. **Test VEXA Ads:** Intentar navegar a `/vexa-ads` sin login → debe redirigir a `/auth`
-3. **Test funcionamiento normal:** Verificar que el cliente existente sigue operando correctamente
+1. **Verificar totales:** Los números del Admin Dashboard deben coincidir con la suma de todos los dashboards de clientes
+2. **Verificar clientes:** Debe mostrar el número correcto de clientes activos (actualmente 1)
+3. **Verificar hoy:** Si hay actividad hoy, debe reflejarse en las métricas de "Hoy"
+4. **Verificar paginación:** Si hay más de 1,000 mensajes, deben contarse todos
 
 ---
 
-## Estado Final de Seguridad
+## Lo Que NO Se Toca
 
-Después de estos cambios:
-
-| Aspecto | Estado |
-|---------|--------|
-| RLS en tablas sensibles | Restringido a `service_role` + usuarios de tenant |
-| Rutas protegidas | Todas requieren autenticación |
-| Aislamiento multi-tenant | Funcionando (sin cambios) |
-| Edge Functions | Funcionando (sin cambios) |
-| n8n integración | Funcionando (sin cambios) |
-
-La plataforma estará lista para recibir clientes públicos con un nivel de seguridad apropiado para producción.
-
+- `countConversations()` - Se usa tal cual (ya funciona perfecto)
+- Dashboard de clientes - Sin cambios
+- Facturación - Sin cambios
+- Edge Functions de n8n - Sin cambios
