@@ -280,6 +280,7 @@ export interface Appointment {
   time?: string;        // Solo para servicios (ej: "10:30")
   price?: number;
   currency?: string;
+  meetingUrl?: string;  // Link de reunión virtual (Zoom, Meet, etc.)
 }
 
 // Templates (Marketing)

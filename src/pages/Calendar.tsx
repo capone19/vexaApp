@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, addWeeks, subWeeks, addDays, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Clock, User, Phone, MapPin, Calendar as CalendarIcon, Filter, Plus, X, Lock, Loader2, ShoppingBag, DollarSign } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, User, Phone, MapPin, Calendar as CalendarIcon, Filter, Plus, X, Lock, Loader2, ShoppingBag, DollarSign, Video, ExternalLink } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -853,6 +853,22 @@ const CalendarContent = () => {
                     <span className="text-foreground font-medium text-success">
                       {formatPrice(selectedAppointment.price, selectedAppointment.currency)}
                     </span>
+                  </div>
+                )}
+
+                {/* Mostrar link de reunión si existe */}
+                {selectedAppointment.meetingUrl && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <Video className="h-4 w-4 text-muted-foreground" />
+                    <a 
+                      href={selectedAppointment.meetingUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline flex items-center gap-1"
+                    >
+                      Unirse a la reunión
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
                   </div>
                 )}
               </div>

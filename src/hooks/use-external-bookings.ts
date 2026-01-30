@@ -55,6 +55,13 @@ const mapBookingToAppointment = (booking: ExternalBooking): Appointment => {
     ? format(new Date(`2000-01-01T${booking.event_time}`), 'HH:mm')
     : undefined;
 
+  // Extraer meetingUrl del metadata si existe
+  const metadata = booking.metadata as Record<string, unknown> | null;
+  const meetingUrl = metadata?.meeting_url as string | undefined 
+    || metadata?.meetingUrl as string | undefined
+    || metadata?.zoom_link as string | undefined
+    || metadata?.meet_link as string | undefined;
+
   return {
     id: booking.id,
     datetime,
@@ -72,6 +79,7 @@ const mapBookingToAppointment = (booking: ExternalBooking): Appointment => {
     time,
     price: booking.price,
     currency: booking.currency,
+    meetingUrl,
   };
 };
 
