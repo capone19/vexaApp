@@ -10,6 +10,7 @@ import { ImpersonationBanner } from "@/components/admin/ImpersonationBanner";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AdminRoute } from "@/components/auth/AdminRoute";
 import { PremiumRoute } from "@/components/auth/PremiumRoute";
+import { VexaAdsRoute } from "@/components/auth/VexaAdsRoute";
 import { Loader2 } from "lucide-react";
 
 // Lazy load de páginas para code splitting
@@ -90,11 +91,12 @@ const App = () => (
               <Route path="/resultados" element={<ProtectedRoute><Metrics /></ProtectedRoute>} />
               <Route path="/resultados/metricas" element={<ProtectedRoute><Metrics /></ProtectedRoute>} />
               <Route path="/resultados/ventas" element={<ProtectedRoute><Results /></ProtectedRoute>} />
-              <Route path="/marketing" element={<ProtectedRoute><PremiumRoute feature="El módulo de Marketing"><Marketing /></PremiumRoute></ProtectedRoute>} />
-              <Route path="/marketing/plantillas" element={<ProtectedRoute><PremiumRoute feature="Las plantillas de WhatsApp"><MarketingTemplates /></PremiumRoute></ProtectedRoute>} />
-              <Route path="/marketing/performance" element={<ProtectedRoute><PremiumRoute feature="El análisis de performance"><MarketingPerformance /></PremiumRoute></ProtectedRoute>} />
-              <Route path="/marketing/creditos" element={<ProtectedRoute><PremiumRoute feature="El sistema de créditos de mensajería"><MarketingCredits /></PremiumRoute></ProtectedRoute>} />
-              <Route path="/marketing/comprar-creditos" element={<ProtectedRoute><PremiumRoute feature="Compra de créditos de mensajería"><MarketingBuyCredits /></PremiumRoute></ProtectedRoute>} />
+              {/* Marketing habilitado para todos los planes */}
+              <Route path="/marketing" element={<ProtectedRoute><Marketing /></ProtectedRoute>} />
+              <Route path="/marketing/plantillas" element={<ProtectedRoute><MarketingTemplates /></ProtectedRoute>} />
+              <Route path="/marketing/performance" element={<ProtectedRoute><MarketingPerformance /></ProtectedRoute>} />
+              <Route path="/marketing/creditos" element={<ProtectedRoute><MarketingCredits /></ProtectedRoute>} />
+              <Route path="/marketing/comprar-creditos" element={<ProtectedRoute><MarketingBuyCredits /></ProtectedRoute>} />
               <Route path="/reportes" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
               <Route path="/facturacion" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
               <Route path="/notificaciones" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
@@ -110,17 +112,17 @@ const App = () => (
 <Route path="/admin/tickets/:ticketId" element={<AdminRoute><AdminTicketDetail /></AdminRoute>} />
               <Route path="/admin/health" element={<AdminRoute><AdminHealthCheck /></AdminRoute>} />
               
-              {/* VEXA Ads - Módulo Premium Demo - Rutas protegidas */}
-              <Route path="/vexa-ads" element={<ProtectedRoute><VexaAdsOverview /></ProtectedRoute>} />
-              <Route path="/vexa-ads/diagnostico" element={<ProtectedRoute><VexaAdsDiagnostico /></ProtectedRoute>} />
-              <Route path="/vexa-ads/estrategia" element={<ProtectedRoute><VexaAdsEstrategia /></ProtectedRoute>} />
-              <Route path="/vexa-ads/creativos" element={<ProtectedRoute><VexaAdsCreativos /></ProtectedRoute>} />
-              <Route path="/vexa-ads/campanas" element={<ProtectedRoute><VexaAdsCampanas /></ProtectedRoute>} />
-              <Route path="/vexa-ads/campanas/presupuesto" element={<ProtectedRoute><VexaAdsCampanas /></ProtectedRoute>} />
-              <Route path="/vexa-ads/analisis" element={<ProtectedRoute><VexaAdsAnalisis /></ProtectedRoute>} />
-              <Route path="/vexa-ads/recomendaciones" element={<ProtectedRoute><VexaAdsRecomendaciones /></ProtectedRoute>} />
-              <Route path="/vexa-ads/recomendaciones/video" element={<ProtectedRoute><VexaAdsVideoAsesor /></ProtectedRoute>} />
-              <Route path="/vexa-ads/configuracion" element={<ProtectedRoute><VexaAdsConfiguracion /></ProtectedRoute>} />
+              {/* VEXA Ads - Módulo controlado por tenant (vexa_ads_enabled) */}
+              <Route path="/vexa-ads" element={<ProtectedRoute><VexaAdsRoute><VexaAdsOverview /></VexaAdsRoute></ProtectedRoute>} />
+              <Route path="/vexa-ads/diagnostico" element={<ProtectedRoute><VexaAdsRoute><VexaAdsDiagnostico /></VexaAdsRoute></ProtectedRoute>} />
+              <Route path="/vexa-ads/estrategia" element={<ProtectedRoute><VexaAdsRoute><VexaAdsEstrategia /></VexaAdsRoute></ProtectedRoute>} />
+              <Route path="/vexa-ads/creativos" element={<ProtectedRoute><VexaAdsRoute><VexaAdsCreativos /></VexaAdsRoute></ProtectedRoute>} />
+              <Route path="/vexa-ads/campanas" element={<ProtectedRoute><VexaAdsRoute><VexaAdsCampanas /></VexaAdsRoute></ProtectedRoute>} />
+              <Route path="/vexa-ads/campanas/presupuesto" element={<ProtectedRoute><VexaAdsRoute><VexaAdsCampanas /></VexaAdsRoute></ProtectedRoute>} />
+              <Route path="/vexa-ads/analisis" element={<ProtectedRoute><VexaAdsRoute><VexaAdsAnalisis /></VexaAdsRoute></ProtectedRoute>} />
+              <Route path="/vexa-ads/recomendaciones" element={<ProtectedRoute><VexaAdsRoute><VexaAdsRecomendaciones /></VexaAdsRoute></ProtectedRoute>} />
+              <Route path="/vexa-ads/recomendaciones/video" element={<ProtectedRoute><VexaAdsRoute><VexaAdsVideoAsesor /></VexaAdsRoute></ProtectedRoute>} />
+              <Route path="/vexa-ads/configuracion" element={<ProtectedRoute><VexaAdsRoute><VexaAdsConfiguracion /></VexaAdsRoute></ProtectedRoute>} />
               
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />

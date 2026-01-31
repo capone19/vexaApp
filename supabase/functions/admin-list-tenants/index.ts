@@ -73,6 +73,7 @@ Deno.serve(async (req) => {
         slug,
         plan,
         is_active,
+        vexa_ads_enabled,
         whatsapp_phone_id,
         whatsapp_business_id,
         display_currency,
