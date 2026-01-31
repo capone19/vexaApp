@@ -93,26 +93,49 @@ Deno.serve(async (req) => {
     console.log('[admin-manage-tenant-addons] Adding:', addonsToAdd);
     console.log('[admin-manage-tenant-addons] Removing:', addonsToRemove);
 
-    // Add new addons
-    if (addonsToAdd.length > 0) {
-      const insertData = addonsToAdd.map(addonId => ({
-        tenant_id: tenantId,
-        addon_id: addonId,
-        price_usd: ADDON_PRICES[addonId] || 9,
-        status: 'active',
-        activated_at: new Date().toISOString(),
-      }));
-
-      const { error: insertError } = await supabase
+    // Add new addons (or reactivate cancelled ones)
+    for (const addonId of addonsToAdd) {
+      // First check if addon exists
+      const { data: existing } = await supabase
         .from('tenant_addons')
-        .upsert(insertData, { 
-          onConflict: 'tenant_id,addon_id',
-          ignoreDuplicates: false 
-        });
+        .select('id, status')
+        .eq('tenant_id', tenantId)
+        .eq('addon_id', addonId)
+        .maybeSingle();
 
-      if (insertError) {
-        console.error('[admin-manage-tenant-addons] Insert error:', insertError);
-        throw insertError;
+      if (existing) {
+        // Reactivate if it was cancelled
+        const { error: updateErr } = await supabase
+          .from('tenant_addons')
+          .update({ 
+            status: 'active',
+            activated_at: new Date().toISOString(),
+            cancelled_at: null,
+          })
+          .eq('id', existing.id);
+
+        if (updateErr) {
+          console.error('[admin-manage-tenant-addons] Update error:', updateErr);
+        } else {
+          console.log('[admin-manage-tenant-addons] Reactivated addon:', addonId);
+        }
+      } else {
+        // Insert new addon
+        const { error: insertErr } = await supabase
+          .from('tenant_addons')
+          .insert({
+            tenant_id: tenantId,
+            addon_id: addonId,
+            price_usd: ADDON_PRICES[addonId] || 9,
+            status: 'active',
+            activated_at: new Date().toISOString(),
+          });
+
+        if (insertErr) {
+          console.error('[admin-manage-tenant-addons] Insert error:', insertErr);
+        } else {
+          console.log('[admin-manage-tenant-addons] Inserted new addon:', addonId);
+        }
       }
     }
 
@@ -131,6 +154,7 @@ Deno.serve(async (req) => {
         console.error('[admin-manage-tenant-addons] Update error:', updateError);
         throw updateError;
       }
+      console.log('[admin-manage-tenant-addons] Deactivated addons:', addonsToRemove);
     }
 
     console.log('[admin-manage-tenant-addons] ✓ Addons updated successfully');
