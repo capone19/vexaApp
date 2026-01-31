@@ -55,6 +55,7 @@ export function hasCampaignsEnabled(plan: PlanId): boolean {
 }
 
 // Plan features mapping
+// NOTA: Marketing está habilitado para TODOS los planes (regla fija)
 export const planFeatures: Record<PlanId, {
   hasReports: boolean;
   hasMarketing: boolean;
@@ -64,7 +65,7 @@ export const planFeatures: Record<PlanId, {
 }> = {
   basic: {
     hasReports: false,
-    hasMarketing: false,
+    hasMarketing: true,  // Habilitado para todos los planes
     hasAdvancedMetrics: false,
     hasScheduledReports: false,
     hasDataExport: false,
