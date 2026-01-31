@@ -44,3 +44,9 @@ verify_jwt = false
 
 [functions.ycloud-send-message]
 verify_jwt = false
+
+[functions.admin-toggle-vexa-ads]
+verify_jwt = false
+
+[functions.admin-manage-tenant-addons]
+verify_jwt = false

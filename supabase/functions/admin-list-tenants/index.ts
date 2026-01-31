@@ -92,6 +92,25 @@ Deno.serve(async (req) => {
       throw tenantsError;
     }
 
+    // Fetch all active addons
+    const { data: allAddons, error: addonsError } = await supabase
+      .from('tenant_addons')
+      .select('tenant_id, addon_id, status, price_usd')
+      .eq('status', 'active');
+
+    if (addonsError) {
+      console.error('[admin-list-tenants] Error fetching addons:', addonsError);
+    }
+
+    // Create tenant_id -> addons map
+    const tenantAddonsMap: Record<string, string[]> = {};
+    allAddons?.forEach(addon => {
+      if (!tenantAddonsMap[addon.tenant_id]) {
+        tenantAddonsMap[addon.tenant_id] = [];
+      }
+      tenantAddonsMap[addon.tenant_id].push(addon.addon_id);
+    });
+
     // Fetch owner emails for each tenant
     const { data: userRoles, error: rolesError } = await supabase
       .from('user_roles')
@@ -152,12 +171,13 @@ Deno.serve(async (req) => {
     console.log('[admin-list-tenants] Unique sessions processed:', processedSessions.size);
     console.log('[admin-list-tenants] Chat counts per tenant:', tenantChatCounts);
 
-    // Enrich tenants with email and chat counts
+    // Enrich tenants with email, chat counts, and addons
     const enrichedTenants = (tenants || []).map(tenant => ({
       ...tenant,
       owner_email: tenantOwnerEmails[tenant.id] || null,
       chat_count: tenantChatCounts[tenant.id] || 0,
       chat_limit: PLAN_LIMITS[tenant.plan.toLowerCase()] || 300,
+      addons: tenantAddonsMap[tenant.id] || [],
     }));
 
     console.log(`[admin-list-tenants] Returning ${enrichedTenants.length} tenants with enriched data`);
