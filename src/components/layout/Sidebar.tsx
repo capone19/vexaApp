@@ -46,18 +46,17 @@ const mainNavItems: NavItem[] = [
     ],
   },
   { title: "Facturación", href: "/facturacion", icon: CreditCard },
-  { title: "Reportes", href: "/reportes", icon: FileText, isUpgrade: true },
   {
     title: "Marketing",
     href: "/marketing",
     icon: Megaphone,
-    isUpgrade: true,
     children: [
       { title: "Plantillas", href: "/marketing/plantillas" },
       { title: "Performance", href: "/marketing/performance" },
       { title: "Créditos", href: "/marketing/creditos" },
     ],
   },
+  { title: "Reportes", href: "/reportes", icon: FileText, isUpgrade: true },
 ];
 
 const bottomNavItems: NavItem[] = [
