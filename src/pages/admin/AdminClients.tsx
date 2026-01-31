@@ -353,8 +353,13 @@ export default function AdminClients() {
   const handleChangeWhatsAppIntegration = async (tenantId: string, integration: WhatsAppIntegration) => {
     setUpdatingWhatsAppId(tenantId);
     try {
-      // Por ahora solo actualizar el estado local (interno para admin)
-      // En el futuro se puede guardar en la tabla tenants si se añade el campo
+      const { error } = await supabase.functions.invoke('admin-update-whatsapp-integration', {
+        body: { tenantId, integration }
+      });
+      
+      if (error) throw error;
+      
+      // Actualizar estado local
       setTenants(prev => prev.map(t => 
         t.id === tenantId ? { ...t, whatsapp_integration: integration } : t
       ));

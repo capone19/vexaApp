@@ -76,6 +76,7 @@ Deno.serve(async (req) => {
         vexa_ads_enabled,
         whatsapp_phone_id,
         whatsapp_business_id,
+        whatsapp_integration,
         display_currency,
         created_at,
         subscriptions (

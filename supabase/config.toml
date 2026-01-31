@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.admin-manage-tenant-addons]
 verify_jwt = false
+
+[functions.admin-update-whatsapp-integration]
+verify_jwt = false
