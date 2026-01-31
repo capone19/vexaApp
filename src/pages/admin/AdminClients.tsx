@@ -36,7 +36,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { useImpersonation } from '@/contexts/ImpersonationContext';
 import { countConversationsForBillingPeriod } from '@/lib/api/conversation-counter';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Building2, CheckCircle, XCircle, Copy, Eye, RefreshCw, Sparkles } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Loader2, Building2, CheckCircle, XCircle, Copy, Eye, RefreshCw, Sparkles, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -58,10 +66,26 @@ interface Tenant {
   chat_limit: number;
   chats_extra?: number;    // Chats por encima del límite del plan
   cobro_extra_usd?: number; // Cobro asociado en USD ($0.30 por chat extra)
+  addons?: string[];       // IDs de addons activos
   subscriptions: {
     price_usd: number;
     status: string;
   }[] | null;
+}
+
+// Definición de reportes para gestión
+const ALL_REPORTS = [
+  { id: 'agent-performance', title: 'Rendimiento del agente', includedIn: ['basic', 'pro', 'enterprise'] },
+  { id: 'conversational-metrics', title: 'Métricas conversacionales', includedIn: ['pro', 'enterprise'] },
+  { id: 'unconverted-leads', title: 'Clientes no convertidos', includedIn: ['enterprise'] },
+  { id: 'converted-sales', title: 'Clientes convertidos', includedIn: [] },
+  { id: 'meta-ads', title: 'Marketing / Meta Ads', includedIn: [] },
+  { id: 'ad-advisor', title: 'Asesor publicitario', includedIn: [] },
+];
+
+// Cuenta reportes incluidos según el plan
+function countIncludedReports(plan: string): number {
+  return ALL_REPORTS.filter(r => r.includedIn.includes(plan.toLowerCase())).length;
 }
 
 export default function AdminClients() {
@@ -75,6 +99,12 @@ export default function AdminClients() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [togglingVexaAdsId, setTogglingVexaAdsId] = useState<string | null>(null);
   const [updatingCurrencyId, setUpdatingCurrencyId] = useState<string | null>(null);
+  
+  // Estado para dialog de reportes
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [selectedTenantForReports, setSelectedTenantForReports] = useState<Tenant | null>(null);
+  const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
+  const [isSavingAddons, setIsSavingAddons] = useState(false);
 
   // Cargar tenants del backend
   useEffect(() => {
@@ -308,6 +338,77 @@ export default function AdminClients() {
     }
   };
 
+  // Abrir dialog de reportes
+  const openReportDialog = (tenant: Tenant) => {
+    setSelectedTenantForReports(tenant);
+    // Reportes incluidos por plan + addons activos
+    const includedByPlan = ALL_REPORTS
+      .filter(r => r.includedIn.includes(tenant.plan.toLowerCase()))
+      .map(r => r.id);
+    const activeAddons = tenant.addons || [];
+    // Unir y eliminar duplicados
+    const combined = [...new Set([...includedByPlan, ...activeAddons])];
+    setSelectedAddons(combined);
+    setReportDialogOpen(true);
+  };
+
+  // Guardar cambios de addons
+  const handleSaveAddons = async () => {
+    if (!selectedTenantForReports) return;
+    
+    setIsSavingAddons(true);
+    try {
+      // Filtrar solo los que NO están incluidos por plan (esos son los addons manuales)
+      const includedByPlan = ALL_REPORTS
+        .filter(r => r.includedIn.includes(selectedTenantForReports.plan.toLowerCase()))
+        .map(r => r.id);
+      
+      const addonsToSave = selectedAddons.filter(id => !includedByPlan.includes(id));
+      
+      const { error } = await supabase.functions.invoke('admin-manage-tenant-addons', {
+        body: { 
+          tenantId: selectedTenantForReports.id,
+          addons: addonsToSave,
+        }
+      });
+      
+      if (error) throw error;
+      
+      // Actualizar estado local
+      setTenants(prev => prev.map(t => 
+        t.id === selectedTenantForReports.id 
+          ? { ...t, addons: addonsToSave }
+          : t
+      ));
+      
+      toast.success('Reportes actualizados correctamente');
+      setReportDialogOpen(false);
+    } catch (err) {
+      console.error('[AdminClients] Save addons error:', err);
+      toast.error('Error al guardar reportes');
+    } finally {
+      setIsSavingAddons(false);
+    }
+  };
+
+  // Toggle individual addon
+  const toggleAddon = (addonId: string) => {
+    if (!selectedTenantForReports) return;
+    
+    // No permitir desactivar los incluidos por plan
+    const includedByPlan = ALL_REPORTS
+      .filter(r => r.includedIn.includes(selectedTenantForReports.plan.toLowerCase()))
+      .map(r => r.id);
+    
+    if (includedByPlan.includes(addonId)) return; // No se puede desactivar
+    
+    setSelectedAddons(prev => 
+      prev.includes(addonId)
+        ? prev.filter(id => id !== addonId)
+        : [...prev, addonId]
+    );
+  };
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -373,6 +474,7 @@ export default function AdminClients() {
                       <TableHead>Cobro Extra</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead>VEXA Ads</TableHead>
+                      <TableHead>Reportes</TableHead>
                       <TableHead>WhatsApp</TableHead>
                       <TableHead>Creado</TableHead>
                       <TableHead>Próx. Cobro</TableHead>
@@ -538,6 +640,26 @@ export default function AdminClients() {
                               )}
                             </div>
                           </TableCell>
+                          {/* Reportes */}
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">
+                                {countIncludedReports(tenant.plan)}/{ALL_REPORTS.length}
+                                {(tenant.addons?.length || 0) > 0 && (
+                                  <span className="text-primary ml-1">+{tenant.addons?.length}</span>
+                                )}
+                              </span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs gap-1"
+                                onClick={() => openReportDialog(tenant)}
+                              >
+                                <FileText className="h-3 w-3" />
+                                Gestionar
+                              </Button>
+                            </div>
+                          </TableCell>
                           <TableCell>
                             {tenant.whatsapp_phone_id ? (
                               <span className="flex items-center gap-1 text-green-600">
@@ -573,6 +695,79 @@ export default function AdminClients() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Dialog de gestión de reportes */}
+      <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" />
+              Reportes de {selectedTenantForReports?.name}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedTenantForReports && (
+            <div className="space-y-4 py-2">
+              <div className="text-sm text-muted-foreground mb-4">
+                Plan actual: <Badge variant="outline">{selectedTenantForReports.plan}</Badge>
+              </div>
+              
+              <div className="space-y-3">
+                {ALL_REPORTS.map((report) => {
+                  const isIncludedInPlan = report.includedIn.includes(selectedTenantForReports.plan.toLowerCase());
+                  const isChecked = selectedAddons.includes(report.id);
+                  
+                  return (
+                    <div key={report.id} className="flex items-center space-x-3">
+                      <Checkbox
+                        id={report.id}
+                        checked={isChecked}
+                        onCheckedChange={() => toggleAddon(report.id)}
+                        disabled={isIncludedInPlan}
+                      />
+                      <label
+                        htmlFor={report.id}
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex-1"
+                      >
+                        {report.title}
+                      </label>
+                      {isIncludedInPlan ? (
+                        <Badge variant="secondary" className="text-xs">
+                          En plan
+                        </Badge>
+                      ) : isChecked ? (
+                        <Badge className="bg-success/10 text-success border-success/30 text-xs">
+                          Activo
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          Manual
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setReportDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveAddons} disabled={isSavingAddons}>
+              {isSavingAddons ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Guardando...
+                </>
+              ) : (
+                'Guardar cambios'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -8,10 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { 
   Lock, 
-  TrendingUp,
-  Users,
   MessageSquare,
-  DollarSign,
   BarChart3,
   Megaphone,
   UserX,
@@ -24,14 +21,15 @@ import {
   Plus,
   Check,
   X,
-  Download,
   FileText,
-  Calendar
+  Calendar,
+  Loader2
 } from 'lucide-react';
-import { onPlanChange, getCurrentPlan, type PlanId } from '@/lib/plan';
+import { type PlanId } from '@/lib/plan';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
+import { useTenantReports } from '@/hooks/use-tenant-reports';
 
 // Definición de reportes
 interface ReportType {
@@ -110,19 +108,10 @@ const reportTypes: ReportType[] = [
 
 const Reports = () => {
   const navigate = useNavigate();
-  const [currentPlan, setCurrentPlanState] = useState<PlanId>(getCurrentPlan());
-  const [purchasedAddons, setPurchasedAddons] = useState<string[]>([]);
+  const { plan: currentPlan, purchasedAddons, isLoading } = useTenantReports();
   const [selectedReport, setSelectedReport] = useState<ReportType | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const isMobile = useIsMobile();
-
-  // Listen for plan changes
-  useEffect(() => {
-    const unsubscribe = onPlanChange((plan) => {
-      setCurrentPlanState(plan);
-    });
-    return unsubscribe;
-  }, []);
 
   // Check if a report is available for the current user
   const isReportAvailable = (report: ReportType): boolean => {
@@ -165,17 +154,15 @@ const Reports = () => {
       // Abrir el reporte (en el futuro, navegar a la vista del reporte)
       toast.success(`Abriendo ${report.title}...`);
     } else {
-      // Mostrar modal para comprar
-      setSelectedReport(report);
-      setIsDialogOpen(true);
+      // Si es addon, ir al checkout; si requiere plan superior, mostrar modal
+      if (report.isPremiumAddon && report.price > 0) {
+        navigate(`/reportes/checkout/${report.id}`);
+      } else {
+        // Requiere plan superior
+        setSelectedReport(report);
+        setIsDialogOpen(true);
+      }
     }
-  };
-
-  const handlePurchaseAddon = (report: ReportType) => {
-    // En producción, esto conectaría con Stripe o similar
-    setPurchasedAddons(prev => [...prev, report.id]);
-    setIsDialogOpen(false);
-    toast.success(`${report.title} activado correctamente`);
   };
 
   return (
@@ -490,7 +477,10 @@ const Reports = () => {
 
                   <Button 
                     className="w-full" 
-                    onClick={() => handlePurchaseAddon(selectedReport)}
+                    onClick={() => {
+                      setIsDialogOpen(false);
+                      navigate(`/reportes/checkout/${selectedReport.id}`);
+                    }}
                   >
                     Agregar por ${selectedReport.price}/mes
                   </Button>
