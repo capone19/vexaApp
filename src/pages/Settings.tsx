@@ -10,6 +10,13 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Building2,
   Mail,
   Phone,
@@ -26,23 +33,39 @@ import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { YCloudIntegration } from '@/components/settings/YCloudIntegration';
 
+// Prefijos de países disponibles
+const COUNTRY_PREFIXES = [
+  { code: 'CL', prefix: '+56', name: 'Chile', flag: '🇨🇱' },
+  { code: 'US', prefix: '+1', name: 'Estados Unidos', flag: '🇺🇸' },
+  { code: 'CO', prefix: '+57', name: 'Colombia', flag: '🇨🇴' },
+  { code: 'BO', prefix: '+591', name: 'Bolivia', flag: '🇧🇴' },
+  { code: 'MX', prefix: '+52', name: 'México', flag: '🇲🇽' },
+  { code: 'AR', prefix: '+54', name: 'Argentina', flag: '🇦🇷' },
+  { code: 'BR', prefix: '+55', name: 'Brasil', flag: '🇧🇷' },
+];
+
 interface CompanyProfile {
   companyName: string;
   email: string;
+  phonePrefix: string;
   phoneNumber: string;
   industry: string;
   logo: string | null;
 }
 
 const STORAGE_KEY = 'company_profile';
-const PHONE_PREFIX = '+591';
 
 // Función para obtener el perfil guardado o vacío para producción
 const getStoredProfile = (): CompanyProfile => {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      // Migrar datos antiguos que no tenían phonePrefix
+      if (!parsed.phonePrefix) {
+        parsed.phonePrefix = '+591'; // Bolivia por defecto
+      }
+      return parsed;
     }
   } catch (e) {
     console.error('Error loading profile:', e);
@@ -51,6 +74,7 @@ const getStoredProfile = (): CompanyProfile => {
   return {
     companyName: '',
     email: '',
+    phonePrefix: '+591',
     phoneNumber: '',
     industry: '',
     logo: null,
@@ -297,19 +321,36 @@ export default function Settings() {
                     />
                   </div>
 
-                  {/* Teléfono de contacto con prefijo fijo */}
+                  {/* Teléfono de contacto con selector de prefijo */}
                   <div className="space-y-2">
                     <Label htmlFor="phone" className="text-sm font-medium flex items-center gap-2">
                       <Phone className="h-4 w-4 text-muted-foreground" />
                       Teléfono de contacto
                     </Label>
                     <div className="flex items-center">
-                      <div className={cn(
-                        "flex items-center justify-center px-4 bg-secondary border border-r-0 border-border rounded-l-md min-w-[60px]",
-                        isMobile ? "h-12" : "h-10"
-                      )}>
-                        <span className="text-sm text-foreground font-medium">{PHONE_PREFIX}</span>
-                      </div>
+                      <Select
+                        value={profile.phonePrefix}
+                        onValueChange={(value) => handleInputChange('phonePrefix', value)}
+                      >
+                        <SelectTrigger 
+                          className={cn(
+                            "w-[100px] rounded-r-none border-r-0 bg-secondary",
+                            isMobile && "h-12"
+                          )}
+                        >
+                          <SelectValue placeholder="+591" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-popover z-50">
+                          {COUNTRY_PREFIXES.map((country) => (
+                            <SelectItem key={country.code} value={country.prefix}>
+                              <span className="flex items-center gap-2">
+                                <span>{country.flag}</span>
+                                <span>{country.prefix}</span>
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <Input
                         id="phone"
                         type="tel"
@@ -323,7 +364,7 @@ export default function Settings() {
                       />
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Número completo: {PHONE_PREFIX} {profile.phoneNumber}
+                      Número completo: {profile.phonePrefix} {profile.phoneNumber}
                     </p>
                   </div>
 
