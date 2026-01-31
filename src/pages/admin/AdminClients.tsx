@@ -50,6 +50,15 @@ import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { DisplayCurrency } from '@/lib/format-currency';
 
+// Tipos de integración de WhatsApp
+type WhatsAppIntegration = 'no_conectado' | 'evolution_api' | 'meta_api';
+
+const WHATSAPP_OPTIONS: { value: WhatsAppIntegration; label: string }[] = [
+  { value: 'no_conectado', label: 'No conectado' },
+  { value: 'evolution_api', label: 'Evolution Api' },
+  { value: 'meta_api', label: 'Meta Api' },
+];
+
 interface Tenant {
   id: string;
   name: string;
@@ -58,6 +67,7 @@ interface Tenant {
   is_active: boolean | null;
   vexa_ads_enabled: boolean | null;
   whatsapp_phone_id: string | null;
+  whatsapp_integration?: WhatsAppIntegration; // Nuevo campo para tipo de integración
   created_at: string | null;
   owner_email: string | null;
   display_currency?: DisplayCurrency;
@@ -99,6 +109,7 @@ export default function AdminClients() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [togglingVexaAdsId, setTogglingVexaAdsId] = useState<string | null>(null);
   const [updatingCurrencyId, setUpdatingCurrencyId] = useState<string | null>(null);
+  const [updatingWhatsAppId, setUpdatingWhatsAppId] = useState<string | null>(null);
   
   // Estado para dialog de reportes
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
@@ -335,6 +346,25 @@ export default function AdminClients() {
       toast.error('Error al cambiar estado de VEXA Ads');
     } finally {
       setTogglingVexaAdsId(null);
+    }
+  };
+
+  // Handler para cambiar la integración de WhatsApp
+  const handleChangeWhatsAppIntegration = async (tenantId: string, integration: WhatsAppIntegration) => {
+    setUpdatingWhatsAppId(tenantId);
+    try {
+      // Por ahora solo actualizar el estado local (interno para admin)
+      // En el futuro se puede guardar en la tabla tenants si se añade el campo
+      setTenants(prev => prev.map(t => 
+        t.id === tenantId ? { ...t, whatsapp_integration: integration } : t
+      ));
+      
+      toast.success(`WhatsApp actualizado a: ${WHATSAPP_OPTIONS.find(o => o.value === integration)?.label}`);
+    } catch (err) {
+      console.error('[AdminClients] Update WhatsApp integration error:', err);
+      toast.error('Error al cambiar integración de WhatsApp');
+    } finally {
+      setUpdatingWhatsAppId(null);
     }
   };
 
@@ -661,17 +691,28 @@ export default function AdminClients() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            {tenant.whatsapp_phone_id ? (
-                              <span className="flex items-center gap-1 text-green-600">
-                                <CheckCircle className="h-4 w-4" />
-                                Conectado
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1 text-muted-foreground">
-                                <XCircle className="h-4 w-4" />
-                                No conectado
-                              </span>
-                            )}
+                            <Select
+                              value={tenant.whatsapp_integration || 'no_conectado'}
+                              onValueChange={(val) => handleChangeWhatsAppIntegration(tenant.id, val as WhatsAppIntegration)}
+                              disabled={updatingWhatsAppId === tenant.id}
+                            >
+                              <SelectTrigger className="w-[130px] h-8">
+                                {updatingWhatsAppId === tenant.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <SelectValue />
+                                )}
+                              </SelectTrigger>
+                              <SelectContent className="bg-popover z-50">
+                                {WHATSAPP_OPTIONS.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    <span className={option.value === 'no_conectado' ? 'text-muted-foreground' : option.value === 'evolution_api' ? 'text-blue-600' : 'text-green-600'}>
+                                      {option.label}
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </TableCell>
                           <TableCell className="text-muted-foreground">
                             {tenant.created_at
