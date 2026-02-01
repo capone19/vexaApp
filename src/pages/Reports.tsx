@@ -23,13 +23,20 @@ import {
   X,
   FileText,
   Calendar,
-  Loader2
+  Loader2,
+  Download,
+  TrendingUp,
+  Clock,
+  ExternalLink
 } from 'lucide-react';
 import { type PlanId } from '@/lib/plan';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
 import { useTenantReports } from '@/hooks/use-tenant-reports';
+import { useGeneratedReports } from '@/hooks/use-generated-reports';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 // Definición de reportes
 interface ReportType {
@@ -109,9 +116,47 @@ const reportTypes: ReportType[] = [
 const Reports = () => {
   const navigate = useNavigate();
   const { plan: currentPlan, purchasedAddons, isLoading } = useTenantReports();
+  const { reports: allReports, isLoading: isLoadingReports, markAsDownloaded } = useGeneratedReports();
   const [selectedReport, setSelectedReport] = useState<ReportType | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const isMobile = useIsMobile();
+
+  // Obtener los últimos 5 reportes
+  const recentReports = allReports.slice(0, 5);
+
+  // Estadísticas rápidas
+  const totalReports = allReports.length;
+  const downloadedReports = allReports.filter(r => r.download_count > 0).length;
+  const pendingReports = allReports.filter(r => r.download_count === 0).length;
+
+  const handleDownloadReport = async (reportId: string, fileUrl: string, fileName: string) => {
+    try {
+      await markAsDownloaded(reportId);
+      const link = document.createElement('a');
+      link.href = fileUrl;
+      link.download = fileName;
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success('Reporte descargado correctamente');
+    } catch (error) {
+      console.error('[Reports] Error downloading:', error);
+      toast.error('Error al descargar el reporte');
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    try {
+      return format(new Date(dateString), "d 'de' MMMM, yyyy", { locale: es });
+    } catch {
+      return dateString;
+    }
+  };
+
+  const getReportTypeInfo = (reportType: string) => {
+    return reportTypes.find(r => r.id === reportType);
+  };
 
   // Check if a report is available for the current user
   const isReportAvailable = (report: ReportType): boolean => {
@@ -151,8 +196,8 @@ const Reports = () => {
 
   const handleReportClick = (report: ReportType) => {
     if (isReportAvailable(report)) {
-      // Abrir el reporte (en el futuro, navegar a la vista del reporte)
-      toast.success(`Abriendo ${report.title}...`);
+      // Navegar a la página de detalle del reporte
+      navigate(`/reportes/${report.id}`);
     } else {
       // Si es addon, ir al checkout; si requiere plan superior, mostrar modal
       if (report.isPremiumAddon && report.price > 0) {
@@ -297,7 +342,50 @@ const Reports = () => {
           })}
         </div>
 
-        {/* Weekly Reports Section */}
+        {/* Estadísticas rápidas */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Total de reportes</p>
+                  <p className="text-2xl font-bold">{totalReports}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-primary/10">
+                  <FileText className="h-5 w-5 text-primary" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Descargados</p>
+                  <p className="text-2xl font-bold">{downloadedReports}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-success/10">
+                  <Download className="h-5 w-5 text-success" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Pendientes</p>
+                  <p className="text-2xl font-bold">{pendingReports}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-amber-500/10">
+                  <Clock className="h-5 w-5 text-amber-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Últimos reportes enviados */}
         <Card className="border-border">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
@@ -306,25 +394,159 @@ const Reports = () => {
                   <Calendar className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <CardTitle className="text-lg">Reportes Semanales</CardTitle>
+                  <CardTitle className="text-lg">Últimos Reportes Enviados</CardTitle>
                   <CardDescription>
-                    Historial de reportes generados automáticamente cada semana
+                    Descarga los reportes generados automáticamente
                   </CardDescription>
                 </div>
               </div>
+              {recentReports.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    // Scroll a la sección de reportes individuales o mostrar todos
+                    const firstAvailableReport = reportTypes.find(r => isReportAvailable(r));
+                    if (firstAvailableReport) {
+                      navigate(`/reportes/${firstAvailableReport.id}`);
+                    }
+                  }}
+                >
+                  Ver todos
+                  <ExternalLink className="h-4 w-4 ml-2" />
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {/* Empty state - no reports yet */}
+            {isLoadingReports ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : recentReports.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <FileText className="h-12 w-12 mx-auto mb-3 opacity-30" />
                 <p className="text-sm">Aún no hay reportes generados</p>
                 <p className="text-xs mt-1">Los reportes se generan automáticamente cada semana</p>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-3">
+                {recentReports.map((report) => {
+                  const reportTypeInfo = getReportTypeInfo(report.report_type);
+                  const ReportIcon = reportTypeInfo?.icon || FileText;
+                  
+                  return (
+                    <div
+                      key={report.id}
+                      className={cn(
+                        "flex items-center justify-between p-4 rounded-lg border",
+                        "hover:bg-secondary/50 transition-colors"
+                      )}
+                    >
+                      <div className="flex items-center gap-4 flex-1 min-w-0">
+                        <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+                          <ReportIcon className="h-5 w-5 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="font-medium truncate">{report.file_name}</p>
+                            {report.download_count > 0 && (
+                              <Badge variant="outline" className="text-xs">
+                                {report.download_count} descarga{report.download_count > 1 ? 's' : ''}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {formatDate(report.created_at)}
+                            </span>
+                            {reportTypeInfo && (
+                              <span className="truncate">{reportTypeInfo.title}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDownloadReport(report.id, report.file_url, report.file_name)}
+                        className="shrink-0 ml-4"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Descargar
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
+
+        {/* Información adicional */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-primary" />
+                ¿Cómo funcionan los reportes?
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 text-sm">
+                <div>
+                  <p className="font-medium mb-1">Generación automática</p>
+                  <p className="text-muted-foreground">
+                    Los reportes se generan automáticamente cada semana y se envían a tu cuenta.
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium mb-1">Formato y contenido</p>
+                  <p className="text-muted-foreground">
+                    Cada reporte incluye gráficos, tablas y análisis detallados en formato PDF.
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium mb-1">Historial completo</p>
+                  <p className="text-muted-foreground">
+                    Accede a todos tus reportes históricos y descárgalos cuando los necesites.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Clock className="h-5 w-5 text-primary" />
+                Próximos reportes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 text-sm">
+                <div>
+                  <p className="font-medium mb-1">Frecuencia</p>
+                  <p className="text-muted-foreground">
+                    Todos los reportes se generan semanalmente cada lunes.
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium mb-1">Período cubierto</p>
+                  <p className="text-muted-foreground">
+                    Cada reporte analiza la semana anterior (lunes a domingo).
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium mb-1">Notificaciones</p>
+                  <p className="text-muted-foreground">
+                    Recibirás una notificación cuando un nuevo reporte esté disponible.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Plan Comparison */}
         <Card className="border-border">

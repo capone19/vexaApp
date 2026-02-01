@@ -26,6 +26,7 @@ const MarketingPerformance = lazy(() => import("./pages/MarketingPerformance"));
 const MarketingCredits = lazy(() => import("./pages/MarketingCredits"));
 const MarketingBuyCredits = lazy(() => import("./pages/MarketingBuyCredits"));
 const Reports = lazy(() => import("./pages/Reports"));
+const ReportDetail = lazy(() => import("./pages/ReportDetail"));
 const ReportCheckout = lazy(() => import("./pages/ReportCheckout"));
 const Billing = lazy(() => import("./pages/Billing"));
 const Notifications = lazy(() => import("./pages/Notifications"));
@@ -98,7 +99,8 @@ const App = () => (
               <Route path="/marketing/performance" element={<ProtectedRoute><MarketingPerformance /></ProtectedRoute>} />
               <Route path="/marketing/creditos" element={<ProtectedRoute><MarketingCredits /></ProtectedRoute>} />
               <Route path="/marketing/comprar-creditos" element={<ProtectedRoute><MarketingBuyCredits /></ProtectedRoute>} />
-<Route path="/reportes" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+              <Route path="/reportes" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+              <Route path="/reportes/:reportId" element={<ProtectedRoute><ReportDetail /></ProtectedRoute>} />
               <Route path="/reportes/checkout/:reportId" element={<ProtectedRoute><ReportCheckout /></ProtectedRoute>} />
               <Route path="/facturacion" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
               <Route path="/notificaciones" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
