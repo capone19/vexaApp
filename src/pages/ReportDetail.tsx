@@ -390,7 +390,21 @@ const ReportDetail = () => {
           <div className="flex-1 overflow-hidden min-h-0">
             {viewingReport?.html_content && (
               <iframe
-                srcDoc={viewingReport.html_content}
+                srcDoc={(() => {
+                  // Inject viewport meta if not present to ensure responsive rendering inside iframe
+                  const viewportMeta = '<meta name="viewport" content="width=device-width, initial-scale=1.0">';
+                  let html = viewingReport.html_content;
+                  if (!html.includes('name="viewport"') && !html.includes("name='viewport'")) {
+                    if (html.includes('<head>')) {
+                      html = html.replace('<head>', `<head>${viewportMeta}`);
+                    } else if (html.includes('<html')) {
+                      html = html.replace(/<html[^>]*>/, `$&<head>${viewportMeta}</head>`);
+                    } else {
+                      html = `<!DOCTYPE html><html><head>${viewportMeta}</head><body>${html}</body></html>`;
+                    }
+                  }
+                  return html;
+                })()}
                 className="w-full h-full border-0"
                 title={viewingReport.file_name}
                 sandbox="allow-scripts allow-same-origin"
