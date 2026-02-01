@@ -271,7 +271,8 @@ const ReportDetail = () => {
                   <div
                     key={report.id}
                     className={cn(
-                      "flex items-center justify-between p-4 rounded-lg border",
+                      // Mobile: stack content + actions to avoid overlap
+                      "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-0 p-4 rounded-lg border",
                       "hover:bg-secondary/50 transition-colors"
                     )}
                   >
@@ -288,7 +289,7 @@ const ReportDetail = () => {
                             </Badge>
                           )}
                         </div>
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
                             {formatPeriod(report.period_start, report.period_end)}
@@ -307,10 +308,12 @@ const ReportDetail = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0 ml-4">
+                    {/* Actions: mobile uses 2-column grid to prevent overlap; desktop keeps current inline layout */}
+                    <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-2 shrink-0 sm:ml-4">
                       <Button
                         variant="default"
                         size="sm"
+                        className="w-full"
                         onClick={() => handleView(report)}
                       >
                         <Eye className="h-4 w-4 mr-2" />
@@ -319,6 +322,7 @@ const ReportDetail = () => {
                       <Button
                         variant="outline"
                         size="sm"
+                        className="w-full"
                         onClick={() => handleDownload(report)}
                       >
                         <Download className="h-4 w-4 mr-2" />
