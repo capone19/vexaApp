@@ -6,7 +6,8 @@ export interface GeneratedReport {
   id: string;
   tenant_id: string;
   report_type: string;
-  file_url: string;
+  file_url: string | null;
+  html_content: string | null;
   file_name: string;
   file_size: number | null;
   period_start: string;
@@ -50,7 +51,7 @@ export function useGeneratedReports(reportType?: string): UseGeneratedReportsRet
         .select('*')
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false })
-        .limit(50); // Limitar a los últimos 50 reportes
+        .limit(50);
 
       if (reportType) {
         query = query.eq('report_type', reportType);
@@ -111,7 +112,7 @@ export function useGeneratedReports(reportType?: string): UseGeneratedReportsRet
           report.id === reportId
             ? {
                 ...report,
-                status: 'downloaded',
+                status: 'downloaded' as const,
                 downloaded_at: new Date().toISOString(),
                 download_count: report.download_count + 1,
               }

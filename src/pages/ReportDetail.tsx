@@ -1,16 +1,18 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
   ArrowLeft,
   Download,
   FileText,
   Calendar,
   TrendingUp,
-  BarChart3,
+  Eye,
   MessageSquare,
   Megaphone,
   UserX,
@@ -18,7 +20,8 @@ import {
   Bot,
   Sparkles,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { useTenantReports } from '@/hooks/use-tenant-reports';
 import { useGeneratedReports, type GeneratedReport } from '@/hooks/use-generated-reports';
@@ -70,6 +73,8 @@ const ReportDetail = () => {
   const navigate = useNavigate();
   const { plan: currentPlan, purchasedAddons } = useTenantReports();
   const { reports, isLoading, markAsDownloaded } = useGeneratedReports(reportId);
+  
+  const [viewingReport, setViewingReport] = useState<GeneratedReport | null>(null);
 
   if (!reportId || !REPORT_INFO[reportId]) {
     return (
@@ -115,19 +120,43 @@ const ReportDetail = () => {
     );
   }
 
+  const handleView = (report: GeneratedReport) => {
+    if (report.html_content) {
+      setViewingReport(report);
+    } else if (report.file_url) {
+      // Si no hay HTML pero hay URL, abrir en nueva pestaña
+      window.open(report.file_url, '_blank');
+    } else {
+      toast.error('Este reporte no tiene contenido para visualizar');
+    }
+  };
+
   const handleDownload = async (report: GeneratedReport) => {
     try {
       // Marcar como descargado
       await markAsDownloaded(report.id);
 
-      // Descargar el archivo
-      const link = document.createElement('a');
-      link.href = report.file_url;
-      link.download = report.file_name;
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      if (report.html_content) {
+        // Descargar el HTML como archivo
+        const blob = new Blob([report.html_content], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = report.file_name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } else if (report.file_url) {
+        // Descargar desde URL
+        const link = document.createElement('a');
+        link.href = report.file_url;
+        link.download = report.file_name;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
 
       toast.success('Reporte descargado correctamente');
     } catch (error) {
@@ -278,15 +307,24 @@ const ReportDetail = () => {
                         </div>
                       </div>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDownload(report)}
-                      className="shrink-0 ml-4"
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Descargar
-                    </Button>
+                    <div className="flex items-center gap-2 shrink-0 ml-4">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => handleView(report)}
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        Ver
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDownload(report)}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Descargar
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -310,7 +348,7 @@ const ReportDetail = () => {
               </div>
               <div>
                 <p className="font-medium mb-1">Formato</p>
-                <p className="text-muted-foreground">PDF con gráficos, tablas y análisis detallados</p>
+                <p className="text-muted-foreground">HTML interactivo con gráficos, tablas y análisis detallados</p>
               </div>
               <div>
                 <p className="font-medium mb-1">Período cubierto</p>
@@ -322,6 +360,40 @@ const ReportDetail = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Modal para visualizar el reporte HTML */}
+      <Dialog open={!!viewingReport} onOpenChange={(open) => !open && setViewingReport(null)}>
+        <DialogContent className="max-w-[95vw] w-full max-h-[95vh] h-full p-0">
+          <DialogHeader className="px-4 py-3 border-b flex flex-row items-center justify-between">
+            <DialogTitle className="flex items-center gap-2">
+              <Icon className="h-5 w-5 text-primary" />
+              {viewingReport?.file_name}
+            </DialogTitle>
+            <div className="flex items-center gap-2">
+              {viewingReport && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownload(viewingReport)}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Descargar
+                </Button>
+              )}
+            </div>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto h-[calc(95vh-60px)]">
+            {viewingReport?.html_content && (
+              <iframe
+                srcDoc={viewingReport.html_content}
+                className="w-full h-full border-0"
+                title={viewingReport.file_name}
+                sandbox="allow-scripts allow-same-origin"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 };

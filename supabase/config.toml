@@ -53,3 +53,6 @@ verify_jwt = false
 
 [functions.admin-update-whatsapp-integration]
 verify_jwt = false
+
+[functions.receive-report]
+verify_jwt = false

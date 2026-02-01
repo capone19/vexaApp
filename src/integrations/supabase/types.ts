@@ -819,6 +819,71 @@ export type Database = {
           },
         ]
       }
+      generated_reports: {
+        Row: {
+          created_at: string
+          download_count: number
+          downloaded_at: string | null
+          file_name: string
+          file_size: number | null
+          file_url: string | null
+          html_content: string | null
+          id: string
+          metadata: Json | null
+          period_end: string
+          period_start: string
+          report_type: string
+          sent_at: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          download_count?: number
+          downloaded_at?: string | null
+          file_name: string
+          file_size?: number | null
+          file_url?: string | null
+          html_content?: string | null
+          id?: string
+          metadata?: Json | null
+          period_end: string
+          period_start: string
+          report_type: string
+          sent_at?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          download_count?: number
+          downloaded_at?: string | null
+          file_name?: string
+          file_size?: number | null
+          file_url?: string | null
+          html_content?: string | null
+          id?: string
+          metadata?: Json | null
+          period_end?: string
+          period_start?: string
+          report_type?: string
+          sent_at?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "generated_reports_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       health_checks: {
         Row: {
           checked_at: string
