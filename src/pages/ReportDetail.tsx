@@ -363,32 +363,34 @@ const ReportDetail = () => {
 
       {/* Modal para visualizar el reporte HTML */}
       <Dialog open={!!viewingReport} onOpenChange={(open) => !open && setViewingReport(null)}>
-        <DialogContent className="max-w-[95vw] w-full max-h-[95vh] h-full p-0">
-          <DialogHeader className="px-4 py-3 border-b flex flex-row items-center justify-between">
-            <DialogTitle className="flex items-center gap-2">
-              <Icon className="h-5 w-5 text-primary" />
-              {viewingReport?.file_name}
+        <DialogContent className="max-w-[95vw] sm:max-w-[90vw] w-full max-h-[90vh] sm:max-h-[95vh] h-[90vh] sm:h-[95vh] p-0 flex flex-col">
+          <DialogHeader className="px-3 sm:px-4 py-2 sm:py-3 border-b flex flex-row items-center justify-between shrink-0">
+            <DialogTitle className="flex items-center gap-2 text-sm sm:text-base truncate max-w-[60%] sm:max-w-none">
+              <Icon className="h-4 w-4 sm:h-5 sm:w-5 text-primary shrink-0" />
+              <span className="truncate">{viewingReport?.file_name}</span>
             </DialogTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               {viewingReport && (
                 <Button
                   variant="outline"
                   size="sm"
+                  className="text-xs sm:text-sm px-2 sm:px-3"
                   onClick={() => handleDownload(viewingReport)}
                 >
-                  <Download className="h-4 w-4 mr-2" />
-                  Descargar
+                  <Download className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Descargar</span>
                 </Button>
               )}
             </div>
           </DialogHeader>
-          <div className="flex-1 overflow-auto h-[calc(95vh-60px)]">
+          <div className="flex-1 overflow-hidden min-h-0">
             {viewingReport?.html_content && (
               <iframe
                 srcDoc={viewingReport.html_content}
                 className="w-full h-full border-0"
                 title={viewingReport.file_name}
                 sandbox="allow-scripts allow-same-origin"
+                style={{ minHeight: '100%' }}
               />
             )}
           </div>
