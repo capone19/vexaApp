@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useTenantReports } from '@/hooks/use-tenant-reports';
 import { useGeneratedReports, type GeneratedReport } from '@/hooks/use-generated-reports';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -73,8 +74,11 @@ const ReportDetail = () => {
   const navigate = useNavigate();
   const { plan: currentPlan, purchasedAddons } = useTenantReports();
   const { reports, isLoading, markAsDownloaded } = useGeneratedReports(reportId);
+  const isMobile = useIsMobile();
   
   const [viewingReport, setViewingReport] = useState<GeneratedReport | null>(null);
+  const iframeContainerRef = useRef<HTMLDivElement>(null);
+  const [iframeWidth, setIframeWidth] = useState<number | null>(null);
 
   if (!reportId || !REPORT_INFO[reportId]) {
     return (
@@ -182,6 +186,58 @@ const ReportDetail = () => {
       return `${start} - ${end}`;
     }
   };
+
+  // Calcular dinámicamente el ancho del contenedor del iframe
+  useEffect(() => {
+    if (!iframeContainerRef.current || !viewingReport) {
+      setIframeWidth(null);
+      return;
+    }
+    
+    const updateWidth = () => {
+      // Intentar obtener el ancho del contenedor del iframe
+      const container = iframeContainerRef.current;
+      if (container) {
+        // Usar getBoundingClientRect para obtener el ancho real
+        const rect = container.getBoundingClientRect();
+        const width = rect.width;
+        // Solo actualizar si el ancho es válido y mayor a 0
+        if (width > 0 && width !== iframeWidth) {
+          setIframeWidth(Math.floor(width));
+        }
+      }
+    };
+    
+    // Calcular después de que el Dialog esté completamente renderizado y animado
+    // Los diálogos de Radix UI tienen animaciones que pueden afectar el tamaño inicial
+    const timeouts: NodeJS.Timeout[] = [];
+    
+    // Primera medición después de un delay corto
+    timeouts.push(setTimeout(updateWidth, 50));
+    
+    // Segunda medición después de que las animaciones deberían haber terminado
+    timeouts.push(setTimeout(updateWidth, 200));
+    
+    // Tercera medición como fallback
+    timeouts.push(setTimeout(updateWidth, 500));
+    
+    // Observar cambios de tamaño del contenedor
+    const resizeObserver = new ResizeObserver(() => {
+      // Usar requestAnimationFrame para asegurar que el cálculo se haga después del layout
+      requestAnimationFrame(() => {
+        requestAnimationFrame(updateWidth); // Doble RAF para asegurar que el layout está completo
+      });
+    });
+    
+    if (iframeContainerRef.current) {
+      resizeObserver.observe(iframeContainerRef.current);
+    }
+    
+    return () => {
+      timeouts.forEach(clearTimeout);
+      resizeObserver.disconnect();
+    };
+  }, [viewingReport, iframeWidth]);
 
   return (
     <MainLayout>
@@ -367,34 +423,74 @@ const ReportDetail = () => {
 
       {/* Modal para visualizar el reporte HTML */}
       <Dialog open={!!viewingReport} onOpenChange={(open) => !open && setViewingReport(null)}>
-        <DialogContent className="max-w-[95vw] sm:max-w-[90vw] w-full max-h-[90vh] sm:max-h-[95vh] h-[90vh] sm:h-[95vh] p-0 flex flex-col">
-          <DialogHeader className="px-3 sm:px-4 py-2 sm:py-3 border-b flex flex-row items-center justify-between shrink-0">
-            <DialogTitle className="flex items-center gap-2 text-sm sm:text-base truncate max-w-[60%] sm:max-w-none">
+        <DialogContent 
+          className="max-w-[95vw] sm:max-w-[90vw] w-full max-h-[90vh] sm:max-h-[95vh] h-[90vh] sm:h-[95vh] p-0 flex flex-col [&>button]:hidden"
+          style={{ width: '100%', maxWidth: '95vw' }}
+        >
+          <DialogHeader className="px-3 sm:px-4 py-2 sm:py-3 border-b flex flex-row items-center justify-between shrink-0 relative">
+            <DialogTitle className="flex items-center gap-2 text-sm sm:text-base truncate flex-1 min-w-0 pr-2">
               <Icon className="h-4 w-4 sm:h-5 sm:w-5 text-primary shrink-0" />
               <span className="truncate">{viewingReport?.file_name}</span>
             </DialogTitle>
             <div className="flex items-center gap-2 shrink-0">
               {viewingReport && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-xs sm:text-sm px-2 sm:px-3"
-                  onClick={() => handleDownload(viewingReport)}
-                >
-                  <Download className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Descargar</span>
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs sm:text-sm px-2 sm:px-3 h-8"
+                    onClick={() => handleDownload(viewingReport)}
+                  >
+                    <Download className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Descargar</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => setViewingReport(null)}
+                  >
+                    <X className="h-4 w-4" />
+                    <span className="sr-only">Cerrar</span>
+                  </Button>
+                </>
               )}
             </div>
           </DialogHeader>
-          <div className="flex-1 overflow-hidden min-h-0">
+          <div 
+            ref={iframeContainerRef} 
+            className={cn(
+              "flex-1 min-h-0 w-full",
+              isMobile ? "overflow-auto" : "overflow-hidden"
+            )}
+            style={{ width: '100%', minWidth: 0 }}
+          >
             {viewingReport?.html_content && (
               <iframe
+                key={`${viewingReport.id}-${iframeWidth || 'initial'}`}
                 srcDoc={(() => {
-                  // Inject viewport meta if not present to ensure responsive rendering inside iframe
-                  const viewportMeta = '<meta name="viewport" content="width=device-width, initial-scale=1.0">';
                   let html = viewingReport.html_content;
-                  if (!html.includes('name="viewport"') && !html.includes("name='viewport'")) {
+                  
+                  // Estrategia mejorada para el viewport:
+                  // Si tenemos el ancho calculado, usarlo; si no, usar device-width pero con CSS que fuerce el ancho completo
+                  let viewportMeta: string;
+                  if (iframeWidth && iframeWidth > 0) {
+                    // Usar el ancho específico calculado del contenedor
+                    viewportMeta = `<meta name="viewport" content="width=${iframeWidth}, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">`;
+                  } else {
+                    // Fallback: usar device-width pero el CSS forzará el ancho completo
+                    viewportMeta = `<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">`;
+                  }
+                  
+                  // Reemplazar viewport existente o agregar uno nuevo
+                  if (html.includes('name="viewport"') || html.includes("name='viewport'")) {
+                    // Reemplazar viewport existente
+                    html = html.replace(
+                      /<meta\s+name=["']viewport["'][^>]*>/i,
+                      viewportMeta
+                    );
+                  } else {
+                    // Agregar nuevo viewport
                     if (html.includes('<head>')) {
                       html = html.replace('<head>', `<head>${viewportMeta}`);
                     } else if (html.includes('<html')) {
@@ -403,12 +499,121 @@ const ReportDetail = () => {
                       html = `<!DOCTYPE html><html><head>${viewportMeta}</head><body>${html}</body></html>`;
                     }
                   }
+                  
+                  // Agregar CSS adicional MUY AGRESIVO para asegurar que el contenido use el ancho completo
+                  // Esto sobrescribe cualquier max-width, width fijo, o constraint que pueda estar limitando el ancho
+                  const cssFix = `
+                    <style id="vexa-report-width-fix">
+                      /* Reset completo para html y body - máxima prioridad */
+                      html, body {
+                        width: 100% !important;
+                        max-width: 100% !important;
+                        min-width: 0 !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        box-sizing: border-box !important;
+                        overflow-x: auto !important;
+                      }
+                      
+                      /* Box-sizing para todos los elementos */
+                      *, *::before, *::after {
+                        box-sizing: border-box !important;
+                      }
+                      
+                      /* Forzar que TODOS los elementos usen el ancho disponible */
+                      /* Usar selectores muy específicos para máxima prioridad */
+                      html body,
+                      html body > *,
+                      html body > * > *,
+                      html body [class*="container"],
+                      html body [class*="wrapper"],
+                      html body [class*="content"],
+                      html body [class*="main"],
+                      html body [class*="section"],
+                      html body [id*="container"],
+                      html body [id*="wrapper"],
+                      html body [id*="content"],
+                      html body main,
+                      html body article,
+                      html body section,
+                      html body div {
+                        max-width: 100% !important;
+                        width: auto !important;
+                        min-width: 0 !important;
+                      }
+                      
+                      /* Eliminar márgenes y padding laterales */
+                      html body > *:first-child,
+                      html body > * > *:first-child {
+                        margin-left: 0 !important;
+                        margin-right: 0 !important;
+                        padding-left: 0 !important;
+                        padding-right: 0 !important;
+                      }
+                      
+                      /* Asegurar que los elementos con width fijo se adapten */
+                      html body [style*="width"],
+                      html body [style*="max-width"] {
+                        max-width: 100% !important;
+                      }
+                      
+                      /* Forzar que las tablas usen el ancho completo */
+                      html body table, 
+                      html body .table,
+                      html body [class*="table"] {
+                        width: 100% !important;
+                        max-width: 100% !important;
+                        table-layout: auto !important;
+                      }
+                      
+                      /* Asegurar que los contenedores flex y grid usen el ancho completo */
+                      html body [class*="flex"],
+                      html body [class*="grid"],
+                      html body .flex,
+                      html body .grid {
+                        max-width: 100% !important;
+                        width: 100% !important;
+                      }
+                      
+                      /* Forzar que cualquier elemento con clase que contenga 'max-w' use 100% */
+                      html body [class*="max-w"] {
+                        max-width: 100% !important;
+                      }
+                      
+                      /* Asegurar que los elementos con width en porcentaje o px se adapten */
+                      html body [style*="width:"] {
+                        max-width: 100% !important;
+                      }
+                    </style>
+                  `;
+                  
+                  // Insertar el CSS en el head
+                  if (html.includes('</head>')) {
+                    html = html.replace('</head>', `${cssFix}</head>`);
+                  } else if (html.includes('<head>')) {
+                    html = html.replace('<head>', `<head>${cssFix}`);
+                  } else if (html.includes('<html')) {
+                    html = html.replace(/<html[^>]*>/, `$&<head>${cssFix}</head>`);
+                  }
+                  
                   return html;
                 })()}
                 className="w-full h-full border-0"
                 title={viewingReport.file_name}
-                sandbox="allow-scripts allow-same-origin"
-                style={{ minHeight: '100%' }}
+                sandbox="allow-scripts allow-same-origin allow-forms"
+                style={{ 
+                  minHeight: '100%', 
+                  width: '100%',
+                  display: 'block',
+                  border: 'none',
+                  margin: 0,
+                  padding: 0,
+                  ...(isMobile ? { 
+                    overflow: 'auto',
+                    WebkitOverflowScrolling: 'touch' 
+                  } : {})
+                }}
+                scrolling={isMobile ? "yes" : "auto"}
               />
             )}
           </div>
