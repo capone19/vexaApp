@@ -865,7 +865,7 @@ export default function Chats() {
 
         {/* Messages */}
         <ScrollArea className={cn(
-          "flex-1 bg-secondary/30 min-h-0",
+          "flex-1 min-h-0 overflow-hidden bg-secondary/30",
           isMobile ? "p-2" : "p-4"
         )}>
           {selectedMessages.length === 0 ? (
@@ -1001,8 +1001,8 @@ export default function Chats() {
   // El panel completo de chat (wrapper + input separado)
   const chatPanel = selectedSessionId && selectedSession ? (
     <div className={cn(
-      "flex flex-col overflow-hidden",
-      isMobile ? "h-full" : "flex-1 rounded-lg border border-border bg-card"
+      "flex flex-col h-full overflow-hidden",
+      isMobile ? "bg-background" : "flex-1 rounded-lg border border-border bg-card"
     )}>
       {chatMessagesContent}
       
@@ -1105,7 +1105,7 @@ export default function Chats() {
     <MainLayout>
       <div className={cn(
         "flex flex-col",
-        isMobile ? "h-[calc(100dvh-8rem)] -m-4 md:m-0 max-h-[calc(100dvh-8rem)] overflow-hidden" : "h-[calc(100vh-8rem)]"
+        isMobile ? "h-[calc(100dvh-3.5rem-5rem)] -m-4 md:m-0 overflow-hidden" : "h-[calc(100vh-8rem)]"
       )}>
         {!isMobile && (
           <PageHeader title="Chats" subtitle="Conversaciones en tiempo real" className="mb-4" />
