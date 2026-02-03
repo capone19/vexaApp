@@ -156,14 +156,43 @@ export default function Chats() {
   } = useChatLabels();
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollAreaRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
+  // Calcular cantidad de mensajes de la sesión seleccionada (para dependencia del auto-scroll)
+  const selectedMessagesCount = useMemo(() => {
+    if (!selectedSessionId) return 0;
+    return messages.filter(m => m.session_id === selectedSessionId).length;
+  }, [messages, selectedSessionId]);
+
   // Auto-scroll al último mensaje cuando cambia la selección o llegan nuevos mensajes
+  // IMPORTANTE: Usamos el viewport interno del ScrollArea para evitar afectar el scroll del body
   useEffect(() => {
-    if (selectedSessionId && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [selectedSessionId, messages]);
+    if (!selectedSessionId) return;
+    
+    // Micro-delay para asegurar que el DOM renderizó los mensajes
+    const timeoutId = setTimeout(() => {
+      const viewport = messagesScrollAreaRef.current?.querySelector(
+        '[data-radix-scroll-area-viewport]'
+      ) as HTMLElement | null;
+      
+      if (viewport) {
+        // Auto-scroll solo si está cerca del final (threshold de 150px)
+        const isNearBottom = 
+          viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 150;
+        
+        // Si es la primera carga de la sesión o está cerca del final, scrollear
+        if (isNearBottom || viewport.scrollTop === 0) {
+          viewport.scrollTo({ 
+            top: viewport.scrollHeight, 
+            behavior: "smooth" 
+          });
+        }
+      }
+    }, 50);
+    
+    return () => clearTimeout(timeoutId);
+  }, [selectedSessionId, selectedMessagesCount]);
 
   // Obtener el tenant_id de los mensajes de la sesión seleccionada
   const selectedSessionTenantId = useMemo(() => {
@@ -864,10 +893,13 @@ export default function Chats() {
         )}
 
         {/* Messages */}
-        <ScrollArea className={cn(
-          "flex-1 min-h-0 overflow-hidden bg-secondary/30",
-          isMobile ? "p-2" : "p-4"
-        )}>
+        <ScrollArea 
+          ref={messagesScrollAreaRef}
+          className={cn(
+            "flex-1 min-h-0 overflow-hidden bg-secondary/30",
+            isMobile ? "p-2" : "p-4"
+          )}
+        >
           {selectedMessages.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-muted-foreground">
               <p className="text-sm">Sin mensajes en esta conversación</p>
