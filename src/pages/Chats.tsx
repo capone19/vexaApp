@@ -91,14 +91,18 @@ function getIntentLabel(messageCount: number): IntentLabel {
 }
 
 // Badge de intención con colores
-function IntentBadge({ label }: { label: IntentLabel }) {
+function IntentBadge({ label, isMobile }: { label: IntentLabel; isMobile?: boolean }) {
   if (!label) return null;
   
   const config = INTENT_LABELS[label];
   if (!config) return null;
   
   return (
-    <Badge variant="outline" className={cn("text-xs font-medium", config.className)}>
+    <Badge variant="outline" className={cn(
+      "font-medium flex items-center",
+      isMobile ? "h-6 px-2 text-[10px]" : "text-xs",
+      config.className
+    )}>
       {config.text}
     </Badge>
   );
@@ -707,89 +711,163 @@ export default function Chats() {
     return (
       <>
         {/* Chat Header */}
-        <div className="p-3 md:p-4 border-b border-border flex items-center justify-between bg-background">
-          <div className="flex items-center gap-3">
-            {isMobile && (
+        {isMobile ? (
+          // Mobile: Two-row layout
+          <div className="border-b border-border bg-background shrink-0 p-2 flex flex-col gap-1.5">
+            {/* Row 1: Back + Avatar + Number + Bot Toggle + Tags Button */}
+            <div className="flex items-center gap-2 min-w-0">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 -ml-1"
+                className="h-8 w-8 -ml-1 shrink-0"
                 onClick={() => setSelectedSessionId(null)}
               >
-                <ArrowLeft className="h-5 w-5" />
+                <ArrowLeft className="h-4 w-4" />
               </Button>
-            )}
-            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
-              <User className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-semibold text-foreground text-sm md:text-base truncate">
-                {selectedSession.contactName}
-              </h3>
-              <p className="text-xs text-muted-foreground truncate">
-                Session: {selectedSession.sessionId.slice(0, 12)}...
-              </p>
-            </div>
-          </div>
-          
-          {/* Header Actions */}
-          <div className="flex items-center gap-2 md:gap-3 shrink-0">
-            <Badge variant="outline" className="gap-1.5 bg-green-500/10 text-green-500 border-green-500/30">
-              Activo
-            </Badge>
-            {selectedSession.intentLabel && (
-              <IntentBadge label={selectedSession.intentLabel} />
-            )}
-            
-            {/* Label Selector */}
-            <LabelSelector
-              labels={labels}
-              selectedLabelIds={sessionLabels[selectedSessionId] || []}
-              onToggleLabel={async (labelId, isSelected) => {
-                if (isSelected) {
-                  await assignLabel(selectedSessionId, labelId);
-                } else {
-                  await removeLabel(selectedSessionId, labelId);
+              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+                <User className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold text-foreground text-xs break-words">
+                  {selectedSession.contactName}
+                </h3>
+              </div>
+              
+              {/* Bot Toggle with Tooltip - Same row as number */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center bg-secondary/50 rounded-full gap-1 px-1.5 py-0.5 shrink-0">
+                      <Bot className={cn(
+                        "h-3.5 w-3.5 transition-colors",
+                        isBotEnabled ? "text-primary" : "text-muted-foreground"
+                      )} />
+                      <Switch
+                        checked={isBotEnabled}
+                        onCheckedChange={() => toggleBotState(selectedSessionId)}
+                        disabled={isTogglingBot}
+                        className="data-[state=checked]:bg-primary scale-75"
+                      />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    <p className="text-sm">
+                      <strong>Control del chatbot:</strong> Activa o desactiva el chatbot para esta conversación específica. 
+                      Cuando está desactivado, el bot no responderá automáticamente y un agente humano deberá atender.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              
+              {/* Label Selector - Same row as bot button */}
+              <LabelSelector
+                labels={labels}
+                selectedLabelIds={sessionLabels[selectedSessionId] || []}
+                onToggleLabel={async (labelId, isSelected) => {
+                  if (isSelected) {
+                    await assignLabel(selectedSessionId, labelId);
+                  } else {
+                    await removeLabel(selectedSessionId, labelId);
+                  }
+                }}
+                onManageLabels={() => setLabelsManagerOpen(true)}
+                trigger={
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                    <Tags className="h-4 w-4" />
+                  </Button>
                 }
-              }}
-              onManageLabels={() => setLabelsManagerOpen(true)}
-              trigger={
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <Tags className="h-4 w-4" />
-                </Button>
-              }
-            />
+              />
+            </div>
             
-            {/* Bot Toggle with Tooltip */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex items-center gap-2 bg-secondary/50 rounded-full px-2 py-1">
-                    <Bot className={cn(
-                      "h-4 w-4 transition-colors",
-                      isBotEnabled ? "text-primary" : "text-muted-foreground"
-                    )} />
-                    <Switch
-                      checked={isBotEnabled}
-                      onCheckedChange={() => toggleBotState(selectedSessionId)}
-                      disabled={isTogglingBot}
-                      className="data-[state=checked]:bg-primary"
-                    />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="max-w-xs">
-                  <p className="text-sm">
-                    <strong>Control del chatbot:</strong> Activa o desactiva el chatbot para esta conversación específica. 
-                    Cuando está desactivado, el bot no responderá automáticamente y un agente humano deberá atender.
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            {/* Row 2: Labels centered */}
+            <div className="flex items-center justify-center gap-1.5 flex-wrap">
+              <Badge variant="outline" className="h-6 px-2 text-[10px] font-medium bg-green-500/10 text-green-500 border-green-500/30 flex items-center">
+                Activo
+              </Badge>
+              {selectedSession.intentLabel && (
+                <IntentBadge label={selectedSession.intentLabel} isMobile={true} />
+              )}
+            </div>
           </div>
-        </div>
+        ) : (
+          // Desktop: Single-row layout
+          <div className="border-b border-border flex items-center justify-between bg-background shrink-0 p-4">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+                <User className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold text-foreground text-sm md:text-base truncate">
+                  {selectedSession.contactName}
+                </h3>
+                <p className="text-xs text-muted-foreground truncate">
+                  Session: {selectedSession.sessionId.slice(0, 12)}...
+                </p>
+              </div>
+            </div>
+            
+            {/* Header Actions */}
+            <div className="flex items-center gap-2 md:gap-3 shrink-0">
+              <Badge variant="outline" className="gap-1.5 bg-green-500/10 text-green-500 border-green-500/30">
+                Activo
+              </Badge>
+              {selectedSession.intentLabel && (
+                <IntentBadge label={selectedSession.intentLabel} isMobile={isMobile} />
+              )}
+              
+              {/* Label Selector */}
+              <LabelSelector
+                labels={labels}
+                selectedLabelIds={sessionLabels[selectedSessionId] || []}
+                onToggleLabel={async (labelId, isSelected) => {
+                  if (isSelected) {
+                    await assignLabel(selectedSessionId, labelId);
+                  } else {
+                    await removeLabel(selectedSessionId, labelId);
+                  }
+                }}
+                onManageLabels={() => setLabelsManagerOpen(true)}
+                trigger={
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <Tags className="h-4 w-4" />
+                  </Button>
+                }
+              />
+              
+              {/* Bot Toggle with Tooltip */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center bg-secondary/50 rounded-full gap-2 px-2 py-1">
+                      <Bot className={cn(
+                        "h-4 w-4 transition-colors",
+                        isBotEnabled ? "text-primary" : "text-muted-foreground"
+                      )} />
+                      <Switch
+                        checked={isBotEnabled}
+                        onCheckedChange={() => toggleBotState(selectedSessionId)}
+                        disabled={isTogglingBot}
+                        className="data-[state=checked]:bg-primary"
+                      />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    <p className="text-sm">
+                      <strong>Control del chatbot:</strong> Activa o desactiva el chatbot para esta conversación específica. 
+                      Cuando está desactivado, el bot no responderá automáticamente y un agente humano deberá atender.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+        )}
 
         {/* Messages */}
-        <ScrollArea className="flex-1 p-4 bg-secondary/30">
+        <ScrollArea className={cn(
+          "flex-1 bg-secondary/30 min-h-0",
+          isMobile ? "p-2" : "p-4"
+        )}>
           {selectedMessages.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-muted-foreground">
               <p className="text-sm">Sin mensajes en esta conversación</p>
@@ -936,25 +1014,43 @@ export default function Chats() {
         // Si pasaron 23+ horas, mostrar botón de plantillas
         if (isWindowExpired) {
           return (
-            <div className="p-3 md:p-4 border-t border-border bg-background">
-              <div className="flex flex-col items-center gap-3 py-2">
+            <div className={cn(
+              "border-t border-border bg-background shrink-0",
+              isMobile ? "p-2" : "p-3 md:p-4"
+            )}>
+              <div className={cn(
+                "flex flex-col items-center py-2",
+                isMobile ? "gap-2" : "gap-3"
+              )}>
                 <div className="flex items-center gap-2 text-amber-500">
-                  <Clock className="h-4 w-4" />
-                  <span className="text-sm font-medium">Ventana de 24h expirada</span>
+                  <Clock className={cn(isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
+                  <span className={cn(
+                    "font-medium",
+                    isMobile ? "text-xs" : "text-sm"
+                  )}>Ventana de 24h expirada</span>
                 </div>
                 <div className="text-center">
-                  <p className="text-sm text-muted-foreground">
+                  <p className={cn(
+                    "text-muted-foreground",
+                    isMobile ? "text-xs" : "text-sm"
+                  )}>
                     Han pasado más de 24 horas desde el último mensaje del cliente.
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className={cn(
+                    "text-muted-foreground mt-1",
+                    isMobile ? "text-[10px]" : "text-xs"
+                  )}>
                     Para enviar un mensaje, usa una plantilla aprobada.
                   </p>
                 </div>
                 <Button 
                   onClick={() => navigate('/marketing/plantillas')}
-                  className="gap-2"
+                  className={cn(
+                    "gap-2",
+                    isMobile && "h-8 text-xs px-3"
+                  )}
                 >
-                  <FileText className="h-4 w-4" />
+                  <FileText className={cn(isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
                   Ir a Plantillas
                 </Button>
               </div>
@@ -965,8 +1061,11 @@ export default function Chats() {
         // Input normal cuando la ventana está activa
         const isInputDisabled = isBotActive || isSendingMessage;
         return (
-          <div className="p-3 md:p-4 border-t border-border bg-background">
-            <div className="flex gap-2">
+          <div className={cn(
+            "border-t border-border bg-background shrink-0",
+            isMobile ? "p-2" : "p-3 md:p-4"
+          )}>
+            <div className={cn("flex gap-2", isMobile && "gap-1.5")}>
               <Input
                 placeholder={isBotActive ? "Desactiva el bot para escribir..." : "Escribe un mensaje..."}
                 value={messageInput}
@@ -974,23 +1073,25 @@ export default function Chats() {
                 onKeyDown={handleKeyPress}
                 disabled={isInputDisabled}
                 className={cn(
-                  "bg-secondary border-border h-11",
+                  "bg-secondary border-border",
+                  isMobile ? "h-9 text-sm" : "h-11",
                   isInputDisabled && "opacity-50 cursor-not-allowed"
                 )}
               />
               <Button 
                 size="icon" 
                 className={cn(
-                  "h-11 w-11 shrink-0 bg-primary hover:bg-primary/90",
+                  "shrink-0 bg-primary hover:bg-primary/90",
+                  isMobile ? "h-9 w-9" : "h-11 w-11",
                   isInputDisabled && "opacity-50 cursor-not-allowed"
                 )}
                 onClick={sendHumanMessage}
                 disabled={isInputDisabled || !messageInput.trim()}
               >
                 {isSendingMessage ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className={cn(isMobile ? "h-3.5 w-3.5" : "h-4 w-4", "animate-spin")} />
                 ) : (
-                  <Send className="h-4 w-4" />
+                  <Send className={cn(isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
                 )}
               </Button>
             </div>
@@ -1004,7 +1105,7 @@ export default function Chats() {
     <MainLayout>
       <div className={cn(
         "flex flex-col",
-        isMobile ? "h-[calc(100vh-8rem)]" : "h-[calc(100vh-8rem)]"
+        isMobile ? "h-[calc(100dvh-8rem)] -m-4 md:m-0 max-h-[calc(100dvh-8rem)] overflow-hidden" : "h-[calc(100vh-8rem)]"
       )}>
         {!isMobile && (
           <PageHeader title="Chats" subtitle="Conversaciones en tiempo real" className="mb-4" />
