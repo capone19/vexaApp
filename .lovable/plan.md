@@ -1,93 +1,107 @@
 
-## Objetivo (solo móvil)
-- Eliminar el “auto scroll” del **body** al abrir un chat.
-- Mantener **header superior** y **footer/input** siempre visibles.
-- Hacer que el **único scroll (manual y automático al último mensaje)** ocurra dentro de la ventana interna de mensajes (ScrollArea), no en la página.
+# Plan: Indicador "Bot desactivado" en la Lista de Chats
 
----
+## Objetivo
+Agregar un indicador visual discreto en cada item de la lista de chats cuando el bot esté desactivado para ese chat específico. Esto permitirá identificar rápidamente qué conversaciones están siendo atendidas solo por humanos.
 
-## Diagnóstico (qué está pasando ahora)
-En `src/pages/Chats.tsx` hay este efecto:
+## Análisis
 
-- `messagesEndRef.current.scrollIntoView({ behavior: "smooth" })`
+### Estado Actual
+- Cada sesión de chat ya tiene la propiedad `botEnabled: boolean` en la interfaz `N8nSession`
+- Este valor se obtiene de `botStates[session_id]` (desde la base de datos)
+- La lista de chats se renderiza en las líneas 647-710 de `Chats.tsx`
+- Actualmente muestra: número de teléfono, hora, último mensaje, y badges de etiquetas
 
-`scrollIntoView()` busca el contenedor scrolleable más cercano. En algunos casos (especialmente en móvil con layout y alturas calculadas), termina usando el **scroll del documento/body** o del contenedor externo, lo que provoca:
-- “me entra scrolleado a la fuerza el body”
-- y, a la vez, el mensaje final no queda correctamente scrolleado dentro del panel.
+### Ubicación del Indicador
+Propuesta: **A la izquierda del timestamp**, como un icono pequeño de Bot tachado o un texto minimalista "Bot off". Esta ubicación:
+- Es visible pero no invasiva
+- No rompe el layout existente
+- Se alinea con la información temporal
 
-Además, el efecto depende de `messages` (toda la lista global), así que se dispara en muchos momentos, no solo cuando cambian los mensajes de la sesión activa.
+## Diseño Visual
 
----
+```text
+┌─────────────────────────────────────────────┐
+│ 👤 +56957024130           🤖❌ 18:38  ⊙   │
+│    ¡Hola! 👋 Soy parte del equipo de Vexa... │
+│    [Alta intención] [Etiqueta]              │
+└─────────────────────────────────────────────┘
+```
 
-## Enfoque de solución
-### Cambiar el auto-scroll para que apunte explícitamente al viewport real del ScrollArea
-En vez de `scrollIntoView`, vamos a:
-1. Poner un `ref` al `<ScrollArea ...>` del panel de mensajes (Root).
-2. Dentro del `useEffect`, localizar el viewport interno real de Radix:
-   - selector: `[data-radix-scroll-area-viewport]`
-3. Hacer `viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" })`
+**Opciones de indicador (ordenadas por preferencia):**
+1. Icono `Bot` con slash/tachado + tooltip explicativo
+2. Badge pequeño "Bot off" en gris/muted
+3. Icono `BotOff` de lucide (si existe)
 
-Esto fuerza el scroll dentro del panel, sin tocar el body.
+**Colores:** Usaremos `text-muted-foreground` o `text-amber-500/70` para que sea visible pero no distraiga.
 
-### Reducir cuándo se dispara el auto-scroll
-Cambiar dependencias del effect para que use:
-- `selectedSessionId`
-- `selectedMessages.length` (o similar)
-en lugar de `messages` completo.
+## Cambios Técnicos
 
-Y aplicar un “micro delay” para asegurar que el DOM ya renderizó antes de scrollear:
-- `requestAnimationFrame` (1-2 frames) o `setTimeout(0)`
+### Archivo: `src/pages/Chats.tsx`
 
----
+**1. Agregar icono al import (si no existe):**
+Verificar que `Bot` ya está importado (línea 23). Podemos usar `Bot` con estilo de "deshabilitado" o `BotOff` si lucide lo tiene.
 
-## Cambios concretos (archivo)
-### 1) `src/pages/Chats.tsx`
-**A. Agregar ref del ScrollArea**
-- `const messagesScrollAreaRef = useRef<HTMLDivElement>(null);`
+**2. Modificar el área del timestamp (líneas 665-671):**
 
-**B. En el JSX del ScrollArea de mensajes**
-- Pasar `ref={messagesScrollAreaRef}` al `<ScrollArea ...>`
+```tsx
+// Antes:
+<div className="flex items-center justify-between mb-1">
+  <span className="font-medium text-sm text-foreground truncate">
+    {session.phoneNumber}
+  </span>
+  <span className="text-xs text-muted-foreground shrink-0 ml-2">
+    {formatWhatsAppTimestamp(session.lastMessageAt)}
+  </span>
+</div>
 
-**C. Reemplazar el auto-scroll actual**
-- Reemplazar:
-  - `messagesEndRef.current.scrollIntoView(...)`
-- Por:
-  - `const viewport = messagesScrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null;`
-  - `viewport?.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" })`
+// Después:
+<div className="flex items-center justify-between mb-1">
+  <span className="font-medium text-sm text-foreground truncate">
+    {session.phoneNumber}
+  </span>
+  <div className="flex items-center gap-1.5 shrink-0 ml-2">
+    {!session.botEnabled && (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="flex items-center text-amber-500/70">
+              <Bot className="h-3 w-3" />
+              <span className="text-[10px] relative -ml-0.5 -mt-1 font-bold">✕</span>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="left">
+            <p className="text-xs">Bot desactivado</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )}
+    <span className="text-xs text-muted-foreground">
+      {formatWhatsAppTimestamp(session.lastMessageAt)}
+    </span>
+  </div>
+</div>
+```
 
-**D. Ajustar dependencias**
-- Cambiar el effect a depender de:
-  - `selectedSessionId`
-  - `selectedMessages.length` (o un timestamp/lastMessageId si existe)
-- Evitar depender de `messages` completo.
+## Alternativa Más Simple (sin tooltip)
 
-**E. (Opcional pero recomendado) Auto-scroll solo si estás “cerca del final”**
-Para que si el usuario está leyendo mensajes viejos, no lo “arrastre” al final cada vez que llega algo:
-- detectar si `viewport.scrollTop` está cerca de `viewport.scrollHeight - viewport.clientHeight`
-- si está cerca, auto-scrollear; si no, no.
+Si preferimos algo más ligero:
 
----
+```tsx
+{!session.botEnabled && (
+  <span className="text-[10px] text-amber-500/70 font-medium">
+    Bot off
+  </span>
+)}
+```
 
-## Validación (qué probar en la UI)
-1. En móvil, entrar a `/chats` y abrir una conversación:
-   - el **body no debe moverse** solo (sin salto de scroll).
-2. Confirmar:
-   - header superior del chat siempre visible
-   - footer/input siempre visible
-   - el scroll manual solo mueve la lista de mensajes
-3. Al abrir un chat, debe llevarte al último mensaje dentro del panel.
-4. Cuando llegan mensajes nuevos:
-   - si estás abajo, que siga bajando solo
-   - si estás leyendo arriba, que no te fuerce a bajar (si implementamos la lógica opcional)
+## Resultado Esperado
+- Los chats con bot desactivado mostrarán un pequeño indicador visual a la izquierda del horario
+- El indicador será discreto pero fácilmente identificable
+- No afectará el layout en móvil ni desktop
+- Proporciona contexto rápido sin necesidad de abrir cada chat
 
----
-
-## Riesgo / Impacto en desktop
-- Nulo: el cambio afecta únicamente al comportamiento de auto-scroll y al contenedor interno de mensajes; el layout desktop no se toca.
-
----
-
-## Resultado esperado
-- Scroll 100% aislado dentro del panel de mensajes.
-- Header/footer fijos siempre visibles.
-- Auto-scroll al último mensaje consistente, sin “secuestrar” el scroll del body.
+## Impacto
+- **Bajo riesgo**: Solo se agrega un elemento condicional al JSX existente
+- **Sin cambios de lógica**: La propiedad `botEnabled` ya existe y está calculada
+- **Responsive**: El indicador se adaptará al tamaño de texto existente
