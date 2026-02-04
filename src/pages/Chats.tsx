@@ -666,9 +666,26 @@ export default function Chats() {
                       <span className="font-medium text-sm text-foreground truncate">
                         {session.phoneNumber}
                       </span>
-                      <span className="text-xs text-muted-foreground shrink-0 ml-2">
-                        {formatWhatsAppTimestamp(session.lastMessageAt)}
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                        {!session.botEnabled && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="flex items-center text-amber-500/70">
+                                  <Bot className="h-3 w-3" />
+                                  <span className="text-[10px] relative -ml-0.5 -mt-1 font-bold">✕</span>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="left">
+                                <p className="text-xs">Bot desactivado</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {formatWhatsAppTimestamp(session.lastMessageAt)}
+                        </span>
+                      </div>
                     </div>
                     <p className="text-xs text-muted-foreground line-clamp-1 mb-2">
                       {session.lastMessage || "Sin mensajes"}
