@@ -262,6 +262,15 @@ export type AppointmentStatus = 'confirmed' | 'pending' | 'canceled';
 export type AppointmentSource = 'chat' | 'campaign' | 'direct' | 'referral';
 export type AppointmentType = 'service' | 'product';
 
+export interface ShippingData {
+  address?: string;
+  commune?: string;
+  email?: string;
+  shippingCost?: number;
+  subtotal?: number;
+  total?: number;
+}
+
 export interface Appointment {
   id: string;
   datetime: Date;
@@ -281,6 +290,7 @@ export interface Appointment {
   price?: number;
   currency?: string;
   meetingUrl?: string;  // Link de reunión virtual (Zoom, Meet, etc.)
+  shippingData?: ShippingData; // Datos de despacho para productos
 }
 
 // Templates (Marketing)
