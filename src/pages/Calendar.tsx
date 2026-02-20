@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, addWeeks, subWeeks, addDays, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Clock, User, Phone, MapPin, Calendar as CalendarIcon, Filter, Plus, X, Lock, Loader2, ShoppingBag, DollarSign, Video, ExternalLink, Mail, Truck, Package } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, User, Phone, MapPin, Calendar as CalendarIcon, Filter, Plus, X, Lock, Loader2, ShoppingBag, DollarSign, Video, ExternalLink, Mail, Truck, Package, CreditCard } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -953,7 +953,28 @@ const CalendarContent = () => {
                       <Truck className="h-4 w-4 text-muted-foreground shrink-0" />
                       <span className="text-foreground">
                         Despacho: {selectedAppointment.shippingData.shippingDate}
+                        {selectedAppointment.shippingData.estimatedDeliveryTime && (
+                          <span className="text-muted-foreground ml-1">({selectedAppointment.shippingData.estimatedDeliveryTime})</span>
+                        )}
                       </span>
+                    </div>
+                  )}
+
+                  {/* Horario estimado (si no hay fecha pero sí horario) */}
+                  {!selectedAppointment.shippingData?.shippingDate && selectedAppointment.shippingData?.estimatedDeliveryTime && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="text-foreground">
+                        Horario: {selectedAppointment.shippingData.estimatedDeliveryTime}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Método de pago */}
+                  {selectedAppointment.shippingData?.paymentMethod && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <CreditCard className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="text-foreground">{selectedAppointment.shippingData.paymentMethod}</span>
                     </div>
                   )}
 

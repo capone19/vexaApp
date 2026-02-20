@@ -84,10 +84,20 @@ const mapBookingToAppointment = (booking: ExternalBooking): Appointment => {
     if (shippingDate) shippingData.shippingDate = shippingDate;
   }
 
+  // Columnas directas tienen prioridad sobre metadata
+  if (booking.address) shippingData.address = booking.address;
+  if (booking.comuna) shippingData.commune = booking.comuna;
+  if (booking.region) shippingData.region = booking.region;
+  if (booking.shipping_cost != null) shippingData.shippingCost = Number(booking.shipping_cost);
+  if (booking.payment_method) shippingData.paymentMethod = booking.payment_method;
+  if (booking.estimated_delivery_date) shippingData.shippingDate = booking.estimated_delivery_date;
+  if (booking.estimated_delivery_time) shippingData.estimatedDeliveryTime = booking.estimated_delivery_time;
+
   // Debug log para el tenant especial
   if (booking.tenant_id === '557bd366-37e7-4155-82f8-b10d4c31ac72' && booking.type === 'product') {
     console.log('[Booking] metadata completo:', metadata);
-    console.log('[Booking] shippingData extraído:', shippingData);
+    console.log('[Booking] columnas directas → address:', booking.address, '| comuna:', booking.comuna, '| region:', booking.region, '| shipping_cost:', booking.shipping_cost, '| payment_method:', booking.payment_method, '| estimated_delivery_date:', booking.estimated_delivery_date, '| estimated_delivery_time:', booking.estimated_delivery_time);
+    console.log('[Booking] shippingData final:', shippingData);
     console.log('[Booking] contact_email:', booking.contact_email, '| contact_phone:', booking.contact_phone);
   }
 

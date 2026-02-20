@@ -51,6 +51,14 @@ export interface ExternalBooking {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  // Columnas directas de despacho (no en metadata)
+  address: string | null;
+  comuna: string | null;
+  region: string | null;
+  shipping_cost: number | null;
+  payment_method: string | null;
+  estimated_delivery_date: string | null;  // "YYYY-MM-DD"
+  estimated_delivery_time: string | null;  // "HH:MM-HH:MM"
 }
 
 export const externalSupabase = createClient(

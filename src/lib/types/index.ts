@@ -271,6 +271,8 @@ export interface ShippingData {
   subtotal?: number;
   total?: number;
   shippingDate?: string;
+  paymentMethod?: string;        // Método de pago (ej: "Transferencia")
+  estimatedDeliveryTime?: string; // Horario estimado de entrega (ej: "16:00-22:00")
 }
 
 export interface Appointment {
