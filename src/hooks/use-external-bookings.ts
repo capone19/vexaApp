@@ -65,19 +65,30 @@ const mapBookingToAppointment = (booking: ExternalBooking): Appointment => {
   // Extraer datos de despacho del metadata
   const shippingData: ShippingData = {};
   if (metadata) {
-    const address = (metadata.direccion || metadata.address || metadata.shipping_address) as string | undefined;
-    const commune = (metadata.comuna || metadata.commune) as string | undefined;
-    const email = (metadata.email) as string | undefined;
-    const shippingCost = (metadata.costo_envio || metadata.shipping_cost || metadata.envio) as number | undefined;
-    const subtotal = metadata.subtotal as number | undefined;
-    const total = metadata.total as number | undefined;
+    const address = (metadata.direccion || metadata.address || metadata.shipping_address || metadata.direccion_envio) as string | undefined;
+    const commune = (metadata.comuna || metadata.commune || metadata.ciudad) as string | undefined;
+    const region = (metadata.region || metadata.estado || metadata.province || metadata.provincia) as string | undefined;
+    const email = (metadata.email || metadata.correo) as string | undefined;
+    const shippingCost = (metadata.costo_envio || metadata.shipping_cost || metadata.envio || metadata.costo_despacho) as number | undefined;
+    const subtotal = (metadata.subtotal || metadata.sub_total) as number | undefined;
+    const total = (metadata.total || metadata.total_pedido) as number | undefined;
+    const shippingDate = (metadata.fecha_despacho || metadata.shipping_date || metadata.fecha_envio || metadata.dispatch_date || metadata.fecha_entrega) as string | undefined;
 
     if (address) shippingData.address = address;
     if (commune) shippingData.commune = commune;
+    if (region) shippingData.region = region;
     if (email) shippingData.email = email;
     if (shippingCost !== undefined) shippingData.shippingCost = Number(shippingCost);
     if (subtotal !== undefined) shippingData.subtotal = Number(subtotal);
     if (total !== undefined) shippingData.total = Number(total);
+    if (shippingDate) shippingData.shippingDate = shippingDate;
+  }
+
+  // Debug log para el tenant especial
+  if (booking.tenant_id === '557bd366-37e7-4155-82f8-b10d4c31ac72' && booking.type === 'product') {
+    console.log('[Booking] metadata completo:', metadata);
+    console.log('[Booking] shippingData extraído:', shippingData);
+    console.log('[Booking] contact_email:', booking.contact_email, '| contact_phone:', booking.contact_phone);
   }
 
   const hasShippingData = Object.keys(shippingData).length > 0;

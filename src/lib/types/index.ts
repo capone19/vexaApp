@@ -265,10 +265,12 @@ export type AppointmentType = 'service' | 'product';
 export interface ShippingData {
   address?: string;
   commune?: string;
+  region?: string;
   email?: string;
   shippingCost?: number;
   subtotal?: number;
   total?: number;
+  shippingDate?: string;
 }
 
 export interface Appointment {
