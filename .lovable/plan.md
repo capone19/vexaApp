@@ -1,107 +1,123 @@
 
-# Plan: Indicador "Bot desactivado" en la Lista de Chats
+# Plan: Rediseño del Modal de Compras con Dos Pestañas (Tenant 557bd366)
 
-## Objetivo
-Agregar un indicador visual discreto en cada item de la lista de chats cuando el bot esté desactivado para ese chat específico. Esto permitirá identificar rápidamente qué conversaciones están siendo atendidas solo por humanos.
+## Diagnóstico del Problema
 
-## Análisis
+El modal actualmente existe y tiene código para "Datos de despacho", pero hay dos fallas:
 
-### Estado Actual
-- Cada sesión de chat ya tiene la propiedad `botEnabled: boolean` en la interfaz `N8nSession`
-- Este valor se obtiene de `botStates[session_id]` (desde la base de datos)
-- La lista de chats se renderiza en las líneas 647-710 de `Chats.tsx`
-- Actualmente muestra: número de teléfono, hora, último mensaje, y badges de etiquetas
+1. **La sección no se activa visualmente** porque depende de `selectedAppointment.shippingData && Object.keys(...).length > 0`. Si los campos en el `metadata` de la tabla `bookings` externa tienen nombres diferentes a los esperados (`direccion`, `comuna`, etc.), el objeto queda vacío y la sección no renderiza.
 
-### Ubicación del Indicador
-Propuesta: **A la izquierda del timestamp**, como un icono pequeño de Bot tachado o un texto minimalista "Bot off". Esta ubicación:
-- Es visible pero no invasiva
-- No rompe el layout existente
-- Se alinea con la información temporal
+2. **Diseño plano, no organizado en pestañas**. El usuario pide dos pestañas separadas dentro del popup para mejor organización.
 
-## Diseño Visual
+3. **Faltan campos**: `region` y `fecha de despacho` no se extraen del `metadata`.
+
+## Cambios a Realizar
+
+### 1. `src/lib/types/index.ts` — Ampliar `ShippingData`
+
+Agregar dos campos nuevos a la interfaz:
+```typescript
+export interface ShippingData {
+  address?: string;
+  commune?: string;
+  region?: string;        // NUEVO
+  email?: string;
+  shippingCost?: number;
+  subtotal?: number;
+  total?: number;
+  shippingDate?: string;  // NUEVO - fecha de despacho como string
+}
+```
+
+### 2. `src/hooks/use-external-bookings.ts` — Extraer más campos del metadata
+
+Ampliar el mapeo para capturar `region` y `fecha de despacho` desde el `metadata`, con múltiples claves alternativas para mayor cobertura:
+```typescript
+// Nuevas extracciones:
+const region = (metadata.region || metadata.estado || metadata.province) as string | undefined;
+const shippingDate = (metadata.fecha_despacho || metadata.shipping_date || metadata.fecha_envio || metadata.dispatch_date) as string | undefined;
+
+if (region) shippingData.region = region;
+if (shippingDate) shippingData.shippingDate = shippingDate;
+```
+
+**Importante**: También se agregarán `console.log` temporales del objeto `shippingData` para facilitar depuración del tenant específico.
+
+### 3. `src/pages/Calendar.tsx` — Rediseñar el modal con pestañas
+
+#### Estructura del nuevo modal para tipo `product` + tenant `557bd366-37e7-4155-82f8-b10d4c31ac72`:
+
+El modal se dividirá en **dos pestañas** usando el componente `Tabs` ya importado:
+
+**Pestaña 1: "Detalle de compra"** (ícono ShoppingBag)
+- Nombre del cliente + badge "Producto"
+- Producto comprado (nombre del item)
+- Fecha de compra
+- Precio del producto (el campo `price` directo del booking)
+- Tabla de costos: subtotal, costo de envío y total del pedido
+- Origen del pedido
+
+**Pestaña 2: "Detalle de despacho"** (ícono Truck)
+- Nombre del cliente
+- Teléfono (`clientPhone` del booking)
+- Email (`clientEmail` del booking O `shippingData.email`)
+- Dirección (`shippingData.address`)
+- Comuna (`shippingData.commune`)
+- Región (`shippingData.region`)
+- Fecha de despacho (`shippingData.shippingDate`)
+
+#### Para tipo `service` o cualquier otro tenant:
+El modal queda **igual que hoy** (sin pestañas).
+
+## Estructura Visual del Nuevo Modal
 
 ```text
 ┌─────────────────────────────────────────────┐
-│ 👤 +56957024130           🤖❌ 18:38  ⊙   │
-│    ¡Hola! 👋 Soy parte del equipo de Vexa... │
-│    [Alta intención] [Etiqueta]              │
+│  🛍 Detalles de la compra               [X] │
+├─────────────────────────────────────────────┤
+│  [ Detalle de compra ] [ Detalle de despacho]│
+├─────────────────────────────────────────────┤
+│  PESTAÑA 1:                                 │
+│  Nicolás Varela                  [Producto] │
+│  Compró: Cross Bag Antirrobo               │
+│  ─────────────────────────────────────────  │
+│  📅 Fecha de compra: viernes 20 feb, 2026  │
+│  ─────────────────────────────────────────  │
+│  Subtotal            $14.990               │
+│  Envío               $2.990                │
+│  ─────────────────────────────────────────  │
+│  Total               $17.980               │
+│  ─────────────────────────────────────────  │
+│  Origen:  [chat]                            │
+└─────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────┐
+│  🛍 Detalles de la compra               [X] │
+├─────────────────────────────────────────────┤
+│  [ Detalle de compra ] [ Detalle de despacho]│
+├─────────────────────────────────────────────┤
+│  PESTAÑA 2:                                 │
+│  👤 Nicolás Varela                          │
+│  📞 +56 9 3487 3487                         │
+│  ✉  nicolas@email.com                       │
+│  📍 Av. Las Condes 1234, Las Condes         │
+│  🗺  Región Metropolitana                   │
+│  📅 Fecha de despacho: lunes 24 feb, 2026  │
 └─────────────────────────────────────────────┘
 ```
 
-**Opciones de indicador (ordenadas por preferencia):**
-1. Icono `Bot` con slash/tachado + tooltip explicativo
-2. Badge pequeño "Bot off" en gris/muted
-3. Icono `BotOff` de lucide (si existe)
+## Archivos a Modificar
 
-**Colores:** Usaremos `text-muted-foreground` o `text-amber-500/70` para que sea visible pero no distraiga.
+| Archivo | Cambio |
+|---|---|
+| `src/lib/types/index.ts` | Agregar `region` y `shippingDate` a `ShippingData` |
+| `src/hooks/use-external-bookings.ts` | Extraer `region` y `shippingDate` del metadata; log de debug |
+| `src/pages/Calendar.tsx` | Rediseñar el modal con pestañas para el tenant específico |
 
-## Cambios Técnicos
+## Consideraciones Técnicas
 
-### Archivo: `src/pages/Chats.tsx`
-
-**1. Agregar icono al import (si no existe):**
-Verificar que `Bot` ya está importado (línea 23). Podemos usar `Bot` con estilo de "deshabilitado" o `BotOff` si lucide lo tiene.
-
-**2. Modificar el área del timestamp (líneas 665-671):**
-
-```tsx
-// Antes:
-<div className="flex items-center justify-between mb-1">
-  <span className="font-medium text-sm text-foreground truncate">
-    {session.phoneNumber}
-  </span>
-  <span className="text-xs text-muted-foreground shrink-0 ml-2">
-    {formatWhatsAppTimestamp(session.lastMessageAt)}
-  </span>
-</div>
-
-// Después:
-<div className="flex items-center justify-between mb-1">
-  <span className="font-medium text-sm text-foreground truncate">
-    {session.phoneNumber}
-  </span>
-  <div className="flex items-center gap-1.5 shrink-0 ml-2">
-    {!session.botEnabled && (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="flex items-center text-amber-500/70">
-              <Bot className="h-3 w-3" />
-              <span className="text-[10px] relative -ml-0.5 -mt-1 font-bold">✕</span>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="left">
-            <p className="text-xs">Bot desactivado</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    )}
-    <span className="text-xs text-muted-foreground">
-      {formatWhatsAppTimestamp(session.lastMessageAt)}
-    </span>
-  </div>
-</div>
-```
-
-## Alternativa Más Simple (sin tooltip)
-
-Si preferimos algo más ligero:
-
-```tsx
-{!session.botEnabled && (
-  <span className="text-[10px] text-amber-500/70 font-medium">
-    Bot off
-  </span>
-)}
-```
-
-## Resultado Esperado
-- Los chats con bot desactivado mostrarán un pequeño indicador visual a la izquierda del horario
-- El indicador será discreto pero fácilmente identificable
-- No afectará el layout en móvil ni desktop
-- Proporciona contexto rápido sin necesidad de abrir cada chat
-
-## Impacto
-- **Bajo riesgo**: Solo se agrega un elemento condicional al JSX existente
-- **Sin cambios de lógica**: La propiedad `botEnabled` ya existe y está calculada
-- **Responsive**: El indicador se adaptará al tamaño de texto existente
+- El componente `Tabs`, `TabsList`, `TabsTrigger` y `TabsContent` ya están importados en `Calendar.tsx`.
+- Se añadirá un `useState` para controlar la pestaña activa del modal (`modalTab`), que se reinicia al abrir un nuevo appointment.
+- La condición de activación del nuevo modal: `selectedAppointment.type === 'product' && tenantId === '557bd366-37e7-4155-82f8-b10d4c31ac72'`
+- Para los demás tenants y tipos de cita, el modal existente permanece sin cambios.
+- El `TabsContent` para despacho mostrará todos los campos disponibles, omitiendo los que sean `undefined`.
