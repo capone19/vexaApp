@@ -5,7 +5,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { externalSupabase, ExternalBooking } from '@/integrations/supabase/external-client';
-import type { Appointment, AppointmentStatus, AppointmentSource, AppointmentType } from '@/lib/types';
+import type { Appointment, AppointmentStatus, AppointmentSource, AppointmentType, ShippingData } from '@/lib/types';
 import { format } from 'date-fns';
 
 export interface UseExternalBookingsOptions {
@@ -62,6 +62,26 @@ const mapBookingToAppointment = (booking: ExternalBooking): Appointment => {
     || metadata?.zoom_link as string | undefined
     || metadata?.meet_link as string | undefined;
 
+  // Extraer datos de despacho del metadata
+  const shippingData: ShippingData = {};
+  if (metadata) {
+    const address = (metadata.direccion || metadata.address || metadata.shipping_address) as string | undefined;
+    const commune = (metadata.comuna || metadata.commune) as string | undefined;
+    const email = (metadata.email) as string | undefined;
+    const shippingCost = (metadata.costo_envio || metadata.shipping_cost || metadata.envio) as number | undefined;
+    const subtotal = metadata.subtotal as number | undefined;
+    const total = metadata.total as number | undefined;
+
+    if (address) shippingData.address = address;
+    if (commune) shippingData.commune = commune;
+    if (email) shippingData.email = email;
+    if (shippingCost !== undefined) shippingData.shippingCost = Number(shippingCost);
+    if (subtotal !== undefined) shippingData.subtotal = Number(subtotal);
+    if (total !== undefined) shippingData.total = Number(total);
+  }
+
+  const hasShippingData = Object.keys(shippingData).length > 0;
+
   return {
     id: booking.id,
     datetime,
@@ -80,6 +100,7 @@ const mapBookingToAppointment = (booking: ExternalBooking): Appointment => {
     price: booking.price,
     currency: booking.currency,
     meetingUrl,
+    shippingData: hasShippingData ? shippingData : undefined,
   };
 };
 

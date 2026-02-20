@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, addWeeks, subWeeks, addDays, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Clock, User, Phone, MapPin, Calendar as CalendarIcon, Filter, Plus, X, Lock, Loader2, ShoppingBag, DollarSign, Video, ExternalLink } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, User, Phone, MapPin, Calendar as CalendarIcon, Filter, Plus, X, Lock, Loader2, ShoppingBag, DollarSign, Video, ExternalLink, Mail, Truck, Package } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -872,6 +872,52 @@ const CalendarContent = () => {
                   </div>
                 )}
               </div>
+
+              {/* Datos de despacho - solo para tenant 557bd366-37e7-4155-82f8-b10d4c31ac72 y tipo producto */}
+              {selectedAppointment.type === 'product' && tenantId === '557bd366-37e7-4155-82f8-b10d4c31ac72' && selectedAppointment.shippingData && Object.keys(selectedAppointment.shippingData).length > 0 && (
+                <div className="space-y-2 py-3 border-t border-border">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <Truck className="h-3.5 w-3.5" />
+                    Datos de despacho
+                  </p>
+                  {(selectedAppointment.clientEmail || selectedAppointment.shippingData.email) && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="text-foreground">{selectedAppointment.clientEmail || selectedAppointment.shippingData.email}</span>
+                    </div>
+                  )}
+                  {(selectedAppointment.shippingData.address || selectedAppointment.shippingData.commune) && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="text-foreground">
+                        {[selectedAppointment.shippingData.address, selectedAppointment.shippingData.commune].filter(Boolean).join(', ')}
+                      </span>
+                    </div>
+                  )}
+                  {(selectedAppointment.shippingData.subtotal !== undefined || selectedAppointment.shippingData.shippingCost !== undefined || selectedAppointment.shippingData.total !== undefined) && (
+                    <div className="mt-2 rounded-lg bg-secondary/50 p-3 space-y-1.5">
+                      {selectedAppointment.shippingData.subtotal !== undefined && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Subtotal</span>
+                          <span className="text-foreground">{formatPrice(selectedAppointment.shippingData.subtotal, selectedAppointment.currency)}</span>
+                        </div>
+                      )}
+                      {selectedAppointment.shippingData.shippingCost !== undefined && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Envío</span>
+                          <span className="text-foreground">{formatPrice(selectedAppointment.shippingData.shippingCost, selectedAppointment.currency)}</span>
+                        </div>
+                      )}
+                      {selectedAppointment.shippingData.total !== undefined && (
+                        <div className="flex justify-between text-sm font-semibold border-t border-border pt-1.5 mt-1">
+                          <span className="text-foreground">Total</span>
+                          <span className="text-success">{formatPrice(selectedAppointment.shippingData.total, selectedAppointment.currency)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">Origen:</span>
