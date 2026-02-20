@@ -1,123 +1,89 @@
 
-# Plan: Rediseño del Modal de Compras con Dos Pestañas (Tenant 557bd366)
+# Diagnóstico exacto del problema
 
-## Diagnóstico del Problema
+La tabla externa `bookings` tiene columnas de primer nivel (no en `metadata`):
+- `address` (text)
+- `comuna` (text)
+- `region` (text)
+- `shipping_cost` (numeric)
+- `payment_method` (text)
+- `estimated_delivery_date` (date)
+- `estimated_delivery_time` (text)
 
-El modal actualmente existe y tiene código para "Datos de despacho", pero hay dos fallas:
+El código en `use-external-bookings.ts` busca estos datos **dentro del campo JSON `metadata`** (que está NULL/vacío para estos registros). Por eso `shippingData` siempre queda vacío y el modal no muestra nada.
 
-1. **La sección no se activa visualmente** porque depende de `selectedAppointment.shippingData && Object.keys(...).length > 0`. Si los campos en el `metadata` de la tabla `bookings` externa tienen nombres diferentes a los esperados (`direccion`, `comuna`, etc.), el objeto queda vacío y la sección no renderiza.
+## Archivos a modificar
 
-2. **Diseño plano, no organizado en pestañas**. El usuario pide dos pestañas separadas dentro del popup para mejor organización.
+### 1. `src/integrations/supabase/external-client.ts`
+Agregar las columnas faltantes a la interfaz `ExternalBooking`:
 
-3. **Faltan campos**: `region` y `fecha de despacho` no se extraen del `metadata`.
+```typescript
+export interface ExternalBooking {
+  // ...campos existentes...
+  // Columnas directas de despacho (no en metadata)
+  address: string | null;
+  comuna: string | null;
+  region: string | null;
+  shipping_cost: number | null;
+  payment_method: string | null;
+  estimated_delivery_date: string | null;   // "YYYY-MM-DD"
+  estimated_delivery_time: string | null;   // "HH:MM-HH:MM"
+}
+```
 
-## Cambios a Realizar
+### 2. `src/lib/types/index.ts`
+Agregar `paymentMethod` y `estimatedDeliveryTime` a `ShippingData`:
 
-### 1. `src/lib/types/index.ts` — Ampliar `ShippingData`
-
-Agregar dos campos nuevos a la interfaz:
 ```typescript
 export interface ShippingData {
   address?: string;
   commune?: string;
-  region?: string;        // NUEVO
+  region?: string;
   email?: string;
   shippingCost?: number;
   subtotal?: number;
   total?: number;
-  shippingDate?: string;  // NUEVO - fecha de despacho como string
+  shippingDate?: string;
+  paymentMethod?: string;       // NUEVO
+  estimatedDeliveryTime?: string; // NUEVO - "16:00-22:00"
 }
 ```
 
-### 2. `src/hooks/use-external-bookings.ts` — Extraer más campos del metadata
+### 3. `src/hooks/use-external-bookings.ts`
+Cambiar la extracción de `shippingData` para leer de **columnas directas** primero, con `metadata` como fallback:
 
-Ampliar el mapeo para capturar `region` y `fecha de despacho` desde el `metadata`, con múltiples claves alternativas para mayor cobertura:
 ```typescript
-// Nuevas extracciones:
-const region = (metadata.region || metadata.estado || metadata.province) as string | undefined;
-const shippingDate = (metadata.fecha_despacho || metadata.shipping_date || metadata.fecha_envio || metadata.dispatch_date) as string | undefined;
+const shippingData: ShippingData = {};
 
-if (region) shippingData.region = region;
-if (shippingDate) shippingData.shippingDate = shippingDate;
+// Leer de columnas directas (prioridad sobre metadata)
+const address = booking.address || (metadata?.direccion || metadata?.address) as string | undefined;
+const commune = booking.comuna || (metadata?.comuna || metadata?.commune) as string | undefined;
+const region = booking.region || (metadata?.region || metadata?.estado) as string | undefined;
+const shippingCost = booking.shipping_cost ?? (metadata?.costo_envio || metadata?.shipping_cost) as number | undefined;
+const paymentMethod = booking.payment_method || undefined;
+const shippingDate = booking.estimated_delivery_date || (metadata?.fecha_despacho) as string | undefined;
+const estimatedDeliveryTime = booking.estimated_delivery_time || undefined;
+
+if (address) shippingData.address = address;
+if (commune) shippingData.commune = commune;
+// etc.
 ```
 
-**Importante**: También se agregarán `console.log` temporales del objeto `shippingData` para facilitar depuración del tenant específico.
+### 4. `src/pages/Calendar.tsx`
+Agregar en la pestaña "Detalle de despacho" los dos campos nuevos:
+- **Método de pago** (con ícono `CreditCard`)
+- **Horario estimado de entrega** (junto a la fecha de despacho)
 
-### 3. `src/pages/Calendar.tsx` — Rediseñar el modal con pestañas
+## Resultado esperado
 
-#### Estructura del nuevo modal para tipo `product` + tenant `557bd366-37e7-4155-82f8-b10d4c31ac72`:
+| Campo | Origen actual (❌) | Origen correcto (✅) |
+|---|---|---|
+| Dirección | `metadata.direccion` (NULL) | `booking.address` |
+| Comuna | `metadata.comuna` (NULL) | `booking.comuna` |
+| Región | `metadata.region` (NULL) | `booking.region` |
+| Costo envío | `metadata.costo_envio` (NULL) | `booking.shipping_cost` |
+| Fecha despacho | `metadata.fecha_despacho` (NULL) | `booking.estimated_delivery_date` |
+| Método pago | — | `booking.payment_method` (NUEVO) |
+| Horario entrega | — | `booking.estimated_delivery_time` (NUEVO) |
 
-El modal se dividirá en **dos pestañas** usando el componente `Tabs` ya importado:
-
-**Pestaña 1: "Detalle de compra"** (ícono ShoppingBag)
-- Nombre del cliente + badge "Producto"
-- Producto comprado (nombre del item)
-- Fecha de compra
-- Precio del producto (el campo `price` directo del booking)
-- Tabla de costos: subtotal, costo de envío y total del pedido
-- Origen del pedido
-
-**Pestaña 2: "Detalle de despacho"** (ícono Truck)
-- Nombre del cliente
-- Teléfono (`clientPhone` del booking)
-- Email (`clientEmail` del booking O `shippingData.email`)
-- Dirección (`shippingData.address`)
-- Comuna (`shippingData.commune`)
-- Región (`shippingData.region`)
-- Fecha de despacho (`shippingData.shippingDate`)
-
-#### Para tipo `service` o cualquier otro tenant:
-El modal queda **igual que hoy** (sin pestañas).
-
-## Estructura Visual del Nuevo Modal
-
-```text
-┌─────────────────────────────────────────────┐
-│  🛍 Detalles de la compra               [X] │
-├─────────────────────────────────────────────┤
-│  [ Detalle de compra ] [ Detalle de despacho]│
-├─────────────────────────────────────────────┤
-│  PESTAÑA 1:                                 │
-│  Nicolás Varela                  [Producto] │
-│  Compró: Cross Bag Antirrobo               │
-│  ─────────────────────────────────────────  │
-│  📅 Fecha de compra: viernes 20 feb, 2026  │
-│  ─────────────────────────────────────────  │
-│  Subtotal            $14.990               │
-│  Envío               $2.990                │
-│  ─────────────────────────────────────────  │
-│  Total               $17.980               │
-│  ─────────────────────────────────────────  │
-│  Origen:  [chat]                            │
-└─────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────┐
-│  🛍 Detalles de la compra               [X] │
-├─────────────────────────────────────────────┤
-│  [ Detalle de compra ] [ Detalle de despacho]│
-├─────────────────────────────────────────────┤
-│  PESTAÑA 2:                                 │
-│  👤 Nicolás Varela                          │
-│  📞 +56 9 3487 3487                         │
-│  ✉  nicolas@email.com                       │
-│  📍 Av. Las Condes 1234, Las Condes         │
-│  🗺  Región Metropolitana                   │
-│  📅 Fecha de despacho: lunes 24 feb, 2026  │
-└─────────────────────────────────────────────┘
-```
-
-## Archivos a Modificar
-
-| Archivo | Cambio |
-|---|---|
-| `src/lib/types/index.ts` | Agregar `region` y `shippingDate` a `ShippingData` |
-| `src/hooks/use-external-bookings.ts` | Extraer `region` y `shippingDate` del metadata; log de debug |
-| `src/pages/Calendar.tsx` | Rediseñar el modal con pestañas para el tenant específico |
-
-## Consideraciones Técnicas
-
-- El componente `Tabs`, `TabsList`, `TabsTrigger` y `TabsContent` ya están importados en `Calendar.tsx`.
-- Se añadirá un `useState` para controlar la pestaña activa del modal (`modalTab`), que se reinicia al abrir un nuevo appointment.
-- La condición de activación del nuevo modal: `selectedAppointment.type === 'product' && tenantId === '557bd366-37e7-4155-82f8-b10d4c31ac72'`
-- Para los demás tenants y tipos de cita, el modal existente permanece sin cambios.
-- El `TabsContent` para despacho mostrará todos los campos disponibles, omitiendo los que sean `undefined`.
+Con este cambio, todos los pedidos que ya tienen datos en las columnas directas (como los 3 de "mayecura 1239 / vitacura") mostrarán correctamente la información en el modal.
