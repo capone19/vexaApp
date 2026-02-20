@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -40,6 +40,7 @@ const CalendarContent = () => {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterType, setFilterType] = useState<'all' | 'service' | 'product'>('all');
   const [filterSource, setFilterSource] = useState<string>('all');
+  const [modalTab, setModalTab] = useState<'purchase' | 'shipping'>('purchase');
   
   const isMobile = useIsMobile();
 
@@ -794,8 +795,8 @@ const CalendarContent = () => {
       )}
 
       {/* Appointment Details Modal */}
-      <Dialog open={!!selectedAppointment} onOpenChange={() => setSelectedAppointment(null)}>
-        <DialogContent className={cn("border-border", isMobile && "w-[calc(100%-2rem)] rounded-2xl")}>
+      <Dialog open={!!selectedAppointment} onOpenChange={() => { setSelectedAppointment(null); setModalTab('purchase'); }}>
+        <DialogContent className={cn("border-border", isMobile ? "w-[calc(100%-2rem)] rounded-2xl" : "max-w-md")}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {selectedAppointment?.type === 'product' ? (
@@ -806,14 +807,180 @@ const CalendarContent = () => {
               {selectedAppointment?.type === 'product' ? 'Detalles de la compra' : 'Detalles de la cita'}
             </DialogTitle>
           </DialogHeader>
-          {selectedAppointment && (
+
+          {selectedAppointment && selectedAppointment.type === 'product' && tenantId === '557bd366-37e7-4155-82f8-b10d4c31ac72' ? (
+            /* ── Modal con 2 pestañas para tenant especial + producto ── */
+            <Tabs value={modalTab} onValueChange={(v) => setModalTab(v as 'purchase' | 'shipping')} className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-1">
+                <TabsTrigger value="purchase" className="text-xs gap-1.5">
+                  <ShoppingBag className="h-3.5 w-3.5" />
+                  Detalle de compra
+                </TabsTrigger>
+                <TabsTrigger value="shipping" className="text-xs gap-1.5">
+                  <Truck className="h-3.5 w-3.5" />
+                  Detalle de despacho
+                </TabsTrigger>
+              </TabsList>
+
+              {/* ── Pestaña 1: Detalle de compra ── */}
+              <TabsContent value="purchase" className="space-y-4 mt-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-semibold text-foreground">{selectedAppointment.clientName}</h3>
+                    <p className="text-sm text-muted-foreground">{selectedAppointment.service}</p>
+                  </div>
+                  <Badge variant="secondary">Producto</Badge>
+                </div>
+
+                <div className="space-y-2 py-3 border-t border-border">
+                  <div className="flex items-center gap-3 text-sm">
+                    <CalendarIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-foreground">
+                      Fecha de compra: {format(selectedAppointment.datetime, "d 'de' MMMM, yyyy", { locale: es })}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Desglose de costos */}
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <div className="px-4 py-2 bg-secondary/40">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Resumen del pedido</p>
+                  </div>
+                  <div className="p-3 space-y-2">
+                    {/* Producto */}
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground flex items-center gap-1.5">
+                        <Package className="h-3.5 w-3.5" />
+                        {selectedAppointment.service}
+                      </span>
+                      <span className="text-foreground">
+                        {selectedAppointment.shippingData?.subtotal !== undefined
+                          ? formatPrice(selectedAppointment.shippingData.subtotal, selectedAppointment.currency)
+                          : selectedAppointment.price
+                            ? formatPrice(selectedAppointment.price, selectedAppointment.currency)
+                            : '—'}
+                      </span>
+                    </div>
+
+                    {selectedAppointment.shippingData?.shippingCost !== undefined && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground flex items-center gap-1.5">
+                          <Truck className="h-3.5 w-3.5" />
+                          Despacho
+                        </span>
+                        <span className="text-foreground">
+                          {formatPrice(selectedAppointment.shippingData.shippingCost, selectedAppointment.currency)}
+                        </span>
+                      </div>
+                    )}
+
+                    {(selectedAppointment.shippingData?.total !== undefined || selectedAppointment.price) && (
+                      <div className="flex justify-between text-sm font-semibold border-t border-border pt-2 mt-1">
+                        <span className="text-foreground">Total</span>
+                        <span className="text-success">
+                          {selectedAppointment.shippingData?.total !== undefined
+                            ? formatPrice(selectedAppointment.shippingData.total, selectedAppointment.currency)
+                            : formatPrice(selectedAppointment.price!, selectedAppointment.currency)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="text-xs text-muted-foreground">Origen:</span>
+                  <Badge variant="outline" className="text-xs">
+                    {selectedAppointment.sourceRaw || sourceLabels[selectedAppointment.source]}
+                  </Badge>
+                </div>
+              </TabsContent>
+
+              {/* ── Pestaña 2: Detalle de despacho ── */}
+              <TabsContent value="shipping" className="space-y-3 mt-3">
+                <div className="space-y-3">
+                  {/* Nombre */}
+                  <div className="flex items-center gap-3 text-sm">
+                    <User className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-foreground font-medium">{selectedAppointment.clientName}</span>
+                  </div>
+
+                  {/* Teléfono */}
+                  {selectedAppointment.clientPhone && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="text-foreground">{selectedAppointment.clientPhone}</span>
+                    </div>
+                  )}
+
+                  {/* Email */}
+                  {(selectedAppointment.clientEmail || selectedAppointment.shippingData?.email) && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="text-foreground">{selectedAppointment.clientEmail || selectedAppointment.shippingData?.email}</span>
+                    </div>
+                  )}
+
+                  {/* Dirección */}
+                  {selectedAppointment.shippingData?.address && (
+                    <div className="flex items-start gap-3 text-sm">
+                      <MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                      <span className="text-foreground">{selectedAppointment.shippingData.address}</span>
+                    </div>
+                  )}
+
+                  {/* Comuna */}
+                  {selectedAppointment.shippingData?.commune && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <MapPin className="h-4 w-4 text-muted-foreground shrink-0 opacity-0" />
+                      <span className="text-muted-foreground text-xs">
+                        {selectedAppointment.shippingData.commune}
+                        {selectedAppointment.shippingData?.region && `, ${selectedAppointment.shippingData.region}`}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Región si no hay comuna */}
+                  {!selectedAppointment.shippingData?.commune && selectedAppointment.shippingData?.region && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="text-foreground">{selectedAppointment.shippingData.region}</span>
+                    </div>
+                  )}
+
+                  {/* Fecha de despacho */}
+                  {selectedAppointment.shippingData?.shippingDate && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <Truck className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="text-foreground">
+                        Despacho: {selectedAppointment.shippingData.shippingDate}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Estado vacío si no hay datos de despacho */}
+                  {!selectedAppointment.clientPhone &&
+                   !selectedAppointment.clientEmail &&
+                   !selectedAppointment.shippingData?.email &&
+                   !selectedAppointment.shippingData?.address &&
+                   !selectedAppointment.shippingData?.commune &&
+                   !selectedAppointment.shippingData?.region && (
+                    <div className="text-center py-6 text-muted-foreground">
+                      <Truck className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">Sin datos de despacho registrados</p>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
+          ) : selectedAppointment ? (
+            /* ── Modal estándar para servicios o tenants normales ── */
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">{selectedAppointment.clientName}</h3>
                   <p className="text-muted-foreground">
-                    {selectedAppointment.type === 'product' 
-                      ? `Compró: ${selectedAppointment.service}` 
+                    {selectedAppointment.type === 'product'
+                      ? `Compró: ${selectedAppointment.service}`
                       : selectedAppointment.service}
                   </p>
                 </div>
@@ -830,23 +997,21 @@ const CalendarContent = () => {
                     {format(selectedAppointment.datetime, "EEEE d 'de' MMMM, yyyy", { locale: es })}
                   </span>
                 </div>
-                
-                {/* Solo mostrar hora para servicios */}
+
                 {selectedAppointment.type === 'service' && selectedAppointment.time && (
                   <div className="flex items-center gap-3 text-sm">
                     <Clock className="h-4 w-4 text-muted-foreground" />
                     <span className="text-foreground">{selectedAppointment.time} hrs</span>
                   </div>
                 )}
-                
+
                 {selectedAppointment.clientPhone && (
                   <div className="flex items-center gap-3 text-sm">
                     <Phone className="h-4 w-4 text-muted-foreground" />
                     <span className="text-foreground">{selectedAppointment.clientPhone}</span>
                   </div>
                 )}
-                
-                {/* Mostrar precio */}
+
                 {selectedAppointment.price && (
                   <div className="flex items-center gap-3 text-sm">
                     <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -856,13 +1021,12 @@ const CalendarContent = () => {
                   </div>
                 )}
 
-                {/* Mostrar link de reunión si existe */}
                 {selectedAppointment.meetingUrl && (
                   <div className="flex items-center gap-3 text-sm">
                     <Video className="h-4 w-4 text-muted-foreground" />
-                    <a 
-                      href={selectedAppointment.meetingUrl} 
-                      target="_blank" 
+                    <a
+                      href={selectedAppointment.meetingUrl}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="text-primary hover:underline flex items-center gap-1"
                     >
@@ -873,52 +1037,6 @@ const CalendarContent = () => {
                 )}
               </div>
 
-              {/* Datos de despacho - solo para tenant 557bd366-37e7-4155-82f8-b10d4c31ac72 y tipo producto */}
-              {selectedAppointment.type === 'product' && tenantId === '557bd366-37e7-4155-82f8-b10d4c31ac72' && selectedAppointment.shippingData && Object.keys(selectedAppointment.shippingData).length > 0 && (
-                <div className="space-y-2 py-3 border-t border-border">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                    <Truck className="h-3.5 w-3.5" />
-                    Datos de despacho
-                  </p>
-                  {(selectedAppointment.clientEmail || selectedAppointment.shippingData.email) && (
-                    <div className="flex items-center gap-3 text-sm">
-                      <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <span className="text-foreground">{selectedAppointment.clientEmail || selectedAppointment.shippingData.email}</span>
-                    </div>
-                  )}
-                  {(selectedAppointment.shippingData.address || selectedAppointment.shippingData.commune) && (
-                    <div className="flex items-center gap-3 text-sm">
-                      <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <span className="text-foreground">
-                        {[selectedAppointment.shippingData.address, selectedAppointment.shippingData.commune].filter(Boolean).join(', ')}
-                      </span>
-                    </div>
-                  )}
-                  {(selectedAppointment.shippingData.subtotal !== undefined || selectedAppointment.shippingData.shippingCost !== undefined || selectedAppointment.shippingData.total !== undefined) && (
-                    <div className="mt-2 rounded-lg bg-secondary/50 p-3 space-y-1.5">
-                      {selectedAppointment.shippingData.subtotal !== undefined && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Subtotal</span>
-                          <span className="text-foreground">{formatPrice(selectedAppointment.shippingData.subtotal, selectedAppointment.currency)}</span>
-                        </div>
-                      )}
-                      {selectedAppointment.shippingData.shippingCost !== undefined && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Envío</span>
-                          <span className="text-foreground">{formatPrice(selectedAppointment.shippingData.shippingCost, selectedAppointment.currency)}</span>
-                        </div>
-                      )}
-                      {selectedAppointment.shippingData.total !== undefined && (
-                        <div className="flex justify-between text-sm font-semibold border-t border-border pt-1.5 mt-1">
-                          <span className="text-foreground">Total</span>
-                          <span className="text-success">{formatPrice(selectedAppointment.shippingData.total, selectedAppointment.currency)}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">Origen:</span>
                 <Badge variant="outline">
@@ -926,7 +1044,6 @@ const CalendarContent = () => {
                 </Badge>
               </div>
 
-              {/* Solo mostrar botones de acción para servicios */}
               {selectedAppointment.type === 'service' && (
                 <div className="flex gap-2 pt-2">
                   <Button variant="outline" className={cn("flex-1", isMobile && "h-12")} disabled>
@@ -938,7 +1055,7 @@ const CalendarContent = () => {
                 </div>
               )}
             </div>
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
     </MainLayout>
