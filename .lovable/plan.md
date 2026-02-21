@@ -1,89 +1,49 @@
 
-# Diagnóstico exacto del problema
+# Plan: Funnel Cards en grilla 2x2 en mobile
 
-La tabla externa `bookings` tiene columnas de primer nivel (no en `metadata`):
-- `address` (text)
-- `comuna` (text)
-- `region` (text)
-- `shipping_cost` (numeric)
-- `payment_method` (text)
-- `estimated_delivery_date` (date)
-- `estimated_delivery_time` (text)
+## Cambio
 
-El código en `use-external-bookings.ts` busca estos datos **dentro del campo JSON `metadata`** (que está NULL/vacío para estos registros). Por eso `shippingData` siempre queda vacío y el modal no muestra nada.
+Reemplazar el scroll horizontal de los 4 cards del funnel (TOFU, MOFU, HOT LEADS, BOFU) por una grilla 2x2 en la vista mobile.
 
-## Archivos a modificar
+## Archivo a modificar
 
-### 1. `src/integrations/supabase/external-client.ts`
-Agregar las columnas faltantes a la interfaz `ExternalBooking`:
+`src/pages/Dashboard.tsx` (lineas 254-279)
 
-```typescript
-export interface ExternalBooking {
-  // ...campos existentes...
-  // Columnas directas de despacho (no en metadata)
-  address: string | null;
-  comuna: string | null;
-  region: string | null;
-  shipping_cost: number | null;
-  payment_method: string | null;
-  estimated_delivery_date: string | null;   // "YYYY-MM-DD"
-  estimated_delivery_time: string | null;   // "HH:MM-HH:MM"
-}
+## Cambio tecnico
+
+Reemplazar el bloque mobile actual (ScrollArea con flex horizontal) por un `div` con grid 2x2:
+
+```tsx
+// Antes: ScrollArea con flex horizontal y scroll
+// Despues:
+<div className="grid grid-cols-2 gap-3 mb-4">
+  {funnelStages.map((stage) => (
+    <div key={stage.label} className={`rounded-xl border p-3 ${stage.bgColor}`}>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <div className={`rounded-md p-1 ${stage.iconBg}`}>
+          <stage.icon className={`h-3 w-3 ${stage.iconColor}`} />
+        </div>
+        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+          {stage.label}
+        </span>
+      </div>
+      <p className="text-xl font-bold text-foreground mb-0.5">
+        {typeof stage.value === 'number' ? stage.value.toLocaleString() : stage.value}
+      </p>
+      <p className="text-[10px] text-muted-foreground">{stage.sublabel}</p>
+    </div>
+  ))}
+</div>
 ```
 
-### 2. `src/lib/types/index.ts`
-Agregar `paymentMethod` y `estimatedDeliveryTime` a `ShippingData`:
+### Diferencias clave vs. el actual:
+- **Grid 2x2** (`grid grid-cols-2`) en vez de `flex` horizontal con scroll
+- **Sin ScrollArea** ni ScrollBar
+- **Sin flechas** entre cards (no caben en 2x2 y no aportan en esta disposicion)
+- **Padding reducido** (`p-3` en vez de `p-4`) para que los 4 cards quepan bien
+- **Texto ligeramente mas compacto** (`text-xl` en vez de `text-2xl`) para evitar desborde
+- **Iconos un poco mas pequenos** (`h-3 w-3` y `p-1`)
 
-```typescript
-export interface ShippingData {
-  address?: string;
-  commune?: string;
-  region?: string;
-  email?: string;
-  shippingCost?: number;
-  subtotal?: number;
-  total?: number;
-  shippingDate?: string;
-  paymentMethod?: string;       // NUEVO
-  estimatedDeliveryTime?: string; // NUEVO - "16:00-22:00"
-}
-```
-
-### 3. `src/hooks/use-external-bookings.ts`
-Cambiar la extracción de `shippingData` para leer de **columnas directas** primero, con `metadata` como fallback:
-
-```typescript
-const shippingData: ShippingData = {};
-
-// Leer de columnas directas (prioridad sobre metadata)
-const address = booking.address || (metadata?.direccion || metadata?.address) as string | undefined;
-const commune = booking.comuna || (metadata?.comuna || metadata?.commune) as string | undefined;
-const region = booking.region || (metadata?.region || metadata?.estado) as string | undefined;
-const shippingCost = booking.shipping_cost ?? (metadata?.costo_envio || metadata?.shipping_cost) as number | undefined;
-const paymentMethod = booking.payment_method || undefined;
-const shippingDate = booking.estimated_delivery_date || (metadata?.fecha_despacho) as string | undefined;
-const estimatedDeliveryTime = booking.estimated_delivery_time || undefined;
-
-if (address) shippingData.address = address;
-if (commune) shippingData.commune = commune;
-// etc.
-```
-
-### 4. `src/pages/Calendar.tsx`
-Agregar en la pestaña "Detalle de despacho" los dos campos nuevos:
-- **Método de pago** (con ícono `CreditCard`)
-- **Horario estimado de entrega** (junto a la fecha de despacho)
-
-## Resultado esperado
-
-| Campo | Origen actual (❌) | Origen correcto (✅) |
-|---|---|---|
-| Dirección | `metadata.direccion` (NULL) | `booking.address` |
-| Comuna | `metadata.comuna` (NULL) | `booking.comuna` |
-| Región | `metadata.region` (NULL) | `booking.region` |
-| Costo envío | `metadata.costo_envio` (NULL) | `booking.shipping_cost` |
-| Fecha despacho | `metadata.fecha_despacho` (NULL) | `booking.estimated_delivery_date` |
-| Método pago | — | `booking.payment_method` (NUEVO) |
-| Horario entrega | — | `booking.estimated_delivery_time` (NUEVO) |
-
-Con este cambio, todos los pedidos que ya tienen datos en las columnas directas (como los 3 de "mayecura 1239 / vitacura") mostrarán correctamente la información en el modal.
+### Sin cambios en:
+- Vista desktop (el bloque `else` de lineas 280-302 queda intacto)
+- Colores, datos, metricas, rates, ni ningun otro componente
