@@ -252,31 +252,23 @@ export default function Dashboard() {
           
           {/* Pipeline Visual - Responsive Grid/Scroll */}
           {isMobile ? (
-            // Mobile: Horizontal scrollable cards
-            <ScrollArea className="w-full -mx-4 px-4 mb-4">
-              <div className="flex gap-3 pb-2">
-                {funnelStages.map((stage, idx, arr) => (
-                  <div key={stage.label} className="flex items-center shrink-0">
-                    <div className={`rounded-xl border p-4 min-w-[140px] ${stage.bgColor}`}>
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className={`rounded-md p-1.5 ${stage.iconBg}`}>
-                          <stage.icon className={`h-3.5 w-3.5 ${stage.iconColor}`} />
-                        </div>
-                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{stage.label}</span>
-                      </div>
-                      <p className="text-2xl font-bold text-foreground mb-0.5">
-                        {typeof stage.value === 'number' ? stage.value.toLocaleString() : stage.value}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">{stage.sublabel}</p>
+            // Mobile: Grid 2x2
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              {funnelStages.map((stage) => (
+                <div key={stage.label} className={`rounded-xl border p-3 ${stage.bgColor}`}>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <div className={`rounded-md p-1 ${stage.iconBg}`}>
+                      <stage.icon className={`h-3 w-3 ${stage.iconColor}`} />
                     </div>
-                    {idx < arr.length - 1 && (
-                      <ArrowRight className="h-4 w-4 text-muted-foreground/40 mx-2 shrink-0" />
-                    )}
+                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{stage.label}</span>
                   </div>
-                ))}
-              </div>
-              <ScrollBar orientation="horizontal" />
-            </ScrollArea>
+                  <p className="text-xl font-bold text-foreground mb-0.5">
+                    {typeof stage.value === 'number' ? stage.value.toLocaleString() : stage.value}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">{stage.sublabel}</p>
+                </div>
+              ))}
+            </div>
           ) : (
             // Desktop: Grid layout
             <div className="grid grid-cols-4 gap-3 mb-6">
