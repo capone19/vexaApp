@@ -228,7 +228,7 @@ export default function Dashboard() {
 
   return (
     <MainLayout>
-      <div className="space-y-4 md:space-y-6">
+      <div className="flex flex-col gap-4 md:gap-6">
         {/* Header */}
         <PageHeader
           title="Dashboard"
@@ -244,7 +244,7 @@ export default function Dashboard() {
         />
 
         {/* Funnel Card */}
-        <div className="rounded-xl border border-border bg-card p-4 md:p-6">
+        <div className="order-2 md:order-none rounded-xl border border-border bg-card p-4 md:p-6">
           <div className="mb-4 md:mb-6">
             <h3 className="text-sm md:text-base font-semibold text-foreground">Resumen del Funnel de Ventas</h3>
             <p className="text-xs md:text-sm text-muted-foreground">TOFU → MOFU → BOFU en tiempo real</p>
@@ -324,7 +324,7 @@ export default function Dashboard() {
         </div>
 
         {/* Billing Period Usage Card - FUENTE DE VERDAD para facturación */}
-        <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 md:p-6">
+        <div className="order-5 md:order-none rounded-lg border border-amber-200 bg-amber-50/50 p-4 md:p-6">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
               <div className="rounded-lg bg-amber-100 p-2">
@@ -382,7 +382,7 @@ export default function Dashboard() {
         {/* Panel de Conversaciones Extra - SIEMPRE VISIBLE */}
         {!billingLoading && billingUsage && (
           <div className={cn(
-            "rounded-xl border-2 p-4 md:p-5",
+            "order-6 md:order-none rounded-xl border-2 p-4 md:p-5",
             billingUsage.conversationsExtra > 0 
               ? "border-orange-400 bg-gradient-to-br from-orange-50 to-amber-50" 
               : "border-gray-200 bg-gradient-to-br from-gray-50 to-slate-50"
@@ -463,7 +463,7 @@ export default function Dashboard() {
         )}
 
         {/* Revenue Card */}
-        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 md:p-6">
+        <div className="order-3 md:order-none rounded-lg border border-primary/20 bg-primary/5 p-4 md:p-6">
           <div className="flex items-center gap-3 mb-2">
             <div className="rounded-lg bg-primary/10 p-2">
               <DollarSign className="h-4 w-4 md:h-5 md:w-5 text-primary" />
@@ -474,7 +474,7 @@ export default function Dashboard() {
         </div>
 
         {/* KPI Cards - Responsive Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+        <div className="order-4 md:order-none grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           <KPICard
             title="Total mensajes"
             value={metrics.totalMessages.toLocaleString()}
@@ -502,7 +502,7 @@ export default function Dashboard() {
         </div>
 
         {/* Appointments - Responsive Table/Cards */}
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <div className="order-7 md:order-none rounded-lg border border-border bg-card overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between">
             <h3 className="text-sm md:text-base font-semibold text-foreground">Últimos agendamientos</h3>
             {isMobile && recentAppointments.length > 0 && (
