@@ -525,26 +525,28 @@ export default function AdminClients() {
                       return (
                         <TableRow key={tenant.id}>
                           <TableCell>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleImpersonate(tenant)}
-                                  disabled={!!impersonatingId}
-                                  className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
-                                >
-                                  {isCurrentlyImpersonating ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <Eye className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Ver como cliente</p>
-                              </TooltipContent>
-                            </Tooltip>
+                            {tenant.id !== '557bd366-37e7-4155-82f8-b10d4c31ac72' ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleImpersonate(tenant)}
+                                    disabled={!!impersonatingId}
+                                    className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
+                                  >
+                                    {isCurrentlyImpersonating ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Eye className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Ver como cliente</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : null}
                           </TableCell>
                           <TableCell className="font-medium">{tenant.name}</TableCell>
                           <TableCell>
