@@ -525,7 +525,7 @@ export default function AdminClients() {
                       return (
                         <TableRow key={tenant.id}>
                           <TableCell>
-                            {tenant.id !== '557bd366-37e7-4155-82f8-b10d4c31ac72' ? (
+                            {tenant.id !== '557bd366-37e7-4155-82f8-b10d4c31ac72' && tenant.name?.toLowerCase() !== 'tienda2nv' ? (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button
