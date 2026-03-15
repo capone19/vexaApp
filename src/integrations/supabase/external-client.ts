@@ -1,8 +1,10 @@
 // Cliente de Supabase externo para n8n_chat_histories (realtime)
 import { createClient } from '@supabase/supabase-js';
 
-const EXTERNAL_SUPABASE_URL = 'https://gfltyrhndfuttacrmcjd.supabase.co';
-const EXTERNAL_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmbHR5cmhuZGZ1dHRhY3JtY2pkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwMDc4NTcsImV4cCI6MjA4MzU4Mzg1N30.7xrEuVCFKT8vO6JLXTJx4cAVkhc5MIqxa7dPrZ6-IMU';
+// URLs configurables mediante variables de entorno
+// Si no se configuran, usa los valores por defecto del proyecto original
+const EXTERNAL_SUPABASE_URL = import.meta.env.VITE_EXTERNAL_SUPABASE_URL || 'https://gfltyrhndfuttacrmcjd.supabase.co';
+const EXTERNAL_SUPABASE_ANON_KEY = import.meta.env.VITE_EXTERNAL_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmbHR5cmhuZGZ1dHRhY3JtY2pkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwMDc4NTcsImV4cCI6MjA4MzU4Mzg1N30.7xrEuVCFKT8vO6JLXTJx4cAVkhc5MIqxa7dPrZ6-IMU';
 
 // Interfaz para media en mensajes
 export interface N8nMessageMedia {

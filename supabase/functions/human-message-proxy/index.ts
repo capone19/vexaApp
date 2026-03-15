@@ -7,8 +7,10 @@ const corsHeaders = {
 };
 
 // Webhook por defecto para tenants sin configuración específica
-const DEFAULT_WEBHOOK_URL =
-  "https://n8n-growthpartners-n8n.q7anmx.easypanel.host/webhook/estetica_online";
+// Configurable mediante variable de entorno en Supabase Edge Functions
+const N8N_BASE_URL = Deno.env.get("N8N_BASE_URL") || "https://n8n-growthpartners-n8n.q7anmx.easypanel.host";
+const N8N_DEFAULT_PATH = Deno.env.get("N8N_WEBHOOK_DEFAULT") || "/webhook/estetica_online";
+const DEFAULT_WEBHOOK_URL = `${N8N_BASE_URL}${N8N_DEFAULT_PATH}`;
 
 function normalizeWebhookUrl(url: string): string {
   return url.endsWith("/") ? url : `${url}/`;

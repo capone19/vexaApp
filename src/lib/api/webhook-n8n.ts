@@ -96,7 +96,11 @@ function prepareRawData(sectionData: Record<string, unknown>): Record<string, un
   return serializeForJSON(rawData) as Record<string, unknown>;
 }
 
-const N8N_WEBHOOK_URL = "https://n8n-growthpartners-n8n.q7anmx.easypanel.host/webhook/76e801a3-1b3d-4753-be54-a81223b3c29f";
+// URL del webhook de n8n para ajustes del agente
+// Configurable mediante variable de entorno, con fallback al valor por defecto
+const N8N_BASE_URL = import.meta.env.VITE_N8N_BASE_URL || "https://n8n-growthpartners-n8n.q7anmx.easypanel.host";
+const N8N_SETTINGS_PATH = import.meta.env.VITE_N8N_WEBHOOK_SETTINGS || "/webhook/76e801a3-1b3d-4753-be54-a81223b3c29f";
+const N8N_WEBHOOK_URL = `${N8N_BASE_URL}${N8N_SETTINGS_PATH}`;
 
 /**
  * Envía el evento de guardado a n8n

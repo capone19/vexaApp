@@ -6,7 +6,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const N8N_WEBHOOK_URL = "https://n8n-growthpartners-n8n.q7anmx.easypanel.host/webhook/76e801a3-1b3d-4753-be54-a81223b3c29f";
+// URL del webhook de n8n configurable mediante variable de entorno
+// En Supabase Edge Functions, las variables de entorno se configuran en el dashboard
+const N8N_BASE_URL = Deno.env.get("N8N_BASE_URL") || "https://n8n-growthpartners-n8n.q7anmx.easypanel.host";
+const N8N_SETTINGS_PATH = Deno.env.get("N8N_WEBHOOK_SETTINGS") || "/webhook/76e801a3-1b3d-4753-be54-a81223b3c29f";
+const N8N_WEBHOOK_URL = `${N8N_BASE_URL}${N8N_SETTINGS_PATH}`;
 
 serve(async (req) => {
   // Handle CORS preflight
