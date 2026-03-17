@@ -1,10 +1,15 @@
 // Cliente de Supabase externo para n8n_chat_histories (realtime)
 import { createClient } from '@supabase/supabase-js';
 
-// URLs configurables mediante variables de entorno
-// Si no se configuran, usa los valores por defecto del proyecto original
-const EXTERNAL_SUPABASE_URL = import.meta.env.VITE_EXTERNAL_SUPABASE_URL || 'https://gfltyrhndfuttacrmcjd.supabase.co';
-const EXTERNAL_SUPABASE_ANON_KEY = import.meta.env.VITE_EXTERNAL_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdmbHR5cmhuZGZ1dHRhY3JtY2pkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwMDc4NTcsImV4cCI6MjA4MzU4Mzg1N30.7xrEuVCFKT8vO6JLXTJx4cAVkhc5MIqxa7dPrZ6-IMU';
+// URLs configurables exclusivamente mediante variables de entorno
+const EXTERNAL_SUPABASE_URL = import.meta.env.VITE_EXTERNAL_SUPABASE_URL;
+const EXTERNAL_SUPABASE_ANON_KEY = import.meta.env.VITE_EXTERNAL_SUPABASE_ANON_KEY;
+
+if (!EXTERNAL_SUPABASE_URL || !EXTERNAL_SUPABASE_ANON_KEY) {
+  throw new Error(
+    'Missing required environment variables: VITE_EXTERNAL_SUPABASE_URL and VITE_EXTERNAL_SUPABASE_ANON_KEY must be configured in .env file'
+  );
+}
 
 // Interfaz para media en mensajes
 export interface N8nMessageMedia {

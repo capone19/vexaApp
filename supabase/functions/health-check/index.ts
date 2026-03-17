@@ -71,7 +71,7 @@ async function checkLovableCloudDB(supabaseAdmin: any): Promise<ServiceCheck> {
 // Check External DB (n8n Supabase)
 async function checkExternalDB(): Promise<ServiceCheck> {
   const start = Date.now();
-  const externalUrl = 'https://gfltyrhndfuttacrmcjd.supabase.co';
+  const externalUrl = Deno.env.get('EXTERNAL_SUPABASE_URL') || Deno.env.get('SUPABASE_URL')!;
   const externalServiceKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
   
   if (!externalServiceKey) {

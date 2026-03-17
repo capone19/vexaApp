@@ -134,7 +134,8 @@ Deno.serve(async (req) => {
       console.log('[admin-onboarding] Step 3: Syncing to external Supabase...');
       
       try {
-        const externalUrl = 'https://gfltyrhndfuttacrmcjd.supabase.co/rest/v1/tenant_channels';
+        const externalBaseUrl = Deno.env.get('EXTERNAL_SUPABASE_URL') || Deno.env.get('SUPABASE_URL')!;
+        const externalUrl = `${externalBaseUrl}/rest/v1/tenant_channels`;
         
         const externalResponse = await fetch(externalUrl, {
           method: 'POST',

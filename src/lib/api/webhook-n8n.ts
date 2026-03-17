@@ -98,7 +98,7 @@ function prepareRawData(sectionData: Record<string, unknown>): Record<string, un
 
 // URL del webhook de n8n para ajustes del agente
 // Configurable mediante variable de entorno, con fallback al valor por defecto
-const N8N_BASE_URL = import.meta.env.VITE_N8N_BASE_URL || "https://n8n-growthpartners-n8n.q7anmx.easypanel.host";
+const N8N_BASE_URL = import.meta.env.VITE_N8N_BASE_URL || "https://n8ninnovatec-n8n.t0bgq1.easypanel.host";
 const N8N_SETTINGS_PATH = import.meta.env.VITE_N8N_WEBHOOK_SETTINGS || "/webhook/76e801a3-1b3d-4753-be54-a81223b3c29f";
 const N8N_WEBHOOK_URL = `${N8N_BASE_URL}${N8N_SETTINGS_PATH}`;
 
@@ -150,7 +150,25 @@ export async function sendWebhookToN8n(
     console.warn("[Webhook n8n] Edge Function error:", edgeError);
   }
 
-  // Método 2: Fallback - fetch directo con no-cors
+  // Método 2: Fetch directo con CORS (funciona si n8n acepta CORS)
+  try {
+    console.log("[Webhook n8n] Intentando fetch directo (cors)...");
+    const corsResponse = await fetch(N8N_WEBHOOK_URL, {
+      method: "POST",
+      mode: "cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (corsResponse.ok) {
+      console.log("[Webhook n8n] ✅ Enviado via fetch directo (cors):", corsResponse.status);
+      return { success: true };
+    }
+    console.warn("[Webhook n8n] Fetch cors respondió con status:", corsResponse.status);
+  } catch (corsError) {
+    console.warn("[Webhook n8n] Fetch cors falló (posible CORS), intentando no-cors:", corsError);
+  }
+
+  // Método 3: Fallback - fetch directo con no-cors (fire-and-forget)
   try {
     console.log("[Webhook n8n] Intentando fetch directo (no-cors)...");
     await fetch(N8N_WEBHOOK_URL, {
@@ -159,7 +177,7 @@ export async function sendWebhookToN8n(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    console.log("[Webhook n8n] ✅ Enviado via fetch directo (fire-and-forget)");
+    console.log("[Webhook n8n] ✅ Enviado via fetch directo (fire-and-forget, no-cors)");
     return { success: true };
   } catch (fetchError) {
     console.error("[Webhook n8n] ❌ Todos los métodos fallaron:", fetchError);
