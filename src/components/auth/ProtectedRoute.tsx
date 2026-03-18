@@ -26,11 +26,9 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
-  // Autenticado pero sin tenant → verificar si es admin impersonando
-  // Si es admin impersonando, permitir acceso (para ver dashboard del cliente)
-  // Si no es admin o no está impersonando, bloquear (usuarios normales sin tenant)
+  // Sin tenant: no enviar a /auth (hay sesión → bucle con redirect de Auth). Página dedicada.
   if (!hasTenant && (!isAdmin || !isImpersonating)) {
-    return <Navigate to="/auth" replace />;
+    return <Navigate to="/cuenta-pendiente" replace />;
   }
 
   // Autenticado y con tenant (real o impersonado) → mostrar contenido

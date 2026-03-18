@@ -7,128 +7,125 @@ const corsHeaders = {
 
 const ADMIN_EMAIL = 'contacto@vexalatam.com';
 
+async function listAllAuthUsers(
+  supabaseAdmin: ReturnType<typeof createClient>
+): Promise<{ id: string; email?: string; created_at?: string; user_metadata?: Record<string, unknown> }[]> {
+  const all: { id: string; email?: string; created_at?: string; user_metadata?: Record<string, unknown> }[] = [];
+  let page = 1;
+  const perPage = 1000;
+  for (;;) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+    const users = data?.users ?? [];
+    all.push(...users);
+    if (users.length < perPage) break;
+    page += 1;
+  }
+  return all;
+}
+
 Deno.serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Verify authorization
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(
-        JSON.stringify({ error: 'No autorizado' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'No autorizado' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    // Create admin client with service role to bypass RLS
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // Verify the requesting user is admin using getClaims (proper method for token validation)
     const token = authHeader.replace('Bearer ', '');
-    const { data: claims, error: claimsError } = await supabaseAdmin.auth.getClaims(token);
-    
-    if (claimsError || !claims?.claims?.sub) {
-      console.error('[admin-list-pending-users] Auth error:', claimsError);
-      return new Response(
-        JSON.stringify({ error: 'Token inválido' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Mismo criterio que admin-onboarding: getUser devuelve email fiable; getClaims a veces no trae email en el JWT.
+    const {
+      data: { user: caller },
+      error: authError,
+    } = await supabaseAdmin.auth.getUser(token);
+
+    if (authError || !caller) {
+      console.error('[admin-list-pending-users] Auth error:', authError);
+      return new Response(JSON.stringify({ error: 'Token inválido' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    const userEmail = claims.claims.email as string | undefined;
-    console.log('[admin-list-pending-users] Authenticated user:', userEmail);
-
-    // Check if user is admin
-    if (userEmail !== ADMIN_EMAIL) {
-      console.error('[admin-list-pending-users] Unauthorized access attempt by:', userEmail);
-      return new Response(
-        JSON.stringify({ error: 'Acceso denegado - Solo administradores' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    const callerEmail = (caller.email || '').toLowerCase();
+    if (callerEmail !== ADMIN_EMAIL.toLowerCase()) {
+      console.error('[admin-list-pending-users] Unauthorized:', caller.email);
+      return new Response(JSON.stringify({ error: 'Acceso denegado - Solo administradores' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    console.log('[admin-list-pending-users] Admin verified:', userEmail);
-
-    // Get all profiles
     const { data: profiles, error: profilesError } = await supabaseAdmin
       .from('profiles')
       .select('user_id, full_name, created_at');
 
     if (profilesError) {
-      console.error('[admin-list-pending-users] Error fetching profiles:', profilesError);
+      console.error('[admin-list-pending-users] profiles:', profilesError);
       throw profilesError;
     }
 
-    console.log('[admin-list-pending-users] Profiles found:', profiles?.length);
+    const profileByUserId = new Map(
+      (profiles || []).map((p) => [p.user_id, p as { full_name: string | null; created_at: string | null }])
+    );
 
-    // Get user_ids that already have a tenant
     const { data: assignedUsers, error: assignedError } = await supabaseAdmin
       .from('user_roles')
       .select('user_id');
 
     if (assignedError) {
-      console.error('[admin-list-pending-users] Error fetching user_roles:', assignedError);
+      console.error('[admin-list-pending-users] user_roles:', assignedError);
       throw assignedError;
     }
 
-    console.log('[admin-list-pending-users] Assigned users:', assignedUsers?.length);
+    const assignedUserIds = new Set((assignedUsers || []).map((u) => u.user_id));
 
-    // Get all auth users to get their emails
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.listUsers();
+    const authUsers = await listAllAuthUsers(supabaseAdmin);
 
-    if (authError) {
-      console.error('[admin-list-pending-users] Error fetching auth users:', authError);
-      throw authError;
-    }
-
-    // Create a map of user_id to email
-    const userEmailMap = new Map<string, string>();
-    authData.users.forEach(user => {
-      userEmailMap.set(user.id, user.email || '');
-    });
-
-    // Filter profiles:
-    // 1. Don't have a tenant (not in user_roles)
-    // 2. Are not the admin email
-    const assignedUserIds = new Set(assignedUsers?.map(u => u.user_id) || []);
-    
-    const pendingUsers = (profiles || [])
-      .filter(p => {
-        const userEmail = userEmailMap.get(p.user_id);
-        const hasNoTenant = !assignedUserIds.has(p.user_id);
-        const isNotAdmin = userEmail !== ADMIN_EMAIL;
-        
-        console.log(`[admin-list-pending-users] User ${p.full_name}: email=${userEmail}, hasNoTenant=${hasNoTenant}, isNotAdmin=${isNotAdmin}`);
-        
-        return hasNoTenant && isNotAdmin;
+    const pendingUsers = authUsers
+      .filter((u) => {
+        const email = (u.email || '').toLowerCase();
+        return !assignedUserIds.has(u.id) && email !== ADMIN_EMAIL.toLowerCase();
       })
-      .map(p => ({
-        id: p.user_id,
-        fullName: p.full_name,
-        email: userEmailMap.get(p.user_id) || null,
-        createdAt: p.created_at || new Date().toISOString(),
-      }));
+      .map((u) => {
+        const prof = profileByUserId.get(u.id);
+        const meta = u.user_metadata || {};
+        const fullName =
+          prof?.full_name ||
+          (typeof meta.full_name === 'string' ? meta.full_name : null) ||
+          (u.email ? u.email.split('@')[0] : 'Usuario');
+        return {
+          id: u.id,
+          fullName,
+          email: u.email || null,
+          createdAt: prof?.created_at || u.created_at || new Date().toISOString(),
+        };
+      });
 
-    console.log('[admin-list-pending-users] Pending users found:', pendingUsers.length);
+    console.log('[admin-list-pending-users] Pending (sin tenant en user_roles):', pendingUsers.length);
 
-    return new Response(
-      JSON.stringify({ pendingUsers }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
+    return new Response(JSON.stringify({ pendingUsers }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Error interno del servidor';
-    console.error('[admin-list-pending-users] Error:', error);
-    return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    console.error('[admin-list-pending-users]', error);
+    return new Response(JSON.stringify({ error: errorMessage }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });

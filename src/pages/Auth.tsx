@@ -76,7 +76,8 @@ export default function Auth() {
         
         if (result.success) {
           toast.success("¡Bienvenido de vuelta!");
-          // Navigation will happen via onAuthStateChange
+          setIsLoading(false);
+          // Navegación: onAuthStateChange en esta página + AuthContext (isLoading durante resolveUser)
         } else {
           toast.error(result.error || "Error al iniciar sesión");
           setIsLoading(false);

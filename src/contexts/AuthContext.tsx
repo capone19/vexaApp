@@ -186,8 +186,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
           setSubscription(null);
           setHasTenant(false);
         } else if (event === 'SIGNED_IN') {
-          // Solo procesar si ya fue inicializado (evitar duplicar initAuth)
+          // Marcar loading ANTES de cualquier await para que ProtectedRoute no redirija
+          // a /auth mientras resolveUser corre (evita "login OK pero no entro al dashboard").
           if (isInitialized && session?.user) {
+            setIsLoading(true);
             try {
               const resolvedUser = await resolveUser(session);
               if (resolvedUser) {

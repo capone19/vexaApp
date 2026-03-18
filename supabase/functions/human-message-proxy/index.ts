@@ -9,7 +9,7 @@ const corsHeaders = {
 // Webhook por defecto para tenants sin configuración específica
 // Configurable mediante variable de entorno en Supabase Edge Functions
 const N8N_BASE_URL = Deno.env.get("N8N_BASE_URL") || "https://n8ninnovatec-n8n.t0bgq1.easypanel.host";
-const N8N_DEFAULT_PATH = Deno.env.get("N8N_WEBHOOK_DEFAULT") || "/webhook/estetica_online";
+const N8N_DEFAULT_PATH = Deno.env.get("N8N_WEBHOOK_DEFAULT") || "/webhook/chatapp";
 const DEFAULT_WEBHOOK_URL = `${N8N_BASE_URL}${N8N_DEFAULT_PATH}`;
 
 function normalizeWebhookUrl(url: string): string {

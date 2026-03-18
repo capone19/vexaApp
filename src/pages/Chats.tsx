@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useN8nChatHistory } from "@/hooks/use-n8n-chat-history";
-import { externalSupabase } from "@/integrations/supabase/external-client";
+import { externalSupabase, type N8nChatMessage } from "@/integrations/supabase/external-client";
 import { WEBHOOKS } from "@/lib/constants";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
@@ -18,7 +18,7 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 
-import { format, isToday, isYesterday, differenceInDays, differenceInHours } from "date-fns";
+import { format, isToday, isYesterday, differenceInDays } from "date-fns";
 import { es } from "date-fns/locale";
 import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio, Tags, FileText, Clock } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -142,7 +142,10 @@ export default function Chats() {
   const [labelFilterIds, setLabelFilterIds] = useState<string[]>([]);
   const [labelsManagerOpen, setLabelsManagerOpen] = useState(false);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
-  
+  /** Mensajes de la sesión activa para calcular ventana 24h (el buffer global puede no incluir chats antiguos) */
+  const [sessionRowsFor24h, setSessionRowsFor24h] = useState<N8nChatMessage[]>([]);
+  const [resolved24hForSessionId, setResolved24hForSessionId] = useState<string | null>(null);
+
   // Chat labels hook
   const {
     labels,
@@ -193,6 +196,54 @@ export default function Chats() {
     
     return () => clearTimeout(timeoutId);
   }, [selectedSessionId, selectedMessagesCount]);
+
+  // Cargar historial de la sesión seleccionada para ventana 24h (últimos 500 de esa sesión)
+  useEffect(() => {
+    if (!selectedSessionId) {
+      setSessionRowsFor24h([]);
+      setResolved24hForSessionId(null);
+      return;
+    }
+    const sid = selectedSessionId;
+    setResolved24hForSessionId(null);
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        let q = externalSupabase
+          .from("n8n_chat_histories")
+          .select("id, session_id, tenant_id, message, created_at, media")
+          .eq("session_id", sid)
+          .order("created_at", { ascending: false })
+          .limit(500);
+
+        if (effectiveTenantId && !isAdmin) {
+          q = q.eq("tenant_id", effectiveTenantId);
+        }
+
+        const { data, error } = await q;
+        if (cancelled) return;
+        if (error) {
+          console.warn("[Chats] Error cargando sesión para ventana 24h:", error);
+          setSessionRowsFor24h([]);
+        } else {
+          setSessionRowsFor24h((data as N8nChatMessage[]) || []);
+        }
+        if (!cancelled) setResolved24hForSessionId(sid);
+      } catch (e) {
+        console.warn("[Chats] Ventana 24h:", e);
+        if (!cancelled) {
+          setSessionRowsFor24h([]);
+          setResolved24hForSessionId(sid);
+        }
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSessionId, effectiveTenantId, isAdmin]);
 
   // Obtener el tenant_id de los mensajes de la sesión seleccionada
   const selectedSessionTenantId = useMemo(() => {
@@ -491,22 +542,48 @@ export default function Chats() {
     return processedSessions.find(s => s.sessionId === selectedSessionId);
   }, [processedSessions, selectedSessionId]);
 
-  // Calcular si la ventana de 24 horas expiró (23 horas para seguridad)
+  const getInboundMessageType = (m: N8nChatMessage): string => {
+    let msg: unknown = m.message;
+    if (typeof msg === "string") {
+      try {
+        msg = JSON.parse(msg) as { type?: string };
+      } catch {
+        return "";
+      }
+    }
+    if (!msg || typeof msg !== "object") return "";
+    return String((msg as { type?: string }).type ?? "").toLowerCase();
+  };
+
+  /** Último mensaje del cliente en la sesión (WhatsApp cuenta 24h desde aquí) */
   const lastClientMessageTime = useMemo(() => {
     if (!selectedSessionId) return null;
-    
-    // Buscar el último mensaje del cliente (type === 'human')
-    const clientMessages = messages
-      .filter(m => m.session_id === selectedSessionId && m.message?.type === 'human')
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    
-    return clientMessages.length > 0 ? new Date(clientMessages[0].created_at) : null;
-  }, [messages, selectedSessionId]);
 
+    const pool =
+      sessionRowsFor24h.length > 0
+        ? sessionRowsFor24h
+        : messages.filter((m) => m.session_id === selectedSessionId);
+
+    const sorted = [...pool].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    for (const row of sorted) {
+      const t = getInboundMessageType(row as N8nChatMessage);
+      if (t === "human" || t === "user" || t === "customer") {
+        return new Date(row.created_at);
+      }
+    }
+    return null;
+  }, [messages, selectedSessionId, sessionRowsFor24h]);
+
+  const TWENTY_FOUR_H_MS = 24 * 60 * 60 * 1000;
   const isWindowExpired = useMemo(() => {
-    if (!lastClientMessageTime) return true; // Sin mensajes del cliente = ventana cerrada
-    return differenceInHours(new Date(), lastClientMessageTime) >= 23;
+    if (!lastClientMessageTime) return true;
+    return Date.now() - lastClientMessageTime.getTime() > TWENTY_FOUR_H_MS;
   }, [lastClientMessageTime]);
+
+  const is24hCheckReady = !selectedSessionId || resolved24hForSessionId === selectedSessionId;
   // Empty State Component
   const EmptyState = () => (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center">
@@ -1059,8 +1136,22 @@ export default function Chats() {
       {/* Se bloquea cuando el bot está activo o cuando la ventana de 24h expiró */}
       {(() => {
         const isBotActive = botStates[selectedSessionId] ?? true;
-        
-        // Si pasaron 23+ horas, mostrar botón de plantillas
+
+        if (!is24hCheckReady) {
+          return (
+            <div
+              className={cn(
+                "border-t border-border bg-background shrink-0 flex items-center justify-center gap-2 text-muted-foreground",
+                isMobile ? "py-3 px-2" : "py-4"
+              )}
+            >
+              <Loader2 className={cn("animate-spin", isMobile ? "h-4 w-4" : "h-5 w-5")} />
+              <span className={cn(isMobile ? "text-xs" : "text-sm")}>Comprobando ventana de mensajes…</span>
+            </div>
+          );
+        }
+
+        // Más de 24h desde el último mensaje del cliente → plantillas
         if (isWindowExpired) {
           return (
             <div className={cn(

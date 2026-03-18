@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { usePendingUsers, PendingUser } from '@/hooks/use-pending-users';
 import { supabase } from '@/integrations/supabase/client';
@@ -52,8 +51,15 @@ function generateSlug(name: string): string {
     .replace(/^-|-$/g, '');
 }
 
+function randomSlugSuffix(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const arr = new Uint8Array(8);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, (b) => chars[b % chars.length]).join('');
+}
+
 export default function AdminOnboarding() {
-  const { pendingUsers, isLoading: loadingUsers, refetch } = usePendingUsers();
+  const { pendingUsers, isLoading: loadingUsers, error: pendingUsersError, refetch } = usePendingUsers();
   const [selectedUser, setSelectedUser] = useState<PendingUser | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -66,6 +72,7 @@ export default function AdminOnboarding() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [metaPhoneId, setMetaPhoneId] = useState('');
   const [metaBusinessId, setMetaBusinessId] = useState('');
+  const [activacionRapida, setActivacionRapida] = useState(false);
 
   const handleNameChange = (value: string) => {
     setTenantName(value);
@@ -82,21 +89,20 @@ export default function AdminOnboarding() {
     setPhoneNumber('');
     setMetaPhoneId('');
     setMetaBusinessId('');
+    setActivacionRapida(false);
+  };
+
+  const handleGenerarSlugUnico = () => {
+    const base =
+      generateSlug(tenantName) ||
+      generateSlug(selectedUser?.email?.split('@')[0] || '') ||
+      'cliente';
+    setTenantSlug(`${base}-${randomSlugSuffix()}`);
   };
 
   const handleSubmit = async () => {
     if (!selectedUser) {
       toast.error('Selecciona un usuario');
-      return;
-    }
-
-    if (!tenantName.trim()) {
-      toast.error('Ingresa el nombre del negocio');
-      return;
-    }
-
-    if (!tenantSlug.trim()) {
-      toast.error('Ingresa el slug');
       return;
     }
 
@@ -106,8 +112,9 @@ export default function AdminOnboarding() {
       const { data, error } = await supabase.functions.invoke('admin-onboarding', {
         body: {
           userId: selectedUser.id,
-          tenantName: tenantName.trim(),
-          tenantSlug: tenantSlug.trim(),
+          tenantName: tenantName.trim() || undefined,
+          tenantSlug: activacionRapida ? undefined : tenantSlug.trim() || undefined,
+          autoSlug: activacionRapida || !tenantSlug.trim(),
           plan,
           timezone,
           channelType,
@@ -117,16 +124,29 @@ export default function AdminOnboarding() {
         },
       });
 
+      const serverError =
+        data && typeof data === 'object' && 'error' in data
+          ? String((data as { error?: string }).error)
+          : null;
+
       if (error) {
-        throw error;
+        throw new Error(serverError || error.message || 'Error al llamar a la función');
       }
 
-      if (!data.success) {
-        throw new Error(data.message || 'Error al activar cliente');
+      if (!data?.success) {
+        throw new Error(
+          serverError || (data as { message?: string })?.message || 'Error al activar cliente'
+        );
       }
 
+      const d = data as {
+        tenantId?: string;
+        tenantSlugUsed?: string;
+        tenantNameUsed?: string;
+      };
       toast.success('Cliente activado exitosamente', {
-        description: `${tenantName} está listo para usar la plataforma`,
+        description: `${d.tenantNameUsed || tenantName || 'Cliente'} · slug: ${d.tenantSlugUsed || tenantSlug} · tenant_id: ${d.tenantId || '(ver consola)'}`,
+        duration: 12000,
       });
 
       // Reset form
@@ -142,8 +162,13 @@ export default function AdminOnboarding() {
       refetch();
     } catch (err) {
       console.error('[AdminOnboarding] Error:', err);
+      const raw = err instanceof Error ? err.message : String(err);
+      const isFnUnreachable =
+        /edge function|failed to send|fetch|network|load failed|non-2xx/i.test(raw);
       toast.error('Error al activar cliente', {
-        description: err instanceof Error ? err.message : 'Intenta nuevamente',
+        description: isFnUnreachable && !raw.includes('Error creating tenant')
+          ? `${raw} — Despliega: npx supabase functions deploy admin-onboarding`
+          : raw,
       });
     } finally {
       setIsSubmitting(false);
@@ -151,6 +176,14 @@ export default function AdminOnboarding() {
   };
 
   const selectedPlan = PLANS.find(p => p.value === plan);
+
+  useEffect(() => {
+    if (pendingUsersError) {
+      toast.error('No se pudieron cargar los usuarios pendientes', {
+        description: pendingUsersError,
+      });
+    }
+  }, [pendingUsersError]);
 
   return (
     <AdminLayout>
@@ -175,16 +208,35 @@ export default function AdminOnboarding() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {pendingUsersError && (
+                <div className="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm">
+                  <p className="font-medium text-destructive">Error al cargar la lista</p>
+                  <p className="text-muted-foreground mt-1">{pendingUsersError}</p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Si acabas de actualizar el código, despliega la función{' '}
+                    <code className="rounded bg-muted px-1">admin-list-pending-users</code> en Supabase.
+                  </p>
+                  <Button variant="outline" size="sm" className="mt-3" onClick={() => refetch()}>
+                    Reintentar
+                  </Button>
+                </div>
+              )}
               {loadingUsers ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
-              ) : pendingUsers.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
+              ) : !pendingUsersError && pendingUsers.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground space-y-2">
                   <User className="h-12 w-12 mx-auto mb-2 opacity-50" />
                   <p>No hay usuarios pendientes</p>
+                  <p className="text-xs max-w-sm mx-auto">
+                    Incluye cuentas con sesión en Auth pero sin fila en{' '}
+                    <code className="rounded bg-muted px-1">user_roles</code>. Si alguien ve &quot;Cuenta en
+                    activación&quot; y no aparece aquí, revisa que la edge function esté desplegada y que
+                    inicies sesión como <strong>contacto@vexalatam.com</strong> en el panel admin.
+                  </p>
                 </div>
-              ) : (
+              ) : pendingUsersError ? null : (
                 <div className="space-y-2">
                   {pendingUsers.map((user) => (
                     <div
@@ -201,6 +253,9 @@ export default function AdminOnboarding() {
                           <p className="font-medium">
                             {user.fullName || 'Sin nombre'}
                           </p>
+                          {user.email && (
+                            <p className="text-sm text-primary/90">{user.email}</p>
+                          )}
                           <p className="text-sm text-muted-foreground flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
                             {format(new Date(user.createdAt), "d 'de' MMMM, yyyy", { locale: es })}
@@ -233,28 +288,61 @@ export default function AdminOnboarding() {
             <CardContent>
               <div className="space-y-4">
                 {/* Business Info */}
+                <div className="flex items-start gap-3 rounded-lg border border-border p-3 bg-muted/30">
+                  <Checkbox
+                    id="activacionRapida"
+                    checked={activacionRapida}
+                    onCheckedChange={(v) => setActivacionRapida(v === true)}
+                    disabled={!selectedUser}
+                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="activacionRapida" className="cursor-pointer font-medium">
+                      Activación rápida
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Genera nombre y slug automáticos desde el correo del usuario. Ideal para salir del paso; luego
+                      puedes renombrar en administración si hace falta.
+                    </p>
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="tenantName">Nombre del negocio</Label>
                   <Input
                     id="tenantName"
-                    placeholder="Ej: Mi Estética"
+                    placeholder="Ej: Mi Estética (opcional si activación rápida o se usará el email)"
                     value={tenantName}
                     onChange={(e) => handleNameChange(e.target.value)}
-                    disabled={!selectedUser}
+                    disabled={!selectedUser || activacionRapida}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="tenantSlug">Slug</Label>
-                  <Input
-                    id="tenantSlug"
-                    placeholder="mi-estetica"
-                    value={tenantSlug}
-                    onChange={(e) => setTenantSlug(e.target.value)}
-                    disabled={!selectedUser}
-                  />
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="flex-1 min-w-[180px] space-y-2">
+                      <Label htmlFor="tenantSlug">Slug</Label>
+                      <Input
+                        id="tenantSlug"
+                        placeholder="mi-estetica"
+                        value={tenantSlug}
+                        onChange={(e) => setTenantSlug(e.target.value)}
+                        disabled={!selectedUser || activacionRapida}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="mb-0.5"
+                      onClick={handleGenerarSlugUnico}
+                      disabled={!selectedUser || activacionRapida}
+                    >
+                      Generar slug único
+                    </Button>
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    Identificador único (sin espacios ni caracteres especiales)
+                    Si el slug ya existe, el servidor añade un sufijo aleatorio. Con activación rápida el slug es
+                    totalmente automático.
                   </p>
                 </div>
 
@@ -363,7 +451,7 @@ export default function AdminOnboarding() {
                 </div>
 
                 {/* Preview */}
-                {selectedUser && tenantName && (
+                {selectedUser && (tenantName.trim() || activacionRapida) && (
                   <div className="pt-4 border-t">
                     <Label className="text-sm font-medium">Se creará automáticamente</Label>
                     <div className="mt-2 p-3 bg-muted rounded-lg text-sm space-y-1">
@@ -399,7 +487,7 @@ export default function AdminOnboarding() {
                   className="w-full mt-4"
                   size="lg"
                   onClick={handleSubmit}
-                  disabled={!selectedUser || !tenantName || isSubmitting}
+                  disabled={!selectedUser || isSubmitting}
                 >
                   {isSubmitting ? (
                     <>
