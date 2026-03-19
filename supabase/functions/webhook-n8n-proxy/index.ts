@@ -49,9 +49,41 @@ serve(async (req) => {
 
     console.log("[webhook-n8n-proxy] Authenticated user:", claims.claims.sub);
 
-    // Continue with existing logic
     const payload = await req.json();
-    
+
+    // Calendario → imprimir pedido (POST a /webhook/imprimir)
+    if (
+      payload &&
+      typeof payload === "object" &&
+      (payload as Record<string, unknown>).__vexa_action === "print_imprimir"
+    ) {
+      const { __vexa_action: _a, ...printPayload } = payload as Record<string, unknown>;
+      const printUrl =
+        Deno.env.get("N8N_PRINT_WEBHOOK_URL") ||
+        `${N8N_BASE_URL}/webhook/imprimir`;
+      console.log("[webhook-n8n-proxy] print_imprimir →", printUrl);
+      const n8nResponse = await fetch(printUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json, text/plain, */*",
+        },
+        body: JSON.stringify(printPayload),
+      });
+      const responseText = await n8nResponse.text();
+      return new Response(
+        JSON.stringify({
+          success: n8nResponse.ok,
+          status: n8nResponse.status,
+          response: responseText.slice(0, 2000),
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     console.log("[webhook-n8n-proxy] Forwarding to n8n:", payload.section_key);
 
     // Forward to n8n

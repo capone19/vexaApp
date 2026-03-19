@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, addWeeks, subWeeks, addDays, subDays } from 'date-fns';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, addWeeks, subWeeks, addDays, subDays, parseISO, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Clock, User, Phone, MapPin, Calendar as CalendarIcon, Filter, Plus, X, Lock, Loader2, ShoppingBag, DollarSign, Video, ExternalLink, Mail, Truck, Package, CreditCard } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, User, Phone, MapPin, Calendar as CalendarIcon, Filter, Plus, X, Lock, Loader2, ShoppingBag, DollarSign, Video, ExternalLink, Truck, Package, CreditCard, ClipboardList, Printer } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,8 @@ import { CalendarDayCell } from '@/components/calendar/CalendarDayCell';
 import { BlockingPanel } from '@/components/calendar/BlockingPanel';
 import { BlockingModeOverlay } from '@/components/calendar/BlockingModeOverlay';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { toast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 type CalendarView = 'month' | 'week' | 'day';
 
@@ -41,7 +43,8 @@ const CalendarContent = () => {
   const [filterType, setFilterType] = useState<'all' | 'service' | 'product'>('all');
   const [filterSource, setFilterSource] = useState<string>('all');
   const [modalTab, setModalTab] = useState<'purchase' | 'shipping'>('purchase');
-  
+  const [isPrinting, setIsPrinting] = useState(false);
+
   const isMobile = useIsMobile();
 
   // Calcular rango de fechas para el mes actual +/- 1 mes (memoized para evitar refetch infinito)
@@ -174,6 +177,140 @@ const CalendarContent = () => {
     const currencyToUse = currency || tenantCurrency;
     return formatCurrency(price, currencyToUse as 'CLP' | 'BOB' | 'USD');
   };
+
+  const handlePrintBooking = useCallback(async () => {
+    if (!selectedAppointment || selectedAppointment.type !== 'product') return;
+    const apt = selectedAppointment;
+    const sd = apt.shippingData;
+    setIsPrinting(true);
+    try {
+      let dispatch_label: string | null = null;
+      if (sd?.shippingDate) {
+        const d = sd.shippingDate;
+        const parsed = parseISO(d.length === 10 ? `${d}T12:00:00` : d);
+        const label = isValid(parsed) ? format(parsed, 'yyyy-MM-dd') : d;
+        dispatch_label = sd.estimatedDeliveryTime ? `${label} (${sd.estimatedDeliveryTime})` : label;
+      } else if (sd?.estimatedDeliveryTime) {
+        dispatch_label = sd.estimatedDeliveryTime;
+      }
+
+      const subtotalNum = sd?.subtotal ?? apt.price ?? null;
+      const shippingCostNum = sd?.shippingCost ?? null;
+      const totalNum = sd?.total ?? apt.price ?? null;
+
+      const PRINT_WEBHOOK =
+        import.meta.env.VITE_N8N_PRINT_WEBHOOK_URL ??
+        'https://n8ninnovatec-n8n.t0bgq1.easypanel.host/webhook/imprimir';
+
+      const payload = {
+        timestamp_cliente: new Date().toISOString(),
+        booking_id: apt.id,
+        type: apt.type,
+        chat_id: apt.chatId ?? null,
+        notes: apt.notes ?? null,
+        status: apt.status,
+        created_at_booking: apt.createdAt.toISOString(),
+        tenant_id: tenantId ?? null,
+        compra: {
+          client_name: apt.clientName,
+          client_phone: apt.clientPhone ?? null,
+          client_email: apt.clientEmail ?? null,
+          service: apt.service,
+          purchase_date_iso: apt.datetime.toISOString(),
+          purchase_date_formatted: format(apt.datetime, "d 'de' MMMM, yyyy", { locale: es }),
+          price: apt.price ?? null,
+          currency: apt.currency ?? null,
+          subtotal: subtotalNum,
+          shipping_cost: shippingCostNum,
+          total: totalNum,
+          subtotal_display: formatPrice(sd?.subtotal ?? apt.price ?? undefined, apt.currency) ?? null,
+          shipping_cost_display:
+            sd?.shippingCost != null ? formatPrice(sd.shippingCost, apt.currency) : null,
+          total_display:
+            formatPrice(
+              (sd?.total ?? apt.price) as number | undefined,
+              apt.currency
+            ) ?? null,
+          source: apt.source,
+          source_raw: apt.sourceRaw ?? null,
+        },
+        despacho: {
+          address: sd?.address ?? null,
+          commune: sd?.commune ?? null,
+          region: sd?.region ?? null,
+          email: sd?.email ?? null,
+          shippingCost: sd?.shippingCost ?? null,
+          subtotal: sd?.subtotal ?? null,
+          total: sd?.total ?? null,
+          shippingDate: sd?.shippingDate ?? null,
+          estimatedDeliveryTime: sd?.estimatedDeliveryTime ?? null,
+          paymentMethod: sd?.paymentMethod ?? null,
+          dispatch_label,
+        },
+      };
+
+      let ok = false;
+      let errMsg = '';
+
+      try {
+        const res = await fetch(PRINT_WEBHOOK, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) ok = true;
+        else errMsg = `Webhook directo: HTTP ${res.status}`;
+      } catch {
+        errMsg = 'Webhook directo no disponible (CORS o red).';
+      }
+
+      if (!ok) {
+        const { data, error } = await supabase.functions.invoke('webhook-n8n-proxy', {
+          body: { __vexa_action: 'print_imprimir', ...payload },
+        });
+
+        if (error) {
+          toast({
+            title: 'Error al enviar a imprimir',
+            description: `${errMsg} ${error.message}`.trim(),
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        const result = data as {
+          success?: boolean;
+          status?: number;
+          error?: string;
+        } | null;
+        if (!result?.success) {
+          toast({
+            title: 'No se pudo completar la impresión',
+            description:
+              result?.error ||
+              (result?.status
+                ? `n8n respondió HTTP ${result.status}`
+                : 'Redespliega webhook-n8n-proxy (incluye ruta print_imprimir) o print-booking-proxy.'),
+            variant: 'destructive',
+          });
+          return;
+        }
+      }
+
+      toast({
+        title: 'Enviado a imprimir',
+        description: 'El pedido se envió al webhook de impresión.',
+      });
+    } catch (e) {
+      toast({
+        title: 'Error',
+        description: e instanceof Error ? e.message : 'Error desconocido',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsPrinting(false);
+    }
+  }, [selectedAppointment, tenantId, tenantCurrency]);
 
   // Empty State
   const EmptyState = () => (
@@ -796,7 +933,13 @@ const CalendarContent = () => {
 
       {/* Appointment Details Modal */}
       <Dialog open={!!selectedAppointment} onOpenChange={() => { setSelectedAppointment(null); setModalTab('purchase'); }}>
-        <DialogContent className={cn("border-border", isMobile ? "w-[calc(100%-2rem)] rounded-2xl" : "max-w-md")}>
+        <DialogContent
+          className={cn(
+            "border-border",
+            isMobile ? "w-[calc(100%-2rem)] rounded-2xl" : "max-w-md",
+            selectedAppointment?.type === 'product' && !isMobile && "max-w-lg"
+          )}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {selectedAppointment?.type === 'product' ? (
@@ -808,61 +951,72 @@ const CalendarContent = () => {
             </DialogTitle>
           </DialogHeader>
 
-          {selectedAppointment && selectedAppointment.type === 'product' && tenantId === '557bd366-37e7-4155-82f8-b10d4c31ac72' ? (
-            /* ── Modal con 2 pestañas para tenant especial + producto ── */
+          {selectedAppointment && selectedAppointment.type === 'product' ? (
+            <div className="w-full space-y-0">
             <Tabs value={modalTab} onValueChange={(v) => setModalTab(v as 'purchase' | 'shipping')} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-1">
-                <TabsTrigger value="purchase" className="text-xs gap-1.5">
-                  <ShoppingBag className="h-3.5 w-3.5" />
+              <TabsList className="grid w-full grid-cols-2 h-10 p-1 bg-muted/80 rounded-lg">
+                <TabsTrigger
+                  value="purchase"
+                  className="text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md"
+                >
+                  <ClipboardList className="h-3.5 w-3.5 shrink-0" />
                   Detalle de compra
                 </TabsTrigger>
-                <TabsTrigger value="shipping" className="text-xs gap-1.5">
-                  <Truck className="h-3.5 w-3.5" />
+                <TabsTrigger
+                  value="shipping"
+                  className="text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md"
+                >
+                  <Truck className="h-3.5 w-3.5 shrink-0" />
                   Detalle de despacho
                 </TabsTrigger>
               </TabsList>
 
-              {/* ── Pestaña 1: Detalle de compra ── */}
-              <TabsContent value="purchase" className="space-y-4 mt-3">
-                <div className="flex items-center justify-between">
-                  <div>
+              <TabsContent value="purchase" className="space-y-4 mt-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
                     <h3 className="text-base font-semibold text-foreground">{selectedAppointment.clientName}</h3>
-                    <p className="text-sm text-muted-foreground">{selectedAppointment.service}</p>
                   </div>
-                  <Badge variant="secondary">Producto</Badge>
+                  <Badge variant="secondary" className="shrink-0">
+                    Producto
+                  </Badge>
                 </div>
 
-                <div className="space-y-2 py-3 border-t border-border">
+                <div className="space-y-2 pt-2 border-t border-border">
                   <div className="flex items-center gap-3 text-sm">
                     <CalendarIcon className="h-4 w-4 text-muted-foreground shrink-0" />
                     <span className="text-foreground">
                       Fecha de compra: {format(selectedAppointment.datetime, "d 'de' MMMM, yyyy", { locale: es })}
                     </span>
                   </div>
+                  {selectedAppointment.clientPhone && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="text-foreground">{selectedAppointment.clientPhone}</span>
+                    </div>
+                  )}
                 </div>
 
-                {/* Desglose de costos */}
-                <div className="rounded-lg border border-border overflow-hidden">
-                  <div className="px-4 py-2 bg-secondary/40">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Resumen del pedido</p>
+                <div className="rounded-lg border border-border bg-muted/20 overflow-hidden">
+                  <div className="px-3 py-2 border-b border-border/80 bg-muted/40">
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      Resumen del pedido
+                    </p>
                   </div>
                   <div className="p-3 space-y-2">
-                    {/* Producto */}
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground flex items-center gap-1.5">
-                        <Package className="h-3.5 w-3.5" />
-                        {selectedAppointment.service}
+                    <div className="flex justify-between gap-2 text-sm">
+                      <span className="text-muted-foreground flex items-start gap-1.5 min-w-0">
+                        <Package className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                        <span className="line-clamp-3">{selectedAppointment.service}</span>
                       </span>
-                      <span className="text-foreground">
-                        {selectedAppointment.shippingData?.subtotal !== undefined
+                      <span className="text-foreground font-medium shrink-0">
+                        {selectedAppointment.shippingData?.subtotal != null
                           ? formatPrice(selectedAppointment.shippingData.subtotal, selectedAppointment.currency)
-                          : selectedAppointment.price
+                          : selectedAppointment.price != null
                             ? formatPrice(selectedAppointment.price, selectedAppointment.currency)
                             : '—'}
                       </span>
                     </div>
-
-                    {selectedAppointment.shippingData?.shippingCost !== undefined && (
+                    {selectedAppointment.shippingData?.shippingCost != null && (
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground flex items-center gap-1.5">
                           <Truck className="h-3.5 w-3.5" />
@@ -873,12 +1027,11 @@ const CalendarContent = () => {
                         </span>
                       </div>
                     )}
-
-                    {(selectedAppointment.shippingData?.total !== undefined || selectedAppointment.price) && (
+                    {(selectedAppointment.shippingData?.total != null || selectedAppointment.price != null) && (
                       <div className="flex justify-between text-sm font-semibold border-t border-border pt-2 mt-1">
-                        <span className="text-foreground">Total</span>
+                        <span>Total</span>
                         <span className="text-success">
-                          {selectedAppointment.shippingData?.total !== undefined
+                          {selectedAppointment.shippingData?.total != null
                             ? formatPrice(selectedAppointment.shippingData.total, selectedAppointment.currency)
                             : formatPrice(selectedAppointment.price!, selectedAppointment.currency)}
                         </span>
@@ -886,140 +1039,124 @@ const CalendarContent = () => {
                     )}
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2 pt-1">
-                  <span className="text-xs text-muted-foreground">Origen:</span>
-                  <Badge variant="outline" className="text-xs">
-                    {selectedAppointment.sourceRaw || sourceLabels[selectedAppointment.source]}
-                  </Badge>
-                </div>
               </TabsContent>
 
-              {/* ── Pestaña 2: Detalle de despacho ── */}
-              <TabsContent value="shipping" className="space-y-3 mt-3">
-                <div className="space-y-3">
-                  {/* Nombre */}
+              <TabsContent value="shipping" className="space-y-3 mt-4">
+                <div className="flex items-center gap-3 text-sm">
+                  <User className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-foreground font-medium">{selectedAppointment.clientName}</span>
+                </div>
+                {selectedAppointment.clientPhone && (
                   <div className="flex items-center gap-3 text-sm">
-                    <User className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <span className="text-foreground font-medium">{selectedAppointment.clientName}</span>
+                    <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-foreground">{selectedAppointment.clientPhone}</span>
                   </div>
-
-                  {/* Teléfono */}
-                  {selectedAppointment.clientPhone && (
-                    <div className="flex items-center gap-3 text-sm">
-                      <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <span className="text-foreground">{selectedAppointment.clientPhone}</span>
+                )}
+                {selectedAppointment.shippingData?.address && (
+                  <div className="flex items-start gap-3 text-sm">
+                    <MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-foreground">{selectedAppointment.shippingData.address}</p>
+                      {(selectedAppointment.shippingData.commune || selectedAppointment.shippingData.region) && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {[selectedAppointment.shippingData.commune, selectedAppointment.shippingData.region]
+                            .filter(Boolean)
+                            .join(', ')}
+                        </p>
+                      )}
                     </div>
-                  )}
-
-                  {/* Email */}
-                  {(selectedAppointment.clientEmail || selectedAppointment.shippingData?.email) && (
-                    <div className="flex items-center gap-3 text-sm">
-                      <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <span className="text-foreground">{selectedAppointment.clientEmail || selectedAppointment.shippingData?.email}</span>
-                    </div>
-                  )}
-
-                  {/* Dirección */}
-                  {selectedAppointment.shippingData?.address && (
+                  </div>
+                )}
+                {!selectedAppointment.shippingData?.address &&
+                  (selectedAppointment.shippingData?.commune || selectedAppointment.shippingData?.region) && (
                     <div className="flex items-start gap-3 text-sm">
                       <MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                      <span className="text-foreground">{selectedAppointment.shippingData.address}</span>
-                    </div>
-                  )}
-
-                  {/* Comuna */}
-                  {selectedAppointment.shippingData?.commune && (
-                    <div className="flex items-center gap-3 text-sm">
-                      <MapPin className="h-4 w-4 text-muted-foreground shrink-0 opacity-0" />
-                      <span className="text-muted-foreground text-xs">
-                        {selectedAppointment.shippingData.commune}
-                        {selectedAppointment.shippingData?.region && `, ${selectedAppointment.shippingData.region}`}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Región si no hay comuna */}
-                  {!selectedAppointment.shippingData?.commune && selectedAppointment.shippingData?.region && (
-                    <div className="flex items-center gap-3 text-sm">
-                      <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <span className="text-foreground">{selectedAppointment.shippingData.region}</span>
-                    </div>
-                  )}
-
-                  {/* Fecha de despacho */}
-                  {selectedAppointment.shippingData?.shippingDate && (
-                    <div className="flex items-center gap-3 text-sm">
-                      <Truck className="h-4 w-4 text-muted-foreground shrink-0" />
                       <span className="text-foreground">
-                        Despacho: {selectedAppointment.shippingData.shippingDate}
-                        {selectedAppointment.shippingData.estimatedDeliveryTime && (
-                          <span className="text-muted-foreground ml-1">({selectedAppointment.shippingData.estimatedDeliveryTime})</span>
-                        )}
+                        {[selectedAppointment.shippingData.commune, selectedAppointment.shippingData.region]
+                          .filter(Boolean)
+                          .join(', ')}
                       </span>
                     </div>
                   )}
-
-                  {/* Horario estimado (si no hay fecha pero sí horario) */}
-                  {!selectedAppointment.shippingData?.shippingDate && selectedAppointment.shippingData?.estimatedDeliveryTime && (
-                    <div className="flex items-center gap-3 text-sm">
-                      <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <span className="text-foreground">
-                        Horario: {selectedAppointment.shippingData.estimatedDeliveryTime}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Método de pago */}
-                  {selectedAppointment.shippingData?.paymentMethod && (
-                    <div className="flex items-center gap-3 text-sm">
-                      <CreditCard className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <span className="text-foreground">{selectedAppointment.shippingData.paymentMethod}</span>
-                    </div>
-                  )}
-
-                  {/* Estado vacío si no hay datos de despacho */}
-                  {!selectedAppointment.clientPhone &&
-                   !selectedAppointment.clientEmail &&
-                   !selectedAppointment.shippingData?.email &&
-                   !selectedAppointment.shippingData?.address &&
-                   !selectedAppointment.shippingData?.commune &&
-                   !selectedAppointment.shippingData?.region && (
-                    <div className="text-center py-6 text-muted-foreground">
+                {(selectedAppointment.shippingData?.shippingDate ||
+                  selectedAppointment.shippingData?.estimatedDeliveryTime) && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <Truck className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-foreground">
+                      Despacho:{' '}
+                      {(() => {
+                        const d = selectedAppointment.shippingData?.shippingDate;
+                        if (!d) return '—';
+                        const parsed = parseISO(d.length === 10 ? `${d}T12:00:00` : d);
+                        const label = isValid(parsed) ? format(parsed, 'yyyy-MM-dd') : d;
+                        const t = selectedAppointment.shippingData?.estimatedDeliveryTime;
+                        return t ? `${label} (${t})` : label;
+                      })()}
+                    </span>
+                  </div>
+                )}
+                {selectedAppointment.shippingData?.paymentMethod && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <CreditCard className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-foreground">{selectedAppointment.shippingData.paymentMethod}</span>
+                  </div>
+                )}
+                {!selectedAppointment.shippingData?.address &&
+                  !selectedAppointment.shippingData?.commune &&
+                  !selectedAppointment.shippingData?.region &&
+                  !selectedAppointment.shippingData?.shippingDate &&
+                  !selectedAppointment.shippingData?.estimatedDeliveryTime &&
+                  !selectedAppointment.shippingData?.paymentMethod && (
+                    <div className="text-center py-5 text-muted-foreground border border-dashed rounded-lg bg-muted/20">
                       <Truck className="h-8 w-8 mx-auto mb-2 opacity-30" />
                       <p className="text-sm">Sin datos de despacho registrados</p>
                     </div>
                   )}
-                </div>
               </TabsContent>
             </Tabs>
+            <div className="flex justify-between items-center gap-3 pt-4 mt-2 border-t border-border">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <span className="text-xs text-muted-foreground shrink-0">Origen:</span>
+                <Badge variant="outline" className="text-xs max-w-[min(100%,14rem)] truncate">
+                  {selectedAppointment.sourceRaw || sourceLabels[selectedAppointment.source]}
+                </Badge>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0 gap-1.5"
+                disabled={isPrinting}
+                onClick={() => void handlePrintBooking()}
+              >
+                {isPrinting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Printer className="h-4 w-4" />
+                )}
+                Imprimir
+              </Button>
+            </div>
+            </div>
           ) : selectedAppointment ? (
-            /* ── Modal estándar para servicios o tenants normales ── */
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">{selectedAppointment.clientName}</h3>
-                  <p className="text-muted-foreground">
-                    {selectedAppointment.type === 'product'
-                      ? `Compró: ${selectedAppointment.service}`
-                      : selectedAppointment.service}
-                  </p>
+                  <p className="text-muted-foreground">{selectedAppointment.service}</p>
                 </div>
-                <Badge variant={selectedAppointment.type === 'product' ? 'secondary' : 'default'}>
-                  {selectedAppointment.type === 'product' ? 'Producto' : 'Servicio'}
-                </Badge>
+                <Badge variant="default">Servicio</Badge>
               </div>
 
               <div className="space-y-3 py-4 border-t border-b border-border">
                 <div className="flex items-center gap-3 text-sm">
                   <CalendarIcon className="h-4 w-4 text-muted-foreground" />
                   <span className="text-foreground">
-                    {selectedAppointment.type === 'product' ? 'Fecha de compra: ' : ''}
                     {format(selectedAppointment.datetime, "EEEE d 'de' MMMM, yyyy", { locale: es })}
                   </span>
                 </div>
 
-                {selectedAppointment.type === 'service' && selectedAppointment.time && (
+                {selectedAppointment.time && (
                   <div className="flex items-center gap-3 text-sm">
                     <Clock className="h-4 w-4 text-muted-foreground" />
                     <span className="text-foreground">{selectedAppointment.time} hrs</span>
@@ -1033,7 +1170,7 @@ const CalendarContent = () => {
                   </div>
                 )}
 
-                {selectedAppointment.price && (
+                {selectedAppointment.price != null && (
                   <div className="flex items-center gap-3 text-sm">
                     <DollarSign className="h-4 w-4 text-muted-foreground" />
                     <span className="text-foreground font-medium text-success">
@@ -1065,16 +1202,18 @@ const CalendarContent = () => {
                 </Badge>
               </div>
 
-              {selectedAppointment.type === 'service' && (
-                <div className="flex gap-2 pt-2">
-                  <Button variant="outline" className={cn("flex-1", isMobile && "h-12")} disabled>
-                    Reagendar
-                  </Button>
-                  <Button variant="outline" className={cn("flex-1 text-destructive hover:text-destructive", isMobile && "h-12")} disabled>
-                    Cancelar
-                  </Button>
-                </div>
-              )}
+              <div className="flex gap-2 pt-2">
+                <Button variant="outline" className={cn("flex-1", isMobile && "h-12")} disabled>
+                  Reagendar
+                </Button>
+                <Button
+                  variant="outline"
+                  className={cn("flex-1 text-destructive hover:text-destructive", isMobile && "h-12")}
+                  disabled
+                >
+                  Cancelar
+                </Button>
+              </div>
             </div>
           ) : null}
         </DialogContent>
