@@ -83,6 +83,21 @@ interface Tenant {
   }[] | null;
 }
 
+const PLAN_LIMITS: Record<string, number> = {
+  basic: 300,
+  pro: 1000,
+  enterprise: 4000,
+};
+
+const fetchTenants = async (): Promise<Tenant[]> => {
+  const { data, error: fnError } = await supabase.functions.invoke('admin-list-tenants');
+  if (fnError) {
+    console.error('[AdminClients] admin-list-tenants error:', fnError.message);
+    throw new Error('No se pudo conectar con admin-list-tenants. Verifica que la Edge Function esté desplegada.');
+  }
+  return (data?.tenants || []) as Tenant[];
+};
+
 // Definición de reportes para gestión
 const ALL_REPORTS = [
   { id: 'agent-performance', title: 'Rendimiento del agente', includedIn: ['basic', 'pro', 'enterprise'] },
@@ -117,23 +132,14 @@ export default function AdminClients() {
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
   const [isSavingAddons, setIsSavingAddons] = useState(false);
 
-  // Cargar tenants del backend
   useEffect(() => {
-    const fetchTenants = async () => {
+    const loadTenants = async () => {
       try {
         setIsLoading(true);
         
-        // Call the edge function to list all tenants (bypasses RLS)
-        const { data, error: fnError } = await supabase.functions.invoke('admin-list-tenants');
-        
-        if (fnError) {
-          throw fnError;
-        }
-
-        const tenantsData = data?.tenants || [];
+        const tenantsData = await fetchTenants();
         setTenants(tenantsData);
         
-        // Cargar conteos reales después de obtener los tenants
         if (tenantsData.length > 0) {
           loadRealChatCounts(tenantsData);
         }
@@ -145,7 +151,7 @@ export default function AdminClients() {
       }
     };
 
-    fetchTenants();
+    loadTenants();
   }, []);
 
   // Cargar conteos reales usando la función centralizada

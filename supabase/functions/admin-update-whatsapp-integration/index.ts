@@ -29,9 +29,9 @@ Deno.serve(async (req) => {
     }
 
     const token = authHeader.replace('Bearer ', '');
-    const { data: claims, error: authError } = await supabase.auth.getClaims(token);
+    const { data: { user: caller }, error: authError } = await supabase.auth.getUser(token);
     
-    if (authError || !claims?.claims?.sub) {
+    if (authError || !caller) {
       console.error('[admin-update-whatsapp-integration] Auth error:', authError);
       return new Response(
         JSON.stringify({ error: 'Invalid token' }),
@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const userEmail = claims.claims.email as string | undefined;
+    const userEmail = (caller.email || '').toLowerCase();
     console.log('[admin-update-whatsapp-integration] User:', userEmail);
 
     // Verify admin email

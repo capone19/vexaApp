@@ -63,23 +63,22 @@ serve(async (req) => {
         });
         
         const token = authHeader.replace("Bearer ", "");
-        const { data: claims, error: authError } = await supabaseAuth.auth.getClaims(token);
+        const { data: { user: caller }, error: authError } = await supabaseAuth.auth.getUser(token);
         
-        if (!authError && claims?.claims?.sub) {
-          // Use service role to check membership (bypasses RLS)
+        if (!authError && caller) {
           const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
           
           const { data: membership, error: membershipError } = await supabaseAdmin
             .from("user_roles")
             .select("id")
-            .eq("user_id", claims.claims.sub)
+            .eq("user_id", caller.id)
             .eq("tenant_id", tenantId)
             .single();
           
           if (membershipError || !membership) {
             console.warn(
               "[human-message-proxy] User not member of tenant:",
-              claims.claims.sub,
+              caller.id,
               "->",
               tenantId
             );

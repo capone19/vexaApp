@@ -189,10 +189,9 @@ Deno.serve(async (req) => {
     
     const token = authHeader.replace('Bearer ', '');
     
-    // Use getClaims for stateless JWT validation
-    const { data: claims, error: authError } = await supabaseAdmin.auth.getClaims(token);
+    const { data: { user: caller }, error: authError } = await supabaseAdmin.auth.getUser(token);
     
-    if (authError || !claims?.claims?.sub) {
+    if (authError || !caller) {
       console.error('[health-check] Auth error:', authError);
       return new Response(
         JSON.stringify({ error: 'Invalid token' }),
@@ -200,7 +199,7 @@ Deno.serve(async (req) => {
       );
     }
     
-    const userEmail = claims.claims.email as string | undefined;
+    const userEmail = (caller.email || '').toLowerCase();
     
     if (userEmail?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
       console.error('[health-check] Unauthorized access attempt:', userEmail);

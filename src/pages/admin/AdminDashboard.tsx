@@ -66,6 +66,15 @@ const emptyMetrics: GlobalMetrics = {
   totalClients: 0,
 };
 
+const fetchTenants = async () => {
+  const { data: tenantsResponse, error: tenantsError } = await supabase.functions.invoke('admin-list-tenants');
+  if (tenantsError) {
+    console.error('[AdminDashboard] admin-list-tenants error:', tenantsError.message);
+    throw new Error('No se pudo conectar con admin-list-tenants. Verifica que la Edge Function esté desplegada.');
+  }
+  return (tenantsResponse?.tenants || []) as Array<{ id: string; is_active?: boolean | null }>;
+};
+
 export default function AdminDashboard() {
   const [metrics, setMetrics] = useState<GlobalMetrics>(emptyMetrics);
   const [isLoading, setIsLoading] = useState(true);
@@ -89,26 +98,16 @@ export default function AdminDashboard() {
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
 
       // ============================================
-      // 1. OBTENER LISTA DE TENANTS VIA EDGE FUNCTION
-      // (Bypass de RLS usando service_role)
+      // 1. OBTENER LISTA DE TENANTS (Edge Function + fallback directo)
       // ============================================
-      const { data: tenantsResponse, error: tenantsError } = await supabase.functions.invoke('admin-list-tenants');
-      
-      if (tenantsError) {
-        console.error('[AdminDashboard] Error fetching tenants:', tenantsError);
-        throw new Error('Error obteniendo lista de clientes');
-      }
-
-      const tenants = tenantsResponse?.tenants || [];
+      const tenants = await fetchTenants();
       const totalClients = tenants.length;
       const activeClients = tenants.filter((t: any) => t.is_active !== false).length;
       
-      // Obtener IDs de tenants activos
-      const activeTenantIds = tenants
-        .filter((t: any) => t.is_active !== false)
-        .map((t: any) => t.id);
+      // Obtener IDs de TODOS los tenants para métricas macro
+      const tenantIds = tenants.map((t: any) => t.id);
 
-      console.log('[AdminDashboard] Tenants encontrados:', { totalClients, activeClients, activeTenantIds });
+      console.log('[AdminDashboard] Tenants encontrados:', { totalClients, activeClients, tenantIds });
 
       // ============================================
       // 2. CONTAR CHATS USANDO countConversations()
@@ -123,8 +122,8 @@ export default function AdminDashboard() {
 
       // Procesar en batches de 5 para no saturar
       const BATCH_SIZE = 5;
-      for (let i = 0; i < activeTenantIds.length; i += BATCH_SIZE) {
-        const batch = activeTenantIds.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < tenantIds.length; i += BATCH_SIZE) {
+        const batch = tenantIds.slice(i, i + BATCH_SIZE);
         
         // Ejecutar en paralelo: Total, Mes, Hoy para cada tenant del batch
         const batchPromises = batch.flatMap((tenantId: string) => [
@@ -247,9 +246,9 @@ export default function AdminDashboard() {
   };
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('es-BO', {
+    return new Intl.NumberFormat('es-CL', {
       style: 'currency',
-      currency: 'BOB',
+      currency: 'CLP',
       maximumFractionDigits: 0,
     }).format(value);
   };

@@ -37,9 +37,9 @@ serve(async (req) => {
     });
 
     const token = authHeader.replace("Bearer ", "");
-    const { data: claims, error: authError } = await supabase.auth.getClaims(token);
+    const { data: { user: caller }, error: authError } = await supabase.auth.getUser(token);
 
-    if (authError || !claims?.claims?.sub) {
+    if (authError || !caller) {
       console.warn("[webhook-n8n-proxy] Invalid token:", authError?.message);
       return new Response(
         JSON.stringify({ success: false, error: "Invalid token" }),
@@ -47,7 +47,7 @@ serve(async (req) => {
       );
     }
 
-    console.log("[webhook-n8n-proxy] Authenticated user:", claims.claims.sub);
+    console.log("[webhook-n8n-proxy] Authenticated user:", caller.id);
 
     const payload = await req.json();
 

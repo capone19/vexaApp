@@ -19,31 +19,31 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Create Supabase client with service role to bypass RLS
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    
-    // External Supabase for chat data
-    const externalSupabaseUrl = Deno.env.get('EXTERNAL_SUPABASE_URL') || Deno.env.get('SUPABASE_URL')!;
-    const externalSupabaseKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')!;
-    
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const externalSupabase = createClient(externalSupabaseUrl, externalSupabaseKey);
 
-    // Verify the user is admin (check JWT)
+    const externalSupabaseUrl = Deno.env.get('EXTERNAL_SUPABASE_URL') || supabaseUrl;
+    const externalSupabaseKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || supabaseServiceKey;
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const externalSupabase = createClient(externalSupabaseUrl, externalSupabaseKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
+    if (!authHeader?.startsWith('Bearer ')) {
       return new Response(
         JSON.stringify({ error: 'No authorization header' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Verify JWT using getClaims (proper method for token validation)
     const token = authHeader.replace('Bearer ', '');
-    const { data: claims, error: authError } = await supabase.auth.getClaims(token);
-    
-    if (authError || !claims?.claims?.sub) {
+    const { data: { user: caller }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !caller) {
       console.error('[admin-list-tenants] Auth error:', authError);
       return new Response(
         JSON.stringify({ error: 'Invalid token' }),
@@ -51,12 +51,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    const userEmail = claims.claims.email as string | undefined;
+    const userEmail = (caller.email || '').toLowerCase();
     console.log('[admin-list-tenants] Authenticated user:', userEmail);
 
-    // Verify admin email
     const ADMIN_EMAIL = 'contacto@vexalatam.com';
-    if (userEmail?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+    if (userEmail !== ADMIN_EMAIL.toLowerCase()) {
       console.error('[admin-list-tenants] Unauthorized access attempt:', userEmail);
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
