@@ -34,7 +34,8 @@ serve(async (req) => {
     const payload = (await req.json()) as Record<string, unknown>;
 
     const msg = typeof payload.message === "string" ? payload.message.trim() : "";
-    if (!msg || msg.length > 2000) {
+    const hasMedia = !!payload.attachment;
+    if ((!msg && !hasMedia) || msg.length > 2000) {
       return new Response(
         JSON.stringify({
           success: false,
@@ -91,7 +92,7 @@ serve(async (req) => {
             );
           }
           
-          console.log("[human-message-proxy] Tenant ownership verified for user:", claims.claims.sub);
+          console.log("[human-message-proxy] Tenant ownership verified for user:", caller.id);
         }
       }
     }
@@ -137,16 +138,29 @@ serve(async (req) => {
     const normalizedUrl = normalizeWebhookUrl(webhookUrl);
     console.log("[human-message-proxy] Final webhook URL:", normalizedUrl);
 
-    // Construir payload completo con todos los campos requeridos por n8n
-    const fullPayload = {
+    // Extraer phone_number del session_id (ej: "56954297315@s.whatsapp.net" -> "56954297315")
+    const sessionId = (payload.session_id as string) || "";
+    const phoneNumber = sessionId.split("@")[0] || sessionId;
+
+    // Construir payload para n8n - NO enviar type de media en top-level
+    // para que n8n lo procese como mensaje de agente (source: human_agent)
+    const fullPayload: Record<string, unknown> = {
       message: payload.message,
-      session_id: payload.session_id,
+      type: payload.type || "text",
+      session_id: sessionId,
+      sessionId: sessionId,
+      phone_number: phoneNumber,
       tenant_id: payload.tenant_id || null,
       source: payload.source || "human_agent",
       timestamp: payload.timestamp || new Date().toISOString(),
       webhookUrl: normalizedUrl,
       executionMode: "production",
     };
+
+    // Pasar datos de attachment si existen (imagen, documento, etc.)
+    if (payload.attachment && typeof payload.attachment === "object") {
+      fullPayload.attachment = payload.attachment;
+    }
 
     console.log("[human-message-proxy] Sending payload:", JSON.stringify(fullPayload));
 

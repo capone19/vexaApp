@@ -34,6 +34,7 @@ import { es } from "date-fns/locale";
 import { logout } from "@/lib/auth";
 import { useAuth } from "@/hooks/use-auth";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useNotifications, type AppNotification } from "@/hooks/use-notifications";
 
 // Función para obtener el perfil del usuario desde localStorage
 const getUserProfile = () => {
@@ -67,57 +68,17 @@ const pageTitles: Record<string, string> = {
   "/configuracion": "Configuración",
 };
 
-// Tipos de notificación
-type NotificationType = 'appointment' | 'message' | 'alert' | 'system' | 'success';
+type DbNotificationType = AppNotification['type'];
 
-interface Notification {
-  id: string;
-  type: NotificationType;
-  title: string;
-  description: string;
-  timestamp: Date;
-  read: boolean;
-  metadata?: {
-    clientName?: string;
-  };
-}
-
-// Lista vacía para producción - Se llenará con datos reales
-const initialNotifications: Notification[] = [];
-
-// Función para obtener IDs de notificaciones leídas desde localStorage
-const getReadNotificationIds = (): Set<string> => {
-  try {
-    const stored = localStorage.getItem('readNotifications');
-    return stored ? new Set(JSON.parse(stored)) : new Set();
-  } catch {
-    return new Set();
-  }
-};
-
-// Función para guardar IDs de notificaciones leídas en localStorage
-const saveReadNotificationIds = (ids: Set<string>) => {
-  localStorage.setItem('readNotifications', JSON.stringify([...ids]));
-};
-
-// Aplicar estado de lectura desde localStorage
-const getNotificationsWithReadState = (): Notification[] => {
-  const readIds = getReadNotificationIds();
-  return initialNotifications.map(n => ({
-    ...n,
-    read: readIds.has(n.id)
-  }));
-};
-
-const getNotificationIcon = (type: NotificationType) => {
+const getNotificationIcon = (type: DbNotificationType) => {
   switch (type) {
-    case 'appointment':
+    case 'booking':
       return CalendarCheck;
-    case 'message':
+    case 'handoff':
       return MessageSquare;
     case 'alert':
       return AlertTriangle;
-    case 'success':
+    case 'campaign':
       return CheckCircle;
     case 'system':
       return Info;
@@ -126,15 +87,15 @@ const getNotificationIcon = (type: NotificationType) => {
   }
 };
 
-const getNotificationColor = (type: NotificationType) => {
+const getNotificationColor = (type: DbNotificationType) => {
   switch (type) {
-    case 'appointment':
+    case 'booking':
       return 'text-primary bg-primary/10';
-    case 'message':
+    case 'handoff':
       return 'text-sky-500 bg-sky-500/10';
     case 'alert':
       return 'text-amber-500 bg-amber-500/10';
-    case 'success':
+    case 'campaign':
       return 'text-emerald-500 bg-emerald-500/10';
     case 'system':
       return 'text-muted-foreground bg-muted';
@@ -143,12 +104,11 @@ const getNotificationColor = (type: NotificationType) => {
   }
 };
 
-// Mapa de redirección por tipo de notificación
-const notificationRoutes: Record<NotificationType, string> = {
-  appointment: '/calendario',
+const notificationRoutes: Record<DbNotificationType, string> = {
+  booking: '/calendario',
   alert: '/calendario',
-  success: '/calendario',
-  message: '/chats',
+  campaign: '/calendario',
+  handoff: '/chats',
   system: '/configuracion',
 };
 
@@ -156,7 +116,7 @@ export function TopBar() {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
-  const [notifications, setNotifications] = useState<Notification[]>(getNotificationsWithReadState);
+  const { notifications, unreadCount, markAsRead } = useNotifications();
   const [isOpen, setIsOpen] = useState(false);
   const [userProfile, setUserProfile] = useState(getUserProfile());
   
@@ -181,8 +141,6 @@ export function TopBar() {
     };
   }, []);
   
-  const unreadCount = notifications.filter(n => !n.read).length;
-  
   // Obtener usuario autenticado
   const { user: authUser } = useAuth();
   
@@ -201,27 +159,13 @@ export function TopBar() {
         .slice(0, 2)
     : '?';
 
-  const markAsRead = (id: string) => {
-    setNotifications(prev => 
-      prev.map(n => n.id === id ? { ...n, read: true } : n)
-    );
-    
-    const readIds = getReadNotificationIds();
-    readIds.add(id);
-    saveReadNotificationIds(readIds);
-  };
-
-  const getRouteForNotification = (notification: Notification): string => {
+  const getRouteForNotification = (notification: AppNotification): string => {
     const title = notification.title.toLowerCase();
-    
-    if (title.includes('factura')) {
-      return '/facturacion';
-    }
-    
+    if (title.includes('factura')) return '/facturacion';
     return notificationRoutes[notification.type] || '/';
   };
 
-  const handleNotificationClick = (notification: Notification) => {
+  const handleNotificationClick = (notification: AppNotification) => {
     markAsRead(notification.id);
     setIsOpen(false);
     const route = getRouteForNotification(notification);
@@ -312,7 +256,7 @@ export function TopBar() {
                       key={notification.id}
                       className={cn(
                         "flex items-start gap-3 px-4 py-3 hover:bg-secondary/50 active:bg-secondary transition-colors cursor-pointer border-b border-border/30 last:border-b-0",
-                        !notification.read && "bg-primary/5"
+                        !notification.is_read && "bg-primary/5"
                       )}
                       onClick={() => handleNotificationClick(notification)}
                     >
@@ -323,20 +267,22 @@ export function TopBar() {
                         <div className="flex items-start justify-between gap-2">
                           <p className={cn(
                             "text-sm leading-tight",
-                            !notification.read ? "font-semibold text-foreground" : "font-medium text-foreground/90"
+                            !notification.is_read ? "font-semibold text-foreground" : "font-medium text-foreground/90"
                           )}>
                             {notification.title}
                           </p>
-                          {!notification.read && (
+                          {!notification.is_read && (
                             <div className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5" />
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-                          {notification.metadata?.clientName || notification.description}
+                          {notification.message || ''}
                         </p>
-                        <span className="text-[10px] text-muted-foreground/70 mt-1 block">
-                          {formatDistanceToNow(notification.timestamp, { addSuffix: true, locale: es })}
-                        </span>
+                        {notification.created_at && (
+                          <span className="text-[10px] text-muted-foreground/70 mt-1 block">
+                            {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true, locale: es })}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );

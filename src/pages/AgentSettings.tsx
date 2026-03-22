@@ -120,6 +120,18 @@ export default function AgentSettings() {
     loadSection(activeSection);
   }, [activeSection, loadSection]);
 
+  // Refetch on window focus for cross-device sync
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && effectiveTenantId) {
+        loadedSectionsRef.current.delete(activeSection);
+        loadSection(activeSection);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [activeSection, loadSection, effectiveTenantId]);
+
   const handleSectionChange = (sectionId: AgentSettingsSectionId) => {
     setSearchParams({ section: sectionId });
   };

@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useN8nChatHistory } from "@/hooks/use-n8n-chat-history";
 import { externalSupabase, type N8nChatMessage } from "@/integrations/supabase/external-client";
+import { supabase } from "@/integrations/supabase/client";
 import { WEBHOOKS } from "@/lib/constants";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
@@ -20,7 +21,7 @@ import {
 
 import { format, isToday, isYesterday, differenceInDays } from "date-fns";
 import { es } from "date-fns/locale";
-import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio, Tags, FileText, Clock } from "lucide-react";
+import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio, Tags, FileText, Clock, Paperclip } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -139,6 +140,9 @@ export default function Chats() {
   const [isTogglingBot, setIsTogglingBot] = useState(false);
   const [messageInput, setMessageInput] = useState("");
   const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [labelFilterIds, setLabelFilterIds] = useState<string[]>([]);
   const [labelsManagerOpen, setLabelsManagerOpen] = useState(false);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
@@ -254,17 +258,86 @@ export default function Chats() {
     return messageWithTenant?.tenant_id || null;
   }, [messages, selectedSessionId]);
 
+  // Manejar selección de archivo
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const maxSize = 16 * 1024 * 1024; // 16 MB
+    if (file.size > maxSize) {
+      toast.error("El archivo es demasiado grande (máx. 16 MB)");
+      return;
+    }
+
+    setAttachedFile(file);
+
+    if (file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = (ev) => setAttachedPreview(ev.target?.result as string);
+      reader.readAsDataURL(file);
+    } else {
+      setAttachedPreview(null);
+    }
+  }, []);
+
+  const clearAttachment = useCallback(() => {
+    setAttachedFile(null);
+    setAttachedPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
+  // Determinar tipo de media para el payload
+  const getMediaType = (mimeType: string): "image" | "audio" | "video" | "document" => {
+    if (mimeType.startsWith("image/")) return "image";
+    if (mimeType.startsWith("audio/")) return "audio";
+    if (mimeType.startsWith("video/")) return "video";
+    return "document";
+  };
+
   // Enviar mensaje de agente humano via edge function proxy
   const sendHumanMessage = useCallback(async () => {
-    if (!messageInput.trim() || !selectedSessionId || isSendingMessage) return;
-    
+    const hasText = messageInput.trim().length > 0;
+    const hasFile = !!attachedFile;
+    if ((!hasText && !hasFile) || !selectedSessionId || isSendingMessage) return;
+
     const messageContent = messageInput.trim();
     setIsSendingMessage(true);
-    
+
     try {
-      // Usar el tenant_id directamente de los mensajes del chat
       console.log("[Chats] Sending message to tenant:", selectedSessionTenantId || "none");
-      
+
+      let attachmentData: Record<string, unknown> | undefined;
+
+      // Si hay archivo adjunto, subirlo a Supabase Storage
+      if (attachedFile) {
+        const ext = attachedFile.name.split(".").pop() || "bin";
+        const filePath = `${selectedSessionTenantId || "global"}/${selectedSessionId}/${Date.now()}.${ext}`;
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from("chat-attachments")
+          .upload(filePath, attachedFile, {
+            contentType: attachedFile.type,
+            upsert: false,
+          });
+
+        if (uploadError) {
+          throw new Error(`Error subiendo archivo: ${uploadError.message}`);
+        }
+
+        const { data: urlData } = supabase.storage
+          .from("chat-attachments")
+          .getPublicUrl(uploadData.path);
+
+        const mediaType = getMediaType(attachedFile.type);
+
+        attachmentData = {
+          media_type: mediaType,
+          url: urlData.publicUrl,
+          mime_type: attachedFile.type,
+          filename: attachedFile.name,
+        };
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/human-message-proxy`,
         {
@@ -274,11 +347,13 @@ export default function Chats() {
             "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           },
           body: JSON.stringify({
-            message: messageContent,
+            message: messageContent || (attachmentData ? `[${attachmentData.media_type}]` : ""),
+            type: attachmentData ? attachmentData.media_type : "text",
             session_id: selectedSessionId,
-            tenant_id: selectedSessionTenantId, // Usar el tenant_id de los mensajes del chat
+            tenant_id: selectedSessionTenantId,
             source: "human_agent",
             timestamp: new Date().toISOString(),
+            ...(attachmentData ? { attachment: attachmentData } : {}),
           }),
         }
       );
@@ -293,8 +368,21 @@ export default function Chats() {
         throw new Error(details);
       }
 
-      setMessageInput(""); // Limpiar solo si fue exitoso
+      setMessageInput("");
+      clearAttachment();
       toast.success("Mensaje enviado");
+
+      // Mantener bot desactivado si estaba desactivado (n8n puede reactivarlo)
+      const currentBotState = botStates[selectedSessionId];
+      if (currentBotState === false) {
+        setTimeout(async () => {
+          await externalSupabase
+            .from('n8n_chat_histories')
+            .update({ bot_activado: false })
+            .eq('session_id', selectedSessionId);
+        }, 2000);
+      }
+
       setTimeout(() => refetch?.(), 1000);
     } catch (err) {
       console.error("[Chats] Error sending human message:", err);
@@ -302,7 +390,7 @@ export default function Chats() {
     } finally {
       setIsSendingMessage(false);
     }
-  }, [messageInput, selectedSessionId, isSendingMessage, refetch, selectedSessionTenantId]);
+  }, [messageInput, attachedFile, selectedSessionId, isSendingMessage, refetch, selectedSessionTenantId, clearAttachment, botStates]);
 
   // Manejar Enter para enviar
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -397,6 +485,35 @@ export default function Chats() {
     
     loadNewBotStates();
   }, [messages, botStates]);
+
+  // Sync botStates when messages update (e.g. realtime UPDATE with bot_activado change)
+  useEffect(() => {
+    if (!botStatesLoadedRef.current || messages.length === 0) return;
+
+    const latestPerSession = new Map<string, boolean>();
+    const latestTimePerSession = new Map<string, number>();
+
+    for (const msg of messages) {
+      const t = new Date(msg.created_at).getTime();
+      const prev = latestTimePerSession.get(msg.session_id);
+      if (prev === undefined || t > prev) {
+        latestTimePerSession.set(msg.session_id, t);
+        latestPerSession.set(msg.session_id, msg.bot_activado ?? true);
+      }
+    }
+
+    setBotStates(prev => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [sid, val] of latestPerSession) {
+        if (next[sid] !== val) {
+          next[sid] = val;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [messages]);
 
   // Toggle bot state for a session - actualiza en DB externa
   const toggleBotState = useCallback(async (sessionId: string) => {
@@ -555,14 +672,13 @@ export default function Chats() {
     return String((msg as { type?: string }).type ?? "").toLowerCase();
   };
 
-  /** Último mensaje del cliente en la sesión (WhatsApp cuenta 24h desde aquí) */
+  /** Último mensaje del cliente en la sesión (WhatsApp cuenta 24h desde aquí).
+   *  Prioriza selectedMessages (actualizado por realtime) sobre sessionRowsFor24h (estático). */
   const lastClientMessageTime = useMemo(() => {
     if (!selectedSessionId) return null;
 
-    const pool =
-      sessionRowsFor24h.length > 0
-        ? sessionRowsFor24h
-        : messages.filter((m) => m.session_id === selectedSessionId);
+    const realtimePool = selectedMessages;
+    const pool = realtimePool.length > 0 ? realtimePool : sessionRowsFor24h;
 
     const sorted = [...pool].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -575,7 +691,7 @@ export default function Chats() {
       }
     }
     return null;
-  }, [messages, selectedSessionId, sessionRowsFor24h]);
+  }, [selectedMessages, selectedSessionId, sessionRowsFor24h]);
 
   const TWENTY_FOUR_H_MS = 24 * 60 * 60 * 1000;
   const isWindowExpired = useMemo(() => {
@@ -1200,12 +1316,55 @@ export default function Chats() {
         
         // Input normal cuando la ventana está activa
         const isInputDisabled = isBotActive || isSendingMessage;
+        const canSend = !isInputDisabled && (messageInput.trim().length > 0 || !!attachedFile);
         return (
           <div className={cn(
             "border-t border-border bg-background shrink-0",
             isMobile ? "p-2" : "p-3 md:p-4"
           )}>
+            {/* Preview del archivo adjunto */}
+            {attachedFile && (
+              <div className={cn(
+                "flex items-center gap-2 mb-2 p-2 rounded-lg bg-secondary/60 border border-border",
+                isMobile ? "text-xs" : "text-sm"
+              )}>
+                {attachedPreview ? (
+                  <img src={attachedPreview} alt="preview" className="h-10 w-10 rounded object-cover shrink-0" />
+                ) : (
+                  <div className="h-10 w-10 rounded bg-muted flex items-center justify-center shrink-0">
+                    <FileText className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                )}
+                <span className="truncate flex-1 text-foreground">{attachedFile.name}</span>
+                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={clearAttachment}>
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
             <div className={cn("flex gap-2", isMobile && "gap-1.5")}>
+              {/* Input file oculto */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,video/*,audio/*"
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+              {/* Botón clip para adjuntar */}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "shrink-0 text-muted-foreground hover:text-foreground",
+                  isMobile ? "h-9 w-9" : "h-11 w-11",
+                  isInputDisabled && "opacity-50 cursor-not-allowed"
+                )}
+                disabled={isInputDisabled}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Paperclip className={cn(isMobile ? "h-4 w-4" : "h-5 w-5")} />
+              </Button>
               <Input
                 placeholder={isBotActive ? "Desactiva el bot para escribir..." : "Escribe un mensaje..."}
                 value={messageInput}
@@ -1226,7 +1385,7 @@ export default function Chats() {
                   isInputDisabled && "opacity-50 cursor-not-allowed"
                 )}
                 onClick={sendHumanMessage}
-                disabled={isInputDisabled || !messageInput.trim()}
+                disabled={!canSend}
               >
                 {isSendingMessage ? (
                   <Loader2 className={cn(isMobile ? "h-3.5 w-3.5" : "h-4 w-4", "animate-spin")} />

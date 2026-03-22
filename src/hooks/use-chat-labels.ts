@@ -98,6 +98,29 @@ export function useChatLabels(): UseChatLabelsReturn {
     fetchData();
   }, [fetchData]);
 
+  // Realtime: sync labels & assignments across devices
+  useEffect(() => {
+    if (!tenantId) return;
+
+    const channel = supabase
+      .channel(`labels-realtime-${tenantId}`)
+      .on(
+        'postgres_changes' as any,
+        { event: '*', schema: 'public', table: 'chat_labels', filter: `tenant_id=eq.${tenantId}` },
+        () => { fetchData(); }
+      )
+      .on(
+        'postgres_changes' as any,
+        { event: '*', schema: 'public', table: 'chat_session_labels', filter: `tenant_id=eq.${tenantId}` },
+        () => { fetchData(); }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [tenantId, fetchData]);
+
   // Create a new label
   const createLabel = useCallback(async (name: string, color: string): Promise<ChatLabel | null> => {
     if (!tenantId) return null;

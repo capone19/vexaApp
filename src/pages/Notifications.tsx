@@ -3,7 +3,6 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -21,65 +20,34 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { useEffectiveTenant } from '@/hooks/use-effective-tenant';
-import { formatCurrency } from '@/lib/format-currency';
+import { useNotifications, type AppNotification } from '@/hooks/use-notifications';
 import {
   Bell,
   CalendarCheck,
   AlertTriangle,
   CheckCircle,
   Clock,
-  User,
   XCircle,
   Info,
   Trash2,
   Check,
   Eye,
-  Calendar,
-  MapPin,
-  DollarSign,
-  Scissors,
+  MessageSquare,
 } from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-type NotificationType = 'appointment' | 'message' | 'alert' | 'system' | 'success';
+type DbNotificationType = AppNotification['type'];
 
-type AppointmentStatus = 'scheduled' | 'confirmed' | 'cancelled' | 'no-show' | 'completed' | 'pending-reschedule';
-
-interface NotificationMetadata {
-  clientName?: string;
-  clientPhone?: string;
-  service?: string;
-  date?: Date;
-  time?: string;
-  location?: string;
-  ticketValue?: number;
-  appointmentStatus?: AppointmentStatus;
-  notes?: string;
-}
-
-interface Notification {
-  id: string;
-  type: NotificationType;
-  title: string;
-  description: string;
-  timestamp: Date;
-  read: boolean;
-  actionUrl?: string;
-  metadata?: NotificationMetadata;
-}
-
-// Lista vacía para producción - Se llenará con datos reales
-const mockNotifications: Notification[] = [];
-
-const getNotificationIcon = (type: NotificationType) => {
+const getNotificationIcon = (type: DbNotificationType) => {
   switch (type) {
-    case 'appointment':
+    case 'booking':
       return CalendarCheck;
+    case 'handoff':
+      return MessageSquare;
     case 'alert':
       return AlertTriangle;
-    case 'success':
+    case 'campaign':
       return CheckCircle;
     case 'system':
       return Info;
@@ -88,14 +56,16 @@ const getNotificationIcon = (type: NotificationType) => {
   }
 };
 
-const getNotificationColor = (type: NotificationType) => {
+const getNotificationColor = (type: DbNotificationType) => {
   switch (type) {
-    case 'appointment':
+    case 'booking':
       return 'text-primary bg-primary/10';
+    case 'handoff':
+      return 'text-sky-500 bg-sky-500/10';
     case 'alert':
-      return 'text-warning bg-warning/10';
-    case 'success':
-      return 'text-success bg-success/10';
+      return 'text-amber-500 bg-amber-500/10';
+    case 'campaign':
+      return 'text-emerald-500 bg-emerald-500/10';
     case 'system':
       return 'text-muted-foreground bg-muted';
     default:
@@ -103,149 +73,10 @@ const getNotificationColor = (type: NotificationType) => {
   }
 };
 
-const getStatusBadge = (status?: AppointmentStatus) => {
-  switch (status) {
-    case 'scheduled':
-      return { label: 'Agendada', className: 'bg-blue-100 text-blue-700 border-blue-200' };
-    case 'confirmed':
-      return { label: 'Confirmada', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
-    case 'cancelled':
-      return { label: 'Cancelada', className: 'bg-red-100 text-red-700 border-red-200' };
-    case 'no-show':
-      return { label: 'No asistió', className: 'bg-orange-100 text-orange-700 border-orange-200' };
-    case 'completed':
-      return { label: 'Completada', className: 'bg-green-100 text-green-700 border-green-200' };
-    case 'pending-reschedule':
-      return { label: 'Reagendamiento pendiente', className: 'bg-amber-100 text-amber-700 border-amber-200' };
-    default:
-      return null;
-  }
-};
+function NotificationDetailContent({ notification }: { notification: AppNotification }) {
+  const Icon = getNotificationIcon(notification.type);
+  const colorClass = getNotificationColor(notification.type);
 
-// Componente para el detalle de la notificación según su tipo
-function NotificationDetailContent({ notification, tenantCurrency }: { notification: Notification; tenantCurrency: 'CLP' | 'BOB' | 'USD' }) {
-  const { type, metadata } = notification;
-  const Icon = getNotificationIcon(type);
-  const colorClass = getNotificationColor(type);
-  const statusBadge = getStatusBadge(metadata?.appointmentStatus);
-
-  // Para notificaciones de tipo cita (appointment, alert relacionado con citas, success de confirmación)
-  if (metadata?.clientName && (type === 'appointment' || type === 'alert' || type === 'success')) {
-    return (
-      <div className="space-y-6">
-        {/* Header con estado */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={cn("p-2.5 rounded-xl", colorClass)}>
-              <Icon className="h-5 w-5" />
-            </div>
-            <div>
-              <h4 className="font-semibold text-foreground">{notification.title}</h4>
-              <p className="text-sm text-muted-foreground">
-                {formatDistanceToNow(notification.timestamp, { addSuffix: true, locale: es })}
-              </p>
-            </div>
-          </div>
-          {statusBadge && (
-            <Badge variant="outline" className={cn("text-xs font-medium", statusBadge.className)}>
-              {statusBadge.label}
-            </Badge>
-          )}
-        </div>
-
-        <Separator />
-
-        {/* Información del cliente */}
-        <div className="space-y-4">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-secondary">
-              <User className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Cliente</p>
-              <p className="font-medium text-foreground">{metadata.clientName}</p>
-              {metadata.clientPhone && (
-                <p className="text-sm text-muted-foreground">{metadata.clientPhone}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Servicio */}
-          {metadata.service && (
-            <div className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-secondary">
-                <Scissors className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div className="flex-1">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Servicio</p>
-                <p className="font-medium text-foreground">{metadata.service}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Fecha y hora */}
-          {metadata.date && (
-            <div className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-secondary">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div className="flex-1">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Fecha y hora</p>
-                <p className="font-medium text-foreground">
-                  {format(metadata.date, "EEEE d 'de' MMMM, yyyy", { locale: es })}
-                </p>
-                {metadata.time && (
-                  <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
-                    <Clock className="h-3 w-3" />
-                    {metadata.time} hrs
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Sede */}
-          {metadata.location && (
-            <div className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-secondary">
-                <MapPin className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div className="flex-1">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Sede</p>
-                <p className="font-medium text-foreground">{metadata.location}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Valor del ticket */}
-          {metadata.ticketValue && (
-            <div className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-secondary">
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div className="flex-1">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Valor del servicio</p>
-                <p className="font-semibold text-foreground text-lg">{formatCurrency(metadata.ticketValue, tenantCurrency)}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Notas adicionales */}
-          {metadata.notes && (
-            <>
-              <Separator />
-              <div className="bg-secondary/50 rounded-lg p-3">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Notas</p>
-                <p className="text-sm text-foreground">{metadata.notes}</p>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Para notificaciones de sistema u otras
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -254,63 +85,35 @@ function NotificationDetailContent({ notification, tenantCurrency }: { notificat
         </div>
         <div>
           <h4 className="font-semibold text-foreground">{notification.title}</h4>
-          <p className="text-sm text-muted-foreground">
-            {formatDistanceToNow(notification.timestamp, { addSuffix: true, locale: es })}
-          </p>
+          {notification.created_at && (
+            <p className="text-sm text-muted-foreground">
+              {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true, locale: es })}
+            </p>
+          )}
         </div>
       </div>
 
       <Separator />
 
       <div className="bg-secondary/50 rounded-lg p-4">
-        <p className="text-foreground">{notification.description}</p>
+        <p className="text-foreground">{notification.message || notification.title}</p>
       </div>
-
-      {notification.actionUrl && (
-        <p className="text-sm text-muted-foreground">
-          Esta notificación está relacionada con la sección de{' '}
-          <span className="font-medium text-primary">
-            {notification.actionUrl === '/facturacion' ? 'Facturación' : 'Configuración'}
-          </span>
-        </p>
-      )}
     </div>
   );
 }
 
 export default function Notifications() {
-  const { tenantCurrency } = useEffectiveTenant();
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
+  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification, clearAll } = useNotifications();
   const [activeTab, setActiveTab] = useState<'all' | 'unread'>('all');
-  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const [selectedNotification, setSelectedNotification] = useState<AppNotification | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const isMobile = useIsMobile();
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-
   const filteredNotifications = activeTab === 'unread' 
-    ? notifications.filter(n => !n.read)
+    ? notifications.filter(n => !n.is_read)
     : notifications;
 
-  const markAsRead = (id: string) => {
-    setNotifications(prev => 
-      prev.map(n => n.id === id ? { ...n, read: true } : n)
-    );
-  };
-
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  };
-
-  const deleteNotification = (id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
-  };
-
-  const clearAll = () => {
-    setNotifications([]);
-  };
-
-  const openDetail = (notification: Notification) => {
+  const openDetail = (notification: AppNotification) => {
     setSelectedNotification(notification);
     setIsDetailOpen(true);
     markAsRead(notification.id);
@@ -374,7 +177,7 @@ export default function Notifications() {
                 </div>
                 <div>
                   <p className={cn("font-bold text-foreground", isMobile ? "text-xl" : "text-2xl")}>
-                    {notifications.filter(n => n.type === 'appointment').length}
+                    {notifications.filter(n => n.type === 'booking').length}
                   </p>
                   <p className={cn("text-muted-foreground", isMobile ? "text-xs" : "text-sm")}>Citas</p>
                 </div>
@@ -430,16 +233,15 @@ export default function Notifications() {
                   {filteredNotifications.map((notification) => {
                     const Icon = getNotificationIcon(notification.type);
                     const colorClass = getNotificationColor(notification.type);
-                    const hasDetail = notification.metadata?.clientName || notification.type === 'system';
 
                     return (
                       <div
                         key={notification.id}
                         className={cn(
                           "flex items-start gap-3 md:gap-4 p-3 md:p-4 hover:bg-secondary/50 active:bg-secondary transition-colors",
-                          !notification.read && "bg-primary/5"
+                          !notification.is_read && "bg-primary/5"
                         )}
-                        onClick={() => isMobile && hasDetail && openDetail(notification)}
+                        onClick={() => isMobile && openDetail(notification)}
                       >
                         <div className={cn("p-1.5 md:p-2 rounded-lg shrink-0", colorClass)}>
                           <Icon className={cn(isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
@@ -449,7 +251,7 @@ export default function Notifications() {
                             <div className="min-w-0">
                               <p className={cn(
                                 "text-sm",
-                                !notification.read ? "font-semibold text-foreground" : "font-medium text-foreground"
+                                !notification.is_read ? "font-semibold text-foreground" : "font-medium text-foreground"
                               )}>
                                 {notification.title}
                               </p>
@@ -457,28 +259,23 @@ export default function Notifications() {
                                 "text-muted-foreground mt-0.5",
                                 isMobile ? "text-xs line-clamp-1" : "text-sm line-clamp-2"
                               )}>
-                                {notification.description}
+                                {notification.message || ''}
                               </p>
                             </div>
-                            {!notification.read && (
+                            {!notification.is_read && (
                               <div className="w-2 h-2 rounded-full bg-primary shrink-0 mt-2" />
                             )}
                           </div>
                           <div className="flex items-center gap-3 mt-2">
-                            <span className="text-xs text-muted-foreground">
-                              {formatDistanceToNow(notification.timestamp, { addSuffix: true, locale: es })}
-                            </span>
-                            {notification.metadata?.clientName && !isMobile && (
-                              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <User className="h-3 w-3" />
-                                {notification.metadata.clientName}
+                            {notification.created_at && (
+                              <span className="text-xs text-muted-foreground">
+                                {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true, locale: es })}
                               </span>
                             )}
                           </div>
                         </div>
                         
-                        {/* Botón Ver detalles - Solo en desktop */}
-                        {hasDetail && !isMobile && (
+                        {!isMobile && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -493,7 +290,6 @@ export default function Notifications() {
                           </Button>
                         )}
                         
-                        {/* Botón eliminar */}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -525,7 +321,7 @@ export default function Notifications() {
             <ScrollArea className="h-[calc(100%-80px)]">
               <div className="pb-6">
                 {selectedNotification && (
-                  <NotificationDetailContent notification={selectedNotification} tenantCurrency={tenantCurrency} />
+                  <NotificationDetailContent notification={selectedNotification} />
                 )}
               </div>
             </ScrollArea>
@@ -539,7 +335,7 @@ export default function Notifications() {
             </DialogHeader>
             <div className="pt-2">
               {selectedNotification && (
-                <NotificationDetailContent notification={selectedNotification} tenantCurrency={tenantCurrency} />
+                <NotificationDetailContent notification={selectedNotification} />
               )}
             </div>
           </DialogContent>
