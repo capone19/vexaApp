@@ -21,7 +21,7 @@ import {
 
 import { format, isToday, isYesterday, differenceInDays } from "date-fns";
 import { es } from "date-fns/locale";
-import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio, Tags, FileText, Clock, Paperclip } from "lucide-react";
+import { Search, User, Send, Bot, ArrowLeft, X, MessageSquare, Loader2, Radio, Tags, FileText, Clock, Paperclip, Megaphone, Check, Square, CheckSquare } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -146,6 +146,9 @@ export default function Chats() {
   const [labelFilterIds, setLabelFilterIds] = useState<string[]>([]);
   const [labelsManagerOpen, setLabelsManagerOpen] = useState(false);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
+  const [remarketingMode, setRemarketingMode] = useState(false);
+  const [selectedForRemarketing, setSelectedForRemarketing] = useState<Set<string>>(new Set());
+  const [isSendingRemarketing, setIsSendingRemarketing] = useState(false);
   /** Mensajes de la sesión activa para calcular ventana 24h (el buffer global puede no incluir chats antiguos) */
   const [sessionRowsFor24h, setSessionRowsFor24h] = useState<N8nChatMessage[]>([]);
   const [resolved24hForSessionId, setResolved24hForSessionId] = useState<string | null>(null);
@@ -400,6 +403,25 @@ export default function Chats() {
     }
   };
 
+  // Remarketing: toggle seleccion de una sesion
+  const toggleRemarketingSelection = useCallback((sessionId: string) => {
+    setSelectedForRemarketing(prev => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) {
+        next.delete(sessionId);
+      } else {
+        next.add(sessionId);
+      }
+      return next;
+    });
+  }, []);
+
+  // Remarketing: cancelar modo
+  const cancelRemarketing = useCallback(() => {
+    setRemarketingMode(false);
+    setSelectedForRemarketing(new Set());
+  }, []);
+
   // Flag para evitar múltiples cargas iniciales
   const botStatesLoadedRef = useRef(false);
 
@@ -646,6 +668,46 @@ export default function Chats() {
     return filtered;
   }, [processedSessions, searchTerm, filterTab, labelFilterIds, sessionLabels, getLabelsForSession]);
 
+  // Remarketing: enviar al webhook
+  const sendRemarketing = useCallback(async () => {
+    if (selectedForRemarketing.size === 0 || isSendingRemarketing) return;
+    setIsSendingRemarketing(true);
+
+    try {
+      const sessionsToSend = filteredSessions.filter(s => selectedForRemarketing.has(s.sessionId));
+      let successCount = 0;
+
+      for (const session of sessionsToSend) {
+        const phone = session.phoneNumber.replace(/^\+/, "");
+        const tenantMsg = messages.find(m => m.session_id === session.sessionId && m.tenant_id);
+        const tenantId = tenantMsg?.tenant_id || effectiveTenantId || "";
+
+        try {
+          await fetch("https://n8ninnovatec-n8n.t0bgq1.easypanel.host/webhook/rmkt", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              phone_number: phone,
+              tenant_id: tenantId,
+              session_id: session.sessionId,
+            }),
+          });
+          successCount++;
+        } catch (err) {
+          console.error("[Chats] Remarketing error for", session.sessionId, err);
+        }
+      }
+
+      toast.success(`Remarketing enviado a ${successCount} contacto${successCount !== 1 ? "s" : ""}`);
+      cancelRemarketing();
+    } catch (err) {
+      console.error("[Chats] Remarketing error:", err);
+      toast.error("Error al enviar remarketing");
+    } finally {
+      setIsSendingRemarketing(false);
+    }
+  }, [selectedForRemarketing, isSendingRemarketing, filteredSessions, messages, effectiveTenantId, cancelRemarketing]);
+
   // Get messages for selected session
   const selectedMessages = useMemo(() => {
     if (!selectedSessionId) return [];
@@ -843,17 +905,37 @@ export default function Chats() {
               className={cn(
                 "w-full p-4 text-left border-b border-border transition-colors relative group",
                 "hover:bg-secondary/50",
-                selectedSessionId === session.sessionId && "bg-secondary"
+                selectedSessionId === session.sessionId && !remarketingMode && "bg-secondary",
+                remarketingMode && selectedForRemarketing.has(session.sessionId) && "bg-primary/10"
               )}
             >
               <button
-                onClick={() => setSelectedSessionId(session.sessionId)}
+                onClick={() => {
+                  if (remarketingMode) {
+                    toggleRemarketingSelection(session.sessionId);
+                  } else {
+                    setSelectedSessionId(session.sessionId);
+                  }
+                }}
                 className="w-full text-left"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
-                    <User className="h-5 w-5 text-muted-foreground" />
-                  </div>
+                  {remarketingMode ? (
+                    <div className="w-10 h-10 rounded-md border-2 flex items-center justify-center shrink-0 cursor-pointer transition-colors"
+                      style={{
+                        borderColor: selectedForRemarketing.has(session.sessionId) ? 'hsl(var(--primary))' : 'hsl(var(--border))',
+                        backgroundColor: selectedForRemarketing.has(session.sessionId) ? 'hsl(var(--primary))' : 'transparent',
+                      }}
+                    >
+                      {selectedForRemarketing.has(session.sessionId) && (
+                        <Check className="h-5 w-5 text-primary-foreground" />
+                      )}
+                    </div>
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+                      <User className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0 pr-8">
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-medium text-sm text-foreground truncate">
@@ -1407,7 +1489,45 @@ export default function Chats() {
         isMobile ? "h-[calc(100dvh-3.5rem-5rem)] -m-4 md:m-0 overflow-hidden" : "h-[calc(100vh-8rem)]"
       )}>
         {!isMobile && (
-          <PageHeader title="Chats" subtitle="Conversaciones en tiempo real" className="mb-4" />
+          <div className="flex items-center justify-between mb-4">
+            <PageHeader title="Chats" subtitle="Conversaciones en tiempo real" className="mb-0" />
+            <div className="flex items-center gap-2">
+              {remarketingMode ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={cancelRemarketing}
+                    disabled={isSendingRemarketing}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={sendRemarketing}
+                    disabled={selectedForRemarketing.size === 0 || isSendingRemarketing}
+                    className="bg-primary hover:bg-primary/90"
+                  >
+                    {isSendingRemarketing ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    ) : (
+                      <Send className="h-4 w-4 mr-1" />
+                    )}
+                    Enviar ({selectedForRemarketing.size})
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRemarketingMode(true)}
+                >
+                  <Megaphone className="h-4 w-4 mr-1" />
+                  Remarketing
+                </Button>
+              )}
+            </div>
+          </div>
         )}
 
         {authLoading ? (
