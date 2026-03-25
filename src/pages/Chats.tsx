@@ -117,11 +117,17 @@ export default function Chats() {
   // Determinar si el usuario es admin (ve todos los chats) - pero NO cuando está impersonando
   const isAdmin = user?.role === 'admin' && !isImpersonating;
   
+  // Ventana de retención: 1 mes completo de historial
+  const oneMonthAgo = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    return d.toISOString();
+  }, []);
+
   // Filtrar por tenant: admins ven todo (cuando no impersonan), otros usuarios solo su tenant
-  // CRÍTICO: Límite alto para conteo preciso de conversaciones (facturación)
   const { messages, isLoading, error, refetch } = useN8nChatHistory({
     enableRealtime: true,
-    limit: 50000, // Límite alto para garantizar conteo completo de sesiones
+    since: oneMonthAgo,
     tenantId: isAdmin ? undefined : effectiveTenantId || undefined,
   });
   

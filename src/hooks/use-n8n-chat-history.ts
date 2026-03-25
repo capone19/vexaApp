@@ -4,11 +4,15 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface UseN8nChatHistoryOptions {
   sessionId?: string;
-  tenantId?: string; // Filtrar por tenant del usuario logueado
-  limit?: number;    // Default: 10000 (aumentado para conteo preciso)
+  tenantId?: string;
+  since?: string;    // ISO date string — only fetch rows with created_at >= since
+  limit?: number;    // Legacy — ignored when pagination is active
   enableRealtime?: boolean;
   pollingIntervalMs?: number;
 }
+
+const PAGE_SIZE = 1000; // PostgREST max rows per request on the external project
+const SAFETY_LIMIT = 100_000;
 
 // Función para deduplicar mensajes con el mismo contenido + tipo + session en ventana de tiempo
 function deduplicateMessages(messages: N8nChatMessage[]): N8nChatMessage[] {
@@ -65,7 +69,7 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
   const { 
     sessionId, 
     tenantId,
-    limit = 10000,  // Aumentado de 100 a 10000 para conteo preciso de conversaciones
+    since,
     enableRealtime = true,
     pollingIntervalMs = 3000
   } = options;
@@ -80,7 +84,6 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
   const lastMessageIdRef = useRef<number | null>(null);
   const isMountedRef = useRef(true);
 
-  // Track mount state
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -88,33 +91,52 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
     };
   }, []);
 
-  // Fetch all unique sessions
+  // Paginated fetch: retrieves ALL matching rows in PAGE_SIZE batches
   const fetchSessions = useCallback(async () => {
     try {
-      let query = externalSupabase
-        .from('n8n_chat_histories')
-        .select('session_id')
-        .order('created_at', { ascending: false });
+      let allData: Array<{ session_id: string }> = [];
+      let offset = 0;
+      let hasMore = true;
 
-      // Filtrar por tenant si se proporciona
-      if (tenantId) {
-        query = query.eq('tenant_id', tenantId);
+      while (hasMore) {
+        let query = externalSupabase
+          .from('n8n_chat_histories')
+          .select('session_id')
+          .order('created_at', { ascending: false })
+          .range(offset, offset + PAGE_SIZE - 1);
+
+        if (tenantId) {
+          query = query.eq('tenant_id', tenantId);
+        }
+        if (since) {
+          query = query.gte('created_at', since);
+        }
+
+        const { data, error: fetchError } = await query;
+        if (fetchError) throw fetchError;
+        if (!isMountedRef.current) return;
+
+        if (!data || data.length === 0) {
+          hasMore = false;
+        } else {
+          allData.push(...data);
+          offset += data.length;
+          if (data.length < PAGE_SIZE) hasMore = false;
+        }
+        if (offset >= SAFETY_LIMIT) {
+          console.warn('[useN8nChatHistory] Sessions hit safety limit', SAFETY_LIMIT);
+          hasMore = false;
+        }
       }
 
-      const { data, error: fetchError } = await query;
-
-      if (fetchError) throw fetchError;
-      if (!isMountedRef.current) return;
-
-      // Get unique session IDs
-      const uniqueSessions = [...new Set(data?.map(d => d.session_id) || [])];
+      const uniqueSessions = [...new Set(allData.map(d => d.session_id))];
       setSessions(uniqueSessions);
     } catch (err) {
       console.error('[useN8nChatHistory] Error fetching sessions:', err);
     }
-  }, [tenantId]);
+  }, [tenantId, since]);
 
-  // Fetch messages for a specific session or all
+  // Paginated fetch for messages — batches of PAGE_SIZE via .range()
   const fetchMessages = useCallback(async (silent = false) => {
     if (!silent) {
       setIsLoading(true);
@@ -122,40 +144,54 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
     setError(null);
 
     try {
-      let query = externalSupabase
-        .from('n8n_chat_histories')
-        .select('*')
-        .order('created_at', { ascending: false })  // Más recientes primero para carga rápida
-        .limit(limit);
+      let allData: N8nChatMessage[] = [];
+      let offset = 0;
+      let hasMore = true;
 
-      // Filtrar por tenant si se proporciona
-      if (tenantId) {
-        query = query.eq('tenant_id', tenantId);
+      while (hasMore) {
+        let query = externalSupabase
+          .from('n8n_chat_histories')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(offset, offset + PAGE_SIZE - 1);
+
+        if (tenantId) {
+          query = query.eq('tenant_id', tenantId);
+        }
+        if (since) {
+          query = query.gte('created_at', since);
+        }
+        if (sessionId) {
+          query = query.eq('session_id', sessionId);
+        }
+
+        const { data, error: fetchError } = await query;
+        if (fetchError) throw fetchError;
+        if (!isMountedRef.current) return;
+
+        if (!data || data.length === 0) {
+          hasMore = false;
+        } else {
+          allData.push(...(data as N8nChatMessage[]));
+          offset += data.length;
+          if (data.length < PAGE_SIZE) hasMore = false;
+        }
+        if (offset >= SAFETY_LIMIT) {
+          console.warn('[useN8nChatHistory] Messages hit safety limit', SAFETY_LIMIT);
+          hasMore = false;
+        }
       }
 
-      if (sessionId) {
-        query = query.eq('session_id', sessionId);
-      }
+      console.log('[useN8nChatHistory] Fetched total rows:', allData.length);
 
-      const { data, error: fetchError } = await query;
-
-      if (fetchError) throw fetchError;
-      if (!isMountedRef.current) return;
-
-      const rawMessages = data as N8nChatMessage[] || [];
+      const deduplicatedMessages = deduplicateMessages(allData);
       
-      // Deduplicar mensajes por contenido + tipo + timestamp cercano (dentro de 5 segundos)
-      const deduplicatedMessages = deduplicateMessages(rawMessages);
-      
-      // Actualizar solo si hay cambios (para evitar re-renders innecesarios)
       setMessages(prev => {
         const prevIds = new Set(prev.map(m => m.id));
         const newIds = new Set(deduplicatedMessages.map(m => m.id));
         
-        // Si son diferentes, actualizar
         if (prevIds.size !== newIds.size || 
             deduplicatedMessages.some(m => !prevIds.has(m.id))) {
-          // Trackear último ID para polling eficiente
           if (deduplicatedMessages.length > 0) {
             lastMessageIdRef.current = Math.max(...deduplicatedMessages.map(m => m.id));
           }
@@ -175,7 +211,7 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
         setIsLoading(false);
       }
     }
-  }, [sessionId, tenantId, limit]);
+  }, [sessionId, tenantId, since]);
 
   // Polling para nuevos mensajes (fallback cuando realtime no está disponible)
   const fetchNewMessages = useCallback(async () => {
