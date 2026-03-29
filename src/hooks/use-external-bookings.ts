@@ -4,8 +4,9 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { externalSupabase, ExternalBooking } from '@/integrations/supabase/external-client';
-import type { Appointment, AppointmentStatus, AppointmentSource, AppointmentType, ShippingData } from '@/lib/types';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { externalBookingToAppointment } from '@/lib/external-booking-to-appointment';
+import type { Appointment } from '@/lib/types';
 import { format } from 'date-fns';
 
 export interface UseExternalBookingsOptions {
@@ -23,99 +24,6 @@ export interface UseExternalBookingsReturn {
   error: string | null;
   refetch: () => void;
 }
-
-// Mapear origin de la tabla a AppointmentSource
-const mapOrigin = (origin: string): AppointmentSource => {
-  const originMap: Record<string, AppointmentSource> = {
-    'chat': 'chat',
-    'campaign': 'campaign',
-    'direct': 'direct',
-    'manual': 'direct',
-    'web': 'direct',
-    'referral': 'referral',
-  };
-  return originMap[origin] || 'chat';
-};
-
-// Por ahora todos los bookings externos son "confirmed"
-const mapStatus = (): AppointmentStatus => {
-  return 'confirmed';
-};
-
-// Mapear ExternalBooking a Appointment
-const mapBookingToAppointment = (booking: ExternalBooking): Appointment => {
-  let datetime: Date;
-  if (booking.event_time) {
-    datetime = new Date(`${booking.event_date}T${booking.event_time}`);
-  } else {
-    datetime = new Date(`${booking.event_date}T00:00:00`);
-  }
-
-  const time = booking.event_time 
-    ? format(new Date(`2000-01-01T${booking.event_time}`), 'HH:mm')
-    : undefined;
-
-  // Extraer meetingUrl del metadata si existe
-  const metadata = booking.metadata as Record<string, unknown> | null;
-  const meetingUrl = metadata?.meeting_url as string | undefined 
-    || metadata?.meetingUrl as string | undefined
-    || metadata?.zoom_link as string | undefined
-    || metadata?.meet_link as string | undefined;
-
-  // Extraer datos de despacho del metadata
-  const shippingData: ShippingData = {};
-  if (metadata) {
-    const address = (metadata.direccion || metadata.address || metadata.shipping_address || metadata.direccion_envio) as string | undefined;
-    const commune = (metadata.comuna || metadata.commune || metadata.ciudad) as string | undefined;
-    const region = (metadata.region || metadata.estado || metadata.province || metadata.provincia) as string | undefined;
-    const email = (metadata.email || metadata.correo) as string | undefined;
-    const shippingCost = (metadata.costo_envio || metadata.shipping_cost || metadata.envio || metadata.costo_despacho) as number | undefined;
-    const subtotal = (metadata.subtotal || metadata.sub_total) as number | undefined;
-    const total = (metadata.total || metadata.total_pedido) as number | undefined;
-    const shippingDate = (metadata.fecha_despacho || metadata.shipping_date || metadata.fecha_envio || metadata.dispatch_date || metadata.fecha_entrega) as string | undefined;
-
-    if (address) shippingData.address = address;
-    if (commune) shippingData.commune = commune;
-    if (region) shippingData.region = region;
-    if (email) shippingData.email = email;
-    if (shippingCost !== undefined) shippingData.shippingCost = Number(shippingCost);
-    if (subtotal !== undefined) shippingData.subtotal = Number(subtotal);
-    if (total !== undefined) shippingData.total = Number(total);
-    if (shippingDate) shippingData.shippingDate = shippingDate;
-  }
-
-  // Columnas directas tienen prioridad sobre metadata
-  if (booking.address) shippingData.address = booking.address;
-  if (booking.comuna) shippingData.commune = booking.comuna;
-  if (booking.region) shippingData.region = booking.region;
-  if (booking.shipping_cost != null) shippingData.shippingCost = Number(booking.shipping_cost);
-  if (booking.payment_method) shippingData.paymentMethod = booking.payment_method;
-  if (booking.estimated_delivery_date) shippingData.shippingDate = booking.estimated_delivery_date;
-  if (booking.estimated_delivery_time) shippingData.estimatedDeliveryTime = booking.estimated_delivery_time;
-
-  const hasShippingData = Object.keys(shippingData).length > 0;
-
-  return {
-    id: booking.id,
-    datetime,
-    clientName: booking.contact_name,
-    clientPhone: booking.contact_phone || undefined,
-    clientEmail: booking.contact_email || undefined,
-    service: booking.item_name,
-    source: mapOrigin(booking.origin),
-    sourceRaw: booking.origin, // Preservar valor original de la BD
-    status: mapStatus(),
-    notes: booking.notes || undefined,
-    chatId: booking.session_id || undefined,
-    createdAt: new Date(booking.created_at),
-    type: booking.type as AppointmentType,
-    time,
-    price: booking.price,
-    currency: booking.currency,
-    meetingUrl,
-    shippingData: hasShippingData ? shippingData : undefined,
-  };
-};
 
 // Función de fetch para React Query
 async function fetchExternalBookings(
@@ -146,7 +54,7 @@ async function fetchExternalBookings(
     throw new Error(error.message);
   }
 
-  const bookings = (data || []).map(mapBookingToAppointment);
+  const bookings = (data || []).map(externalBookingToAppointment);
   const items = [...new Set((data || []).map(b => b.item_name))];
 
   return { bookings, items };

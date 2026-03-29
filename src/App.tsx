@@ -41,6 +41,7 @@ const AdminOnboarding = lazy(() => import("./pages/admin/AdminOnboarding"));
 const AdminTickets = lazy(() => import("./pages/admin/AdminTickets"));
 const AdminTicketDetail = lazy(() => import("./pages/admin/AdminTicketDetail"));
 const AdminHealthCheck = lazy(() => import("./pages/admin/AdminHealthCheck"));
+const AdminEntregas = lazy(() => import("./pages/admin/AdminEntregas"));
 
 // VEXA Ads - Módulo Premium Demo (aislado) - Estructura reestructurada
 const VexaAdsOverview = lazy(() => import("./pages/vexa-ads/VexaAdsOverview"));
@@ -116,6 +117,7 @@ const App = () => (
               <Route path="/admin/clientes" element={<AdminRoute><AdminClients /></AdminRoute>} />
               <Route path="/admin/tickets" element={<AdminRoute><AdminTickets /></AdminRoute>} />
 <Route path="/admin/tickets/:ticketId" element={<AdminRoute><AdminTicketDetail /></AdminRoute>} />
+              <Route path="/admin/entregas" element={<AdminRoute><AdminEntregas /></AdminRoute>} />
               <Route path="/admin/health" element={<AdminRoute><AdminHealthCheck /></AdminRoute>} />
               
               {/* VEXA Ads - Módulo controlado por tenant (vexa_ads_enabled) */}

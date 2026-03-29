@@ -26,7 +26,11 @@ import { BlockingPanel } from '@/components/calendar/BlockingPanel';
 import { BlockingModeOverlay } from '@/components/calendar/BlockingModeOverlay';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  buildPrintBookingPayload,
+  sendPrintBookingPayload,
+} from '@/lib/print-booking-webhook';
+import { buildPrintBookingPayload, sendPrintBookingPayload } from '@/lib/print-booking-webhook';
 
 type CalendarView = 'month' | 'week' | 'day';
 
@@ -181,122 +185,14 @@ const CalendarContent = () => {
   const handlePrintBooking = useCallback(async () => {
     if (!selectedAppointment || selectedAppointment.type !== 'product') return;
     const apt = selectedAppointment;
-    const sd = apt.shippingData;
     setIsPrinting(true);
     try {
-      let dispatch_label: string | null = null;
-      if (sd?.shippingDate) {
-        const d = sd.shippingDate;
-        const parsed = parseISO(d.length === 10 ? `${d}T12:00:00` : d);
-        const label = isValid(parsed) ? format(parsed, 'yyyy-MM-dd') : d;
-        dispatch_label = sd.estimatedDeliveryTime ? `${label} (${sd.estimatedDeliveryTime})` : label;
-      } else if (sd?.estimatedDeliveryTime) {
-        dispatch_label = sd.estimatedDeliveryTime;
+      const payload = buildPrintBookingPayload(apt, tenantId ?? null, tenantCurrency);
+      const result = await sendPrintBookingPayload(payload);
+      if (!result.ok) {
+        toast(result.toast);
+        return;
       }
-
-      const subtotalNum = sd?.subtotal ?? apt.price ?? null;
-      const shippingCostNum = sd?.shippingCost ?? null;
-      const totalNum = sd?.total ?? apt.price ?? null;
-
-      const PRINT_WEBHOOK =
-        import.meta.env.VITE_N8N_PRINT_WEBHOOK_URL ??
-        'https://n8ninnovatec-n8n.t0bgq1.easypanel.host/webhook/imprimir';
-
-      const payload = {
-        timestamp_cliente: new Date().toISOString(),
-        booking_id: apt.id,
-        type: apt.type,
-        chat_id: apt.chatId ?? null,
-        notes: apt.notes ?? null,
-        status: apt.status,
-        created_at_booking: apt.createdAt.toISOString(),
-        tenant_id: tenantId ?? null,
-        compra: {
-          client_name: apt.clientName,
-          client_phone: apt.clientPhone ?? null,
-          client_email: apt.clientEmail ?? null,
-          service: apt.service,
-          purchase_date_iso: apt.datetime.toISOString(),
-          purchase_date_formatted: format(apt.datetime, "d 'de' MMMM, yyyy", { locale: es }),
-          price: apt.price ?? null,
-          currency: apt.currency ?? null,
-          subtotal: subtotalNum,
-          shipping_cost: shippingCostNum,
-          total: totalNum,
-          subtotal_display: formatPrice(sd?.subtotal ?? apt.price ?? undefined, apt.currency) ?? null,
-          shipping_cost_display:
-            sd?.shippingCost != null ? formatPrice(sd.shippingCost, apt.currency) : null,
-          total_display:
-            formatPrice(
-              (sd?.total ?? apt.price) as number | undefined,
-              apt.currency
-            ) ?? null,
-          source: apt.source,
-          source_raw: apt.sourceRaw ?? null,
-        },
-        despacho: {
-          address: sd?.address ?? null,
-          commune: sd?.commune ?? null,
-          region: sd?.region ?? null,
-          email: sd?.email ?? null,
-          shippingCost: sd?.shippingCost ?? null,
-          subtotal: sd?.subtotal ?? null,
-          total: sd?.total ?? null,
-          shippingDate: sd?.shippingDate ?? null,
-          estimatedDeliveryTime: sd?.estimatedDeliveryTime ?? null,
-          paymentMethod: sd?.paymentMethod ?? null,
-          dispatch_label,
-        },
-      };
-
-      let ok = false;
-      let errMsg = '';
-
-      try {
-        const res = await fetch(PRINT_WEBHOOK, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) ok = true;
-        else errMsg = `Webhook directo: HTTP ${res.status}`;
-      } catch {
-        errMsg = 'Webhook directo no disponible (CORS o red).';
-      }
-
-      if (!ok) {
-        const { data, error } = await supabase.functions.invoke('webhook-n8n-proxy', {
-          body: { __vexa_action: 'print_imprimir', ...payload },
-        });
-
-        if (error) {
-          toast({
-            title: 'Error al enviar a imprimir',
-            description: `${errMsg} ${error.message}`.trim(),
-            variant: 'destructive',
-          });
-          return;
-        }
-
-        const result = data as {
-          success?: boolean;
-          status?: number;
-          error?: string;
-        } | null;
-        if (!result?.success) {
-          toast({
-            title: 'No se pudo completar la impresión',
-            description:
-              result?.error ||
-              (result?.status
-                ? `n8n respondió HTTP ${result.status}`
-                : 'Redespliega webhook-n8n-proxy (incluye ruta print_imprimir) o print-booking-proxy.'),
-            variant: 'destructive',
-          });
-          return;
-        }
-      }
-
       toast({
         title: 'Enviado a imprimir',
         description: 'El pedido se envió al webhook de impresión.',

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { UserPlus, Users, LogOut, Menu, X, Ticket, BarChart3, Activity } from 'lucide-react';
+import { UserPlus, Users, LogOut, Menu, X, Ticket, BarChart3, Activity, Package } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useImpersonation } from '@/contexts/ImpersonationContext';
@@ -15,6 +15,7 @@ const navItems = [
   { path: '/admin/dashboard', label: 'Dashboard', icon: BarChart3 },
   { path: '/admin/onboarding', label: 'Onboarding', icon: UserPlus },
   { path: '/admin/clientes', label: 'Clientes', icon: Users },
+  { path: '/admin/entregas', label: 'Entregas', icon: Package },
   { path: '/admin/tickets', label: 'Tickets', icon: Ticket },
   { path: '/admin/health', label: 'Health', icon: Activity },
 ];
