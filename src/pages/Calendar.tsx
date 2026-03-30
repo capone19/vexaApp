@@ -30,7 +30,6 @@ import {
   buildPrintBookingPayload,
   sendPrintBookingPayload,
 } from '@/lib/print-booking-webhook';
-import { buildPrintBookingPayload, sendPrintBookingPayload } from '@/lib/print-booking-webhook';
 
 type CalendarView = 'month' | 'week' | 'day';
 

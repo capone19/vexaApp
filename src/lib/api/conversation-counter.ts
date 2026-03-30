@@ -36,15 +36,20 @@ export interface CounterOptions {
 }
 
 /**
- * Clasificar una sesión según la cantidad de mensajes
- * - TOFU: 1-6 mensajes (leads fríos, sin engagement)
- * - MOFU: 7-10 mensajes (leads tibios, en progreso)
- * - HOT: 11+ mensajes (leads calientes, alta intención)
+ * Clasificar una sesión según la cantidad de mensajes en el período analizado.
+ * Debe coincidir con los rangos documentados en ConversationCount.byStage.
+ *
+ * - TOFU: 1-6 mensajes (leads fríos, poco engagement)
+ * - MOFU: 7-10 mensajes (en progreso)
+ * - HOT: 11+ mensajes (alta intención)
+ *
+ * Nota: messageCount 0 no debería aparecer (solo sesiones con ≥1 fila en n8n_chat_histories);
+ * se clasifica como TOFU por seguridad.
  */
 export function classifySession(messageCount: number): 'tofu' | 'mofu' | 'hot' {
-  if (messageCount >= 9) return 'hot';   // 9+ mensajes (alta intención)
-  if (messageCount >= 3) return 'mofu';  // 3-8 mensajes (en progreso)
-  return 'tofu';                          // 1-2 mensajes (bajo interés)
+  if (messageCount >= 11) return 'hot';
+  if (messageCount >= 7) return 'mofu';
+  return 'tofu';
 }
 
 /**
