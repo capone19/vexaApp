@@ -100,6 +100,12 @@ export default function AdminEntregas() {
   const [printingId, setPrintingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  const tenantNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const t of tenants) map[t.id] = t.name;
+    return map;
+  }, [tenants]);
+
   const fetchData = async () => {
     setIsLoading(true);
     setError(null);
@@ -180,6 +186,7 @@ export default function AdminEntregas() {
       result = result.filter(
         (b) =>
           b.contact_name?.toLowerCase().includes(q) ||
+          tenantNameById[b.tenant_id]?.toLowerCase().includes(q) ||
           b.contact_phone?.toLowerCase().includes(q) ||
           b.address?.toLowerCase().includes(q) ||
           b.comuna?.toLowerCase().includes(q) ||
@@ -188,7 +195,7 @@ export default function AdminEntregas() {
     }
 
     return [...result].sort(compareByDeliveryDate);
-  }, [bookings, filterTenant, filterType, searchQuery]);
+  }, [bookings, filterTenant, filterType, searchQuery, tenantNameById]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -359,6 +366,8 @@ export default function AdminEntregas() {
                       const commune = sd?.commune ?? booking.comuna ?? '';
                       const region = sd?.region ?? booking.region ?? '';
                       const phone = apt.clientPhone || booking.contact_phone || '';
+                      const tenantName =
+                        tenantNameById[booking.tenant_id] || booking.tenant_id.slice(0, 8);
 
                       return (
                         <Fragment key={booking.id}>
@@ -373,8 +382,15 @@ export default function AdminEntregas() {
                                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
                               )}
                             </TableCell>
-                            <TableCell className="font-medium">
-                              {booking.contact_name || '—'}
+                            <TableCell>
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-medium">
+                                  {booking.contact_name || '—'}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {tenantName}
+                                </span>
+                              </div>
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col gap-0.5">
@@ -414,6 +430,12 @@ export default function AdminEntregas() {
                             <TableRow className="bg-muted/30 hover:bg-muted/30 border-0">
                               <TableCell colSpan={5} className="py-4 px-6">
                                 <div className="grid gap-4 text-sm max-w-3xl">
+                                  <div>
+                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                                      Tenant
+                                    </p>
+                                    <p className="text-foreground">{tenantName}</p>
+                                  </div>
                                   <div>
                                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
                                       Teléfono
