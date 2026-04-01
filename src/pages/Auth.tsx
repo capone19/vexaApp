@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation, type Location } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,8 +13,16 @@ import { isAdminEmail } from "@/lib/admin-config";
 
 type AuthMode = "login" | "register";
 
+function getReturnPathFromState(state: unknown): string | null {
+  const from = (state as { from?: Location } | null)?.from;
+  if (!from?.pathname) return null;
+  if (from.pathname === "/auth" || from.pathname === "/cuenta-pendiente") return null;
+  return `${from.pathname}${from.search ?? ""}${from.hash ?? ""}`;
+}
+
 export default function Auth() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [mode, setMode] = useState<AuthMode>("login");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -29,38 +37,36 @@ export default function Auth() {
   // Focus states for premium input effects
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
-  // Verificar si ya está autenticado
+  // Si ya hay sesión (p. ej. tras refresh: ProtectedRoute mandó aquí un instante), volver a la ruta
+  // original en lugar de forzar siempre "/" — evita perder /chats, /ajustes-agente, etc.
   useEffect(() => {
-    // Set up listener first
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (session) {
-          const email = session.user.email || '';
-          if (isAdminEmail(email)) {
-            navigate("/admin");
-          } else {
-            navigate("/");
-          }
-        }
+    const goIfSession = (session: { user: { email?: string | null } } | null) => {
+      if (!session?.user) return;
+      const email = session.user.email || "";
+      const returnTo = getReturnPathFromState(location.state);
+      if (isAdminEmail(email)) {
+        navigate("/admin", { replace: true });
+      } else if (returnTo) {
+        navigate(returnTo, { replace: true });
+      } else {
+        navigate("/", { replace: true });
       }
-    );
+    };
 
-    // Then check current session
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      goIfSession(session);
+    });
+
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        const email = session.user.email || '';
-        if (isAdminEmail(email)) {
-          navigate("/admin");
-        } else {
-          navigate("/");
-        }
-      }
+      goIfSession(session);
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [navigate]);
+  }, [navigate, location.state]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
