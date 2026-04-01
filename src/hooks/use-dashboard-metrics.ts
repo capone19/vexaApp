@@ -382,8 +382,8 @@ export function useDashboardMetrics({
     queryKey,
     queryFn: () => fetchDashboardMetrics(tenantId!, startDate, endDate),
     enabled: !!tenantId,
-    staleTime: 0, // Sin stale time para que siempre se refresquen al cambiar fechas
-    refetchOnWindowFocus: true,
+    staleTime: 1000 * 60 * 5, // 5 min — cambios de fecha crean nueva queryKey, no necesita staleTime: 0
+    refetchOnWindowFocus: false, // El realtime global (useChatRealtimeSync) invalida el cache
     refetchOnMount: true,
   });
 

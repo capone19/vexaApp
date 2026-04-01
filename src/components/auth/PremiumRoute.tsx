@@ -1,5 +1,6 @@
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Loader2, Lock, Zap } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ interface PremiumRouteProps {
  */
 export function PremiumRoute({ children, feature = 'esta función' }: PremiumRouteProps) {
   const { isLoading, isPremium } = useAuthContext();
+  const navigate = useNavigate();
   
   // Mientras carga, mostrar loader
   if (isLoading) {
@@ -66,7 +68,7 @@ export function PremiumRoute({ children, feature = 'esta función' }: PremiumRou
             
             <Button 
               className="w-full"
-              onClick={() => window.location.href = '/facturacion'}
+              onClick={() => navigate('/facturacion')}
             >
               <Zap className="h-4 w-4 mr-2" />
               Ver planes disponibles

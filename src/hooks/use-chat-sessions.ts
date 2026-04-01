@@ -112,42 +112,39 @@ export function useChatSessions({
         throw sessionsError;
       }
 
-      // Para cada sesión, obtener el último mensaje (optimizado)
-      const sessionsWithMessages: Chat[] = [];
+      // Para cada sesión, obtener el último mensaje en paralelo
+      const sessionsWithMessages: Chat[] = await Promise.all(
+        (sessions || []).map(async (session) => {
+          const { data: lastMessage } = await supabase
+            .from('chat_messages')
+            .select('id, content, sender_type, created_at')
+            .eq('session_id', session.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
 
-      for (const session of sessions || []) {
-        // Obtener último mensaje de cada sesión
-        const { data: lastMessage } = await supabase
-          .from('chat_messages')
-          .select('id, content, sender_type, created_at')
-          .eq('session_id', session.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
-
-        const chat: Chat = {
-          id: session.id,
-          sessionId: session.id,
-          userName: session.contact_name || session.contact_phone || 'Sin nombre',
-          userPhone: session.contact_phone || undefined,
-          channel: 'whatsapp',
-          status: mapChatStatus(session.status),
-          funnelStage: mapFunnelStage(session.funnel_stage),
-          lastMessageAt: session.last_message_at ? new Date(session.last_message_at) : new Date(session.created_at),
-          hasHumanIntervention: session.is_handoff || false,
-          messages: lastMessage ? [{
-            id: lastMessage.id,
-            chatId: session.id,
-            content: lastMessage.content || '',
-            sender: mapSender(lastMessage.sender_type),
-            timestamp: new Date(lastMessage.created_at),
-            read: true,
-          }] : [],
-          createdAt: new Date(session.created_at),
-        };
-
-        sessionsWithMessages.push(chat);
-      }
+          return {
+            id: session.id,
+            sessionId: session.id,
+            userName: session.contact_name || session.contact_phone || 'Sin nombre',
+            userPhone: session.contact_phone || undefined,
+            channel: 'whatsapp',
+            status: mapChatStatus(session.status),
+            funnelStage: mapFunnelStage(session.funnel_stage),
+            lastMessageAt: session.last_message_at ? new Date(session.last_message_at) : new Date(session.created_at),
+            hasHumanIntervention: session.is_handoff || false,
+            messages: lastMessage ? [{
+              id: lastMessage.id,
+              chatId: session.id,
+              content: lastMessage.content || '',
+              sender: mapSender(lastMessage.sender_type),
+              timestamp: new Date(lastMessage.created_at),
+              read: true,
+            }] : [],
+            createdAt: new Date(session.created_at),
+          } as Chat;
+        })
+      );
 
       setChats(sessionsWithMessages);
     } catch (err) {

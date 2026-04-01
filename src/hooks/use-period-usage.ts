@@ -244,8 +244,8 @@ export function usePeriodUsage(): UsePeriodUsageReturn {
     queryFn: () => fetchPeriodUsage(tenantId!, tenantCreatedAt),
     // Solo ejecutar cuando tenemos tenantId
     enabled: !!tenantId,
-    staleTime: 30000, // 30 segundos
-    refetchOnWindowFocus: true,
+    staleTime: 1000 * 60 * 5, // 5 min — el realtime global invalida cuando llegan nuevas conversaciones
+    refetchOnWindowFocus: false,
     refetchOnMount: true,
   });
 
