@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -109,8 +109,147 @@ function IntentBadge({ label, isMobile }: { label: IntentLabel; isMobile?: boole
   );
 }
 
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+
+  return debounced;
+}
+
+interface ChatComposerProps {
+  isMobile: boolean;
+  isBotActive: boolean;
+  disabledByWindow: boolean;
+  onSend: (messageText: string, file: File | null) => Promise<void>;
+}
+
+const ChatComposer = memo(function ChatComposer({
+  isMobile,
+  isBotActive,
+  disabledByWindow,
+  onSend,
+}: ChatComposerProps) {
+  const [messageInput, setMessageInput] = useState("");
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const clearAttachment = useCallback(() => {
+    setAttachedFile(null);
+    setAttachedPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const maxSize = 16 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast.error("El archivo es demasiado grande (máx. 16 MB)");
+      return;
+    }
+
+    setAttachedFile(file);
+    if (file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = (ev) => setAttachedPreview(ev.target?.result as string);
+      reader.readAsDataURL(file);
+      return;
+    }
+    setAttachedPreview(null);
+  }, []);
+
+  const isInputDisabled = disabledByWindow || isBotActive || isSendingMessage;
+  const canSend = !isInputDisabled && (messageInput.trim().length > 0 || !!attachedFile);
+
+  const sendCurrentMessage = useCallback(async () => {
+    if (!canSend) return;
+    setIsSendingMessage(true);
+    try {
+      await onSend(messageInput.trim(), attachedFile);
+      setMessageInput("");
+      clearAttachment();
+    } finally {
+      setIsSendingMessage(false);
+    }
+  }, [attachedFile, canSend, clearAttachment, messageInput, onSend]);
+
+  return (
+    <div className={cn("border-t border-border bg-background shrink-0", isMobile ? "p-2" : "p-3 md:p-4")}>
+      {attachedFile && (
+        <div className={cn("flex items-center gap-2 mb-2 p-2 rounded-lg bg-secondary/60 border border-border", isMobile ? "text-xs" : "text-sm")}>
+          {attachedPreview ? (
+            <img src={attachedPreview} alt="preview" className="h-10 w-10 rounded object-cover shrink-0" />
+          ) : (
+            <div className="h-10 w-10 rounded bg-muted flex items-center justify-center shrink-0">
+              <FileText className="h-5 w-5 text-muted-foreground" />
+            </div>
+          )}
+          <span className="truncate flex-1 text-foreground">{attachedFile.name}</span>
+          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={clearAttachment}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+
+      <div className={cn("flex gap-2", isMobile && "gap-1.5")}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,video/*,audio/*"
+          className="hidden"
+          onChange={handleFileSelect}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn("shrink-0 text-muted-foreground hover:text-foreground", isMobile ? "h-9 w-9" : "h-11 w-11", isInputDisabled && "opacity-50 cursor-not-allowed")}
+          disabled={isInputDisabled}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Paperclip className={cn(isMobile ? "h-4 w-4" : "h-5 w-5")} />
+        </Button>
+        <Input
+          placeholder={isBotActive ? "Desactiva el bot para escribir..." : "Escribe un mensaje..."}
+          value={messageInput}
+          onChange={(e) => setMessageInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void sendCurrentMessage();
+            }
+          }}
+          disabled={isInputDisabled}
+          className={cn("bg-secondary border-border", isMobile ? "h-9 text-sm" : "h-11", isInputDisabled && "opacity-50 cursor-not-allowed")}
+        />
+        <Button
+          size="icon"
+          className={cn("shrink-0 bg-primary hover:bg-primary/90", isMobile ? "h-9 w-9" : "h-11 w-11", isInputDisabled && "opacity-50 cursor-not-allowed")}
+          onClick={() => void sendCurrentMessage()}
+          disabled={!canSend}
+        >
+          {isSendingMessage ? (
+            <Loader2 className={cn(isMobile ? "h-3.5 w-3.5" : "h-4 w-4", "animate-spin")} />
+          ) : (
+            <Send className={cn(isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+});
+
 export default function Chats() {
   const navigate = useNavigate();
+  const isDev = import.meta.env.DEV;
+  const BOT_STATE_RECONCILE_WINDOW_MS = 1500;
   const { user, isLoading: authLoading } = useAuth();
   const { tenantId: effectiveTenantId, isImpersonating } = useEffectiveTenant();
   
@@ -133,22 +272,19 @@ export default function Chats() {
   
   // Log para debug
   useEffect(() => {
+    if (!isDev) return;
     console.log('[Chats] Effective tenantId:', effectiveTenantId, 'isAdmin:', isAdmin, 'isImpersonating:', isImpersonating);
     console.log('[Chats] Total messages loaded:', messages.length);
     const uniqueSessions = [...new Set(messages.map(m => m.session_id))];
     console.log('[Chats] Unique sessions:', uniqueSessions.length, uniqueSessions);
-  }, [messages, effectiveTenantId, isAdmin, isImpersonating]);
+  }, [messages, effectiveTenantId, isAdmin, isImpersonating, isDev]);
   
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 180);
   const [filterTab, setFilterTab] = useState<FilterTab>("todos");
   const [botStates, setBotStates] = useState<Record<string, boolean>>({});
-  const [isTogglingBot, setIsTogglingBot] = useState(false);
-  const [messageInput, setMessageInput] = useState("");
-  const [isSendingMessage, setIsSendingMessage] = useState(false);
-  const [attachedFile, setAttachedFile] = useState<File | null>(null);
-  const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [botToggling, setBotToggling] = useState<Set<string>>(new Set());
   const [labelFilterIds, setLabelFilterIds] = useState<string[]>([]);
   const [labelsManagerOpen, setLabelsManagerOpen] = useState(false);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
@@ -158,6 +294,10 @@ export default function Chats() {
   /** Mensajes de la sesión activa para calcular ventana 24h (el buffer global puede no incluir chats antiguos) */
   const [sessionRowsFor24h, setSessionRowsFor24h] = useState<N8nChatMessage[]>([]);
   const [resolved24hForSessionId, setResolved24hForSessionId] = useState<string | null>(null);
+  // Ref de sesiones en vuelo: evita doble disparo antes de que el estado se actualice
+  const botToggleInFlightRef = useRef<Set<string>>(new Set());
+  // Ventana post-toggle: durante estos ms ignoramos sync de mensajes para esa sesión
+  const botSyncCooldownRef = useRef<Map<string, { until: number; expected: boolean }>>(new Map());
 
   // Chat labels hook
   const {
@@ -168,18 +308,64 @@ export default function Chats() {
     deleteLabel,
     assignLabel,
     removeLabel,
-    getLabelsForSession,
   } = useChatLabels();
+
+  const labelsBySessionId = useMemo(() => {
+    const labelMap = new Map(labels.map((label) => [label.id, label]));
+    const bySession = new Map<string, typeof labels>();
+
+    Object.entries(sessionLabels).forEach(([sessionId, labelIds]) => {
+      const sessionLabelObjects = labelIds
+        .map((labelId) => labelMap.get(labelId))
+        .filter((label): label is (typeof labels)[number] => Boolean(label));
+      bySession.set(sessionId, sessionLabelObjects);
+    });
+
+    return bySession;
+  }, [labels, sessionLabels]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesScrollAreaRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
   // Calcular cantidad de mensajes de la sesión seleccionada (para dependencia del auto-scroll)
+  const messagesBySession = useMemo(() => {
+    const grouped = new Map<string, N8nChatMessage[]>();
+    for (const message of messages) {
+      if (!grouped.has(message.session_id)) {
+        grouped.set(message.session_id, []);
+      }
+      grouped.get(message.session_id)?.push(message);
+    }
+    for (const [, sessionMessages] of grouped) {
+      sessionMessages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    }
+    return grouped;
+  }, [messages]);
+
   const selectedMessagesCount = useMemo(() => {
     if (!selectedSessionId) return 0;
-    return messages.filter(m => m.session_id === selectedSessionId).length;
-  }, [messages, selectedSessionId]);
+    return messagesBySession.get(selectedSessionId)?.length ?? 0;
+  }, [messagesBySession, selectedSessionId]);
+
+  const shouldIgnoreIncomingBotState = useCallback((sessionId: string, incomingValue: boolean) => {
+    if (botToggleInFlightRef.current.has(sessionId)) {
+      return true;
+    }
+
+    const cooldown = botSyncCooldownRef.current.get(sessionId);
+    if (!cooldown) return false;
+
+    const now = Date.now();
+    if (cooldown.until <= now) {
+      botSyncCooldownRef.current.delete(sessionId);
+      return false;
+    }
+
+    // Durante ventana de reconciliación, ignoramos valores que contradicen el esperado.
+    return incomingValue !== cooldown.expected;
+  }, []);
+
 
   // Auto-scroll al último mensaje cuando cambia la selección o llegan nuevos mensajes
   // IMPORTANTE: Usamos el viewport interno del ScrollArea para evitar afectar el scroll del body
@@ -261,39 +447,11 @@ export default function Chats() {
   // Obtener el tenant_id de los mensajes de la sesión seleccionada
   const selectedSessionTenantId = useMemo(() => {
     if (!selectedSessionId) return null;
-    const sessionMessages = messages.filter(m => m.session_id === selectedSessionId);
+    const sessionMessages = messagesBySession.get(selectedSessionId) ?? [];
     // Buscar el primer mensaje que tenga tenant_id
     const messageWithTenant = sessionMessages.find(m => m.tenant_id);
     return messageWithTenant?.tenant_id || null;
-  }, [messages, selectedSessionId]);
-
-  // Manejar selección de archivo
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const maxSize = 16 * 1024 * 1024; // 16 MB
-    if (file.size > maxSize) {
-      toast.error("El archivo es demasiado grande (máx. 16 MB)");
-      return;
-    }
-
-    setAttachedFile(file);
-
-    if (file.type.startsWith("image/")) {
-      const reader = new FileReader();
-      reader.onload = (ev) => setAttachedPreview(ev.target?.result as string);
-      reader.readAsDataURL(file);
-    } else {
-      setAttachedPreview(null);
-    }
-  }, []);
-
-  const clearAttachment = useCallback(() => {
-    setAttachedFile(null);
-    setAttachedPreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }, []);
+  }, [messagesBySession, selectedSessionId]);
 
   // Determinar tipo de media para el payload
   const getMediaType = (mimeType: string): "image" | "audio" | "video" | "document" => {
@@ -304,28 +462,24 @@ export default function Chats() {
   };
 
   // Enviar mensaje de agente humano via edge function proxy
-  const sendHumanMessage = useCallback(async () => {
-    const hasText = messageInput.trim().length > 0;
-    const hasFile = !!attachedFile;
-    if ((!hasText && !hasFile) || !selectedSessionId || isSendingMessage) return;
+  const sendHumanMessage = useCallback(async (messageText: string, file: File | null) => {
+    const hasText = messageText.trim().length > 0;
+    const hasFile = !!file;
+    if ((!hasText && !hasFile) || !selectedSessionId) return;
 
-    const messageContent = messageInput.trim();
-    setIsSendingMessage(true);
-
+    const messageContent = messageText.trim();
     try {
-      console.log("[Chats] Sending message to tenant:", selectedSessionTenantId || "none");
-
       let attachmentData: Record<string, unknown> | undefined;
 
       // Si hay archivo adjunto, subirlo a Supabase Storage
-      if (attachedFile) {
-        const ext = attachedFile.name.split(".").pop() || "bin";
+      if (file) {
+        const ext = file.name.split(".").pop() || "bin";
         const filePath = `${selectedSessionTenantId || "global"}/${selectedSessionId}/${Date.now()}.${ext}`;
 
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from("chat-attachments")
-          .upload(filePath, attachedFile, {
-            contentType: attachedFile.type,
+          .upload(filePath, file, {
+            contentType: file.type,
             upsert: false,
           });
 
@@ -337,13 +491,13 @@ export default function Chats() {
           .from("chat-attachments")
           .getPublicUrl(uploadData.path);
 
-        const mediaType = getMediaType(attachedFile.type);
+        const mediaType = getMediaType(file.type);
 
         attachmentData = {
           media_type: mediaType,
           url: urlData.publicUrl,
-          mime_type: attachedFile.type,
-          filename: attachedFile.name,
+          mime_type: file.type,
+          filename: file.name,
         };
       }
 
@@ -377,8 +531,6 @@ export default function Chats() {
         throw new Error(details);
       }
 
-      setMessageInput("");
-      clearAttachment();
       toast.success("Mensaje enviado");
 
       // Mantener bot desactivado si estaba desactivado (n8n puede reactivarlo)
@@ -392,22 +544,12 @@ export default function Chats() {
         }, 2000);
       }
 
-      setTimeout(() => refetch?.(), 1000);
+      setTimeout(() => refetch?.(true), 1000);
     } catch (err) {
       console.error("[Chats] Error sending human message:", err);
       toast.error(err instanceof Error ? err.message : "Error al enviar el mensaje");
-    } finally {
-      setIsSendingMessage(false);
     }
-  }, [messageInput, attachedFile, selectedSessionId, isSendingMessage, refetch, selectedSessionTenantId, clearAttachment, botStates]);
-
-  // Manejar Enter para enviar
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendHumanMessage();
-    }
-  };
+  }, [selectedSessionId, refetch, selectedSessionTenantId, botStates]);
 
   // Remarketing: toggle seleccion de una sesion
   const toggleRemarketingSelection = useCallback((sessionId: string) => {
@@ -504,7 +646,20 @@ export default function Chats() {
         
         // Merge con estados existentes
         if (Object.keys(newStatesMap).length > 0) {
-          setBotStates(prev => ({ ...prev, ...newStatesMap }));
+          setBotStates(prev => {
+            let changed = false;
+            const next = { ...prev };
+            Object.entries(newStatesMap).forEach(([sid, incomingValue]) => {
+              if (shouldIgnoreIncomingBotState(sid, incomingValue)) {
+                return;
+              }
+              if (next[sid] !== incomingValue) {
+                next[sid] = incomingValue;
+                changed = true;
+              }
+            });
+            return changed ? next : prev;
+          });
         }
       } catch (err) {
         console.error('[Chats] Error loading new bot states:', err);
@@ -512,7 +667,7 @@ export default function Chats() {
     };
     
     loadNewBotStates();
-  }, [messages, botStates]);
+  }, [messages, botStates, shouldIgnoreIncomingBotState]);
 
   // Sync botStates when messages update (e.g. realtime UPDATE with bot_activado change)
   useEffect(() => {
@@ -534,6 +689,9 @@ export default function Chats() {
       let changed = false;
       const next = { ...prev };
       for (const [sid, val] of latestPerSession) {
+        if (shouldIgnoreIncomingBotState(sid, val)) {
+          continue;
+        }
         if (next[sid] !== val) {
           next[sid] = val;
           changed = true;
@@ -541,43 +699,58 @@ export default function Chats() {
       }
       return changed ? next : prev;
     });
-  }, [messages]);
+  }, [messages, shouldIgnoreIncomingBotState]);
 
   // Toggle bot state for a session - actualiza en DB externa
-  const toggleBotState = useCallback(async (sessionId: string) => {
+  const setBotStateForSession = useCallback(async (sessionId: string, nextState: boolean) => {
+    if (botToggleInFlightRef.current.has(sessionId)) return;
+
     const currentState = botStates[sessionId] ?? true;
-    const newState = !currentState;
-    
+    if (currentState === nextState) return;
+
+    // Marcar en vuelo (ref para guard instantáneo + state para re-render del disabled)
+    botToggleInFlightRef.current.add(sessionId);
+    setBotToggling(prev => new Set(prev).add(sessionId));
+
+    // Iniciar ventana anti-sync para esta sesión
+    botSyncCooldownRef.current.set(sessionId, {
+      until: Date.now() + BOT_STATE_RECONCILE_WINDOW_MS,
+      expected: nextState,
+    });
+
     // Optimistic update
-    setBotStates(prev => ({ ...prev, [sessionId]: newState }));
-    setIsTogglingBot(true);
-    
+    setBotStates(prev => ({ ...prev, [sessionId]: nextState }));
+
     try {
-      // Actualizar TODAS las filas de este session_id en la DB externa
       const { error } = await externalSupabase
         .from('n8n_chat_histories')
-        .update({ bot_activado: newState })
+        .update({ bot_activado: nextState })
         .eq('session_id', sessionId);
-      
+
       if (error) {
-        // Revert on error
         setBotStates(prev => ({ ...prev, [sessionId]: currentState }));
+        botSyncCooldownRef.current.delete(sessionId);
         console.error('[Chats] Error updating bot state:', error);
         toast.error('Error al actualizar el estado del bot');
         return;
       }
-      
-      toast.success(newState ? 'Bot activado' : 'Bot desactivado');
-      console.log(`[Chats] Bot ${newState ? 'activado' : 'desactivado'} para session: ${sessionId}`);
+
+      toast.success(nextState ? 'Bot activado' : 'Bot desactivado');
     } catch (err) {
-      // Revert on error
       setBotStates(prev => ({ ...prev, [sessionId]: currentState }));
+      botSyncCooldownRef.current.delete(sessionId);
       console.error('[Chats] Error updating bot state:', err);
       toast.error('Error al actualizar el estado del bot');
     } finally {
-      setIsTogglingBot(false);
+      // Liberar bloqueo en vuelo para que el switch se habilite de nuevo
+      botToggleInFlightRef.current.delete(sessionId);
+      setBotToggling(prev => {
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
     }
-  }, [botStates]);
+  }, [BOT_STATE_RECONCILE_WINDOW_MS, botStates]);
 
   // Process sessions from messages
   const processedSessions = useMemo(() => {
@@ -656,11 +829,11 @@ export default function Chats() {
     }
     
     // Filter by search term (including label text and custom labels)
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
+    if (debouncedSearchTerm) {
+      const term = debouncedSearchTerm.toLowerCase();
       filtered = filtered.filter(s => {
         const intentLabelText = s.intentLabel ? INTENT_LABELS[s.intentLabel]?.text.toLowerCase() : "";
-        const customLabels = getLabelsForSession(s.sessionId);
+        const customLabels = labelsBySessionId.get(s.sessionId) || [];
         const customLabelText = customLabels.map(l => l.name.toLowerCase()).join(" ");
         return (
           s.contactName.toLowerCase().includes(term) ||
@@ -672,7 +845,7 @@ export default function Chats() {
     }
     
     return filtered;
-  }, [processedSessions, searchTerm, filterTab, labelFilterIds, sessionLabels, getLabelsForSession]);
+  }, [processedSessions, debouncedSearchTerm, filterTab, labelFilterIds, sessionLabels, labelsBySessionId]);
 
   // Remarketing: enviar al webhook
   const sendRemarketing = useCallback(async () => {
@@ -717,10 +890,8 @@ export default function Chats() {
   // Get messages for selected session
   const selectedMessages = useMemo(() => {
     if (!selectedSessionId) return [];
-    return messages
-      .filter(m => m.session_id === selectedSessionId)
-      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-  }, [messages, selectedSessionId]);
+    return messagesBySession.get(selectedSessionId) ?? [];
+  }, [messagesBySession, selectedSessionId]);
 
   // Get selected session info
   const selectedSession = useMemo(() => {
@@ -804,7 +975,7 @@ export default function Chats() {
   );
 
   // Chat List content
-  const chatListContent = (
+  const chatListContent = useMemo(() => (
     <div className={cn(
       "flex flex-col overflow-hidden",
       isMobile ? "h-full" : "w-96 flex-shrink-0 rounded-lg border border-border bg-card"
@@ -975,7 +1146,7 @@ export default function Chats() {
                       {session.intentLabel && (
                         <IntentBadge label={session.intentLabel} />
                       )}
-                      {getLabelsForSession(session.sessionId).map(label => (
+                      {(labelsBySessionId.get(session.sessionId) || []).map(label => (
                         <LabelBadge
                           key={label.id}
                           name={label.name}
@@ -1018,7 +1189,25 @@ export default function Chats() {
         )}
       </ScrollArea>
     </div>
-  );
+  ), [
+    isMobile,
+    processedSessions.length,
+    isLoading,
+    error,
+    filteredSessions,
+    selectedSessionId,
+    remarketingMode,
+    selectedForRemarketing,
+    labels,
+    labelFilterIds,
+    filterTab,
+    searchTerm,
+    labelsBySessionId,
+    sessionLabels,
+    assignLabel,
+    removeLabel,
+    toggleRemarketingSelection,
+  ]);
 
   // Contenido del panel de mensajes (SIN el input para evitar re-renders)
   const chatMessagesContent = useMemo(() => {
@@ -1071,8 +1260,10 @@ export default function Chats() {
                       )} />
                       <Switch
                         checked={isBotEnabled}
-                        onCheckedChange={() => toggleBotState(selectedSessionId)}
-                        disabled={isTogglingBot}
+                        onCheckedChange={(checked) => {
+                          void setBotStateForSession(selectedSessionId, checked);
+                        }}
+                        disabled={botToggling.has(selectedSessionId)}
                         className="data-[state=checked]:bg-primary scale-75"
                       />
                     </div>
@@ -1172,8 +1363,10 @@ export default function Chats() {
                       )} />
                       <Switch
                         checked={isBotEnabled}
-                        onCheckedChange={() => toggleBotState(selectedSessionId)}
-                        disabled={isTogglingBot}
+                        onCheckedChange={(checked) => {
+                          void setBotStateForSession(selectedSessionId, checked);
+                        }}
+                        disabled={botToggling.has(selectedSessionId)}
                         className="data-[state=checked]:bg-primary"
                       />
                     </div>
@@ -1326,7 +1519,7 @@ export default function Chats() {
         </ScrollArea>
       </>
     );
-  }, [selectedSessionId, selectedSession, selectedMessages, botStates, isMobile, isTogglingBot, toggleBotState]);
+  }, [selectedSessionId, selectedSession, selectedMessages, botStates, isMobile, botToggling, setBotStateForSession]);
 
   // El panel completo de chat (wrapper + input separado)
   const chatPanel = selectedSessionId && selectedSession ? (
@@ -1403,86 +1596,14 @@ export default function Chats() {
         }
         
         // Input normal cuando la ventana está activa
-        const isInputDisabled = isBotActive || isSendingMessage;
-        const canSend = !isInputDisabled && (messageInput.trim().length > 0 || !!attachedFile);
         return (
-          <div className={cn(
-            "border-t border-border bg-background shrink-0",
-            isMobile ? "p-2" : "p-3 md:p-4"
-          )}>
-            {/* Preview del archivo adjunto */}
-            {attachedFile && (
-              <div className={cn(
-                "flex items-center gap-2 mb-2 p-2 rounded-lg bg-secondary/60 border border-border",
-                isMobile ? "text-xs" : "text-sm"
-              )}>
-                {attachedPreview ? (
-                  <img src={attachedPreview} alt="preview" className="h-10 w-10 rounded object-cover shrink-0" />
-                ) : (
-                  <div className="h-10 w-10 rounded bg-muted flex items-center justify-center shrink-0">
-                    <FileText className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                )}
-                <span className="truncate flex-1 text-foreground">{attachedFile.name}</span>
-                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={clearAttachment}>
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            )}
-            <div className={cn("flex gap-2", isMobile && "gap-1.5")}>
-              {/* Input file oculto */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,video/*,audio/*"
-                className="hidden"
-                onChange={handleFileSelect}
-              />
-              {/* Botón clip para adjuntar */}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "shrink-0 text-muted-foreground hover:text-foreground",
-                  isMobile ? "h-9 w-9" : "h-11 w-11",
-                  isInputDisabled && "opacity-50 cursor-not-allowed"
-                )}
-                disabled={isInputDisabled}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Paperclip className={cn(isMobile ? "h-4 w-4" : "h-5 w-5")} />
-              </Button>
-              <Input
-                placeholder={isBotActive ? "Desactiva el bot para escribir..." : "Escribe un mensaje..."}
-                value={messageInput}
-                onChange={(e) => setMessageInput(e.target.value)}
-                onKeyDown={handleKeyPress}
-                disabled={isInputDisabled}
-                className={cn(
-                  "bg-secondary border-border",
-                  isMobile ? "h-9 text-sm" : "h-11",
-                  isInputDisabled && "opacity-50 cursor-not-allowed"
-                )}
-              />
-              <Button 
-                size="icon" 
-                className={cn(
-                  "shrink-0 bg-primary hover:bg-primary/90",
-                  isMobile ? "h-9 w-9" : "h-11 w-11",
-                  isInputDisabled && "opacity-50 cursor-not-allowed"
-                )}
-                onClick={sendHumanMessage}
-                disabled={!canSend}
-              >
-                {isSendingMessage ? (
-                  <Loader2 className={cn(isMobile ? "h-3.5 w-3.5" : "h-4 w-4", "animate-spin")} />
-                ) : (
-                  <Send className={cn(isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
-                )}
-              </Button>
-            </div>
-          </div>
+          <ChatComposer
+            key={selectedSessionId}
+            isMobile={isMobile}
+            isBotActive={isBotActive}
+            disabledByWindow={false}
+            onSend={sendHumanMessage}
+          />
         );
       })()}
     </div>

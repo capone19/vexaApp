@@ -13,6 +13,8 @@ interface UseN8nChatHistoryOptions {
 
 const PAGE_SIZE = 1000; // PostgREST max rows per request on the external project
 const SAFETY_LIMIT = 100_000;
+const REALTIME_HEALTHY_POLLING_MS = 15_000;
+const isDev = import.meta.env.DEV;
 
 // Función para deduplicar mensajes con el mismo contenido + tipo + session en ventana de tiempo
 function deduplicateMessages(messages: N8nChatMessage[]): N8nChatMessage[] {
@@ -124,7 +126,9 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
           if (data.length < PAGE_SIZE) hasMore = false;
         }
         if (offset >= SAFETY_LIMIT) {
-          console.warn('[useN8nChatHistory] Sessions hit safety limit', SAFETY_LIMIT);
+          if (isDev) {
+            console.warn('[useN8nChatHistory] Sessions hit safety limit', SAFETY_LIMIT);
+          }
           hasMore = false;
         }
       }
@@ -132,7 +136,9 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
       const uniqueSessions = [...new Set(allData.map(d => d.session_id))];
       setSessions(uniqueSessions);
     } catch (err) {
-      console.error('[useN8nChatHistory] Error fetching sessions:', err);
+      if (isDev) {
+        console.error('[useN8nChatHistory] Error fetching sessions:', err);
+      }
     }
   }, [tenantId, since]);
 
@@ -177,12 +183,16 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
           if (data.length < PAGE_SIZE) hasMore = false;
         }
         if (offset >= SAFETY_LIMIT) {
-          console.warn('[useN8nChatHistory] Messages hit safety limit', SAFETY_LIMIT);
+          if (isDev) {
+            console.warn('[useN8nChatHistory] Messages hit safety limit', SAFETY_LIMIT);
+          }
           hasMore = false;
         }
       }
 
-      console.log('[useN8nChatHistory] Fetched total rows:', allData.length);
+      if (isDev) {
+        console.log('[useN8nChatHistory] Fetched total rows:', allData.length);
+      }
 
       const deduplicatedMessages = deduplicateMessages(allData);
       
@@ -202,7 +212,9 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
     } catch (err) {
       if (!isMountedRef.current) return;
       const errorMessage = err instanceof Error ? err.message : 'Error fetching chat history';
-      console.error('[useN8nChatHistory] Error:', err);
+      if (isDev) {
+        console.error('[useN8nChatHistory] Error:', err);
+      }
       if (!silent) {
         setError(errorMessage);
       }
@@ -245,7 +257,9 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
       const newMessages = data as N8nChatMessage[] || [];
       
       if (newMessages.length > 0) {
-        console.log('[useN8nChatHistory] Polling: found', newMessages.length, 'new messages');
+        if (isDev) {
+          console.log('[useN8nChatHistory] Polling: found', newMessages.length, 'new messages');
+        }
         
         // Actualizar último ID
         lastMessageIdRef.current = Math.max(...newMessages.map(m => m.id));
@@ -260,7 +274,9 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
         fetchSessions();
       }
     } catch (err) {
-      console.error('[useN8nChatHistory] Polling error:', err);
+      if (isDev) {
+        console.error('[useN8nChatHistory] Polling error:', err);
+      }
     }
   }, [sessionId, tenantId, fetchSessions]);
 
@@ -290,7 +306,9 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
           (payload) => {
             if (!isMountedRef.current) return;
             
-            console.log('[useN8nChatHistory] Realtime event:', payload.eventType);
+            if (isDev) {
+              console.log('[useN8nChatHistory] Realtime event:', payload.eventType);
+            }
             
             if (payload.eventType === 'INSERT') {
               const newMessage = payload.new as N8nChatMessage;
@@ -334,7 +352,9 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
           }
         )
         .subscribe((status) => {
-          console.log('[useN8nChatHistory] Realtime subscription status:', status);
+          if (isDev) {
+            console.log('[useN8nChatHistory] Realtime subscription status:', status);
+          }
           if (isMountedRef.current) {
             setRealtimeConnected(status === 'SUBSCRIBED');
           }
@@ -348,19 +368,23 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
     };
   }, [sessionId, tenantId, enableRealtime]);
 
-  // Polling fallback - siempre activo para garantizar sincronización
+  // Polling adaptativo: más lento cuando realtime está saludable
   useEffect(() => {
+    const effectivePollingMs = realtimeConnected
+      ? Math.max(pollingIntervalMs * 5, REALTIME_HEALTHY_POLLING_MS)
+      : pollingIntervalMs;
+
     // Iniciar polling
     pollingRef.current = setInterval(() => {
       fetchNewMessages();
-    }, pollingIntervalMs);
+    }, effectivePollingMs);
 
     return () => {
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
       }
     };
-  }, [fetchNewMessages, pollingIntervalMs]);
+  }, [fetchNewMessages, pollingIntervalMs, realtimeConnected]);
 
   // Initial fetch
   useEffect(() => {
