@@ -37,6 +37,13 @@ export function useChatRealtimeSync({
 
     console.log('[ChatRealtimeSync] 🔄 Refetching all chat-related caches');
     
+    if (tenantId) {
+      queryClient.refetchQueries({
+        queryKey: ['conversation-count', tenantId],
+        type: 'active',
+      });
+    }
+
     // Refetch forzado de dashboard metrics (solo queries activas)
     queryClient.refetchQueries({ 
       queryKey: ['dashboard-metrics'],
@@ -60,7 +67,7 @@ export function useChatRealtimeSync({
       queryKey: ['subscription'],
       type: 'active' 
     });
-  }, [queryClient]);
+  }, [queryClient, tenantId]);
 
   // Suscripción Realtime
   useEffect(() => {

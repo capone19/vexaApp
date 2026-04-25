@@ -263,11 +263,14 @@ export default function Chats() {
     return d.toISOString();
   }, []);
 
-  // Filtrar por tenant: admins ven todo (cuando no impersonan), otros usuarios solo su tenant
+  // Siempre acotar por tenant (nunca leer toda `n8n_chat_histories`). Admin sin impersonar usa su tenant.
+  const n8nTenantId =
+    effectiveTenantId ?? (isAdmin && !isImpersonating ? user?.tenantId : undefined) ?? undefined;
+
   const { messages, isLoading, error, refetch } = useN8nChatHistory({
     enableRealtime: true,
     since: oneMonthAgo,
-    tenantId: isAdmin ? undefined : effectiveTenantId || undefined,
+    tenantId: n8nTenantId,
   });
   
   // Log para debug

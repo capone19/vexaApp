@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   Calendar,
+  Package,
   Bot,
   Menu,
 } from "lucide-react";
@@ -16,6 +17,7 @@ const navItems = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
   { title: "Chats", href: "/chats", icon: MessageSquare },
   { title: "Calendario", href: "/calendario", icon: Calendar },
+  { title: "Entregas", href: "/entregas", icon: Package },
   { title: "Agente", href: "/ajustes-agente", icon: Bot },
 ];
 

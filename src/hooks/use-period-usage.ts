@@ -10,10 +10,15 @@
 // - Plan/Límites: tenants.plan (no subscription)
 // ============================================
 
+import type { QueryClient } from '@tanstack/react-query';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenant } from './use-effective-tenant';
-import { countConversationsForBillingPeriod } from '@/lib/api/conversation-counter';
+import {
+  countConversations,
+  getConversationCountQueryKey,
+} from '@/lib/api/conversation-counter';
+import { getTenantRowQueryKey } from '@/lib/api/tenant-query';
 import { 
   getConversationLimit, 
   getWhatsAppLimit, 
@@ -23,6 +28,8 @@ import {
 
 // Costo por conversación extra en USD
 export const EXTRA_CONVERSATION_COST_USD = 0.30;
+
+const CONV_COUNT_STALE_MS = 1000 * 60 * 5;
 
 export interface PeriodUsage {
   // Conversaciones - FUENTE DE VERDAD para facturación
@@ -93,8 +100,9 @@ function calculateBillingPeriod(startDate: Date): { periodStart: Date; periodEnd
  * y tenants.plan para los límites.
  */
 async function fetchPeriodUsage(
-  tenantId: string, 
-  providedCreatedAt?: Date | null  // Para impersonación: evita consultar BD (RLS bloqueado)
+  tenantId: string,
+  providedCreatedAt: Date | null | undefined, // Impersonación: evita RLS
+  queryClient: QueryClient
 ): Promise<PeriodUsage> {
   let periodStart: Date;
   let periodEnd: Date;
@@ -110,12 +118,26 @@ async function fetchPeriodUsage(
     periodEnd = calculated.periodEnd;
     console.log('[usePeriodUsage] Usando createdAt desde contexto de impersonación:', providedCreatedAt.toISOString());
   } else {
-    // Caso normal: consultar BD para obtener created_at
-    const { data: tenantData, error: tenantError } = await supabase
-      .from('tenants')
-      .select('created_at, plan')
-      .eq('id', tenantId)
-      .single();
+    // Misma caché que useBillingPeriod (fila tenant vía getTenantRowQueryKey)
+    let tenantData: { created_at: string; plan: string } | null = null;
+    let tenantError: { message: string } | null = null;
+    try {
+      tenantData = await queryClient.fetchQuery({
+        queryKey: getTenantRowQueryKey(tenantId),
+        queryFn: async () => {
+          const { data, error } = await supabase
+            .from('tenants')
+            .select('created_at, plan')
+            .eq('id', tenantId)
+            .single();
+          if (error) throw error;
+          return data;
+        },
+        staleTime: CONV_COUNT_STALE_MS,
+      });
+    } catch (e) {
+      tenantError = { message: e instanceof Error ? e.message : 'unknown' };
+    }
     
     tenantPlan = tenantData?.plan || null;
     
@@ -141,14 +163,18 @@ async function fetchPeriodUsage(
   const daysElapsed = Math.max(0, Math.ceil((now.getTime() - periodStart.getTime()) / msPerDay));
   const daysRemaining = Math.max(0, Math.ceil((periodEnd.getTime() - now.getTime()) / msPerDay));
 
-  // ============================================
-  // USAR FUNCIÓN CENTRALIZADA DE CONTEO
-  // ============================================
-  const conversationData = await countConversationsForBillingPeriod(
-    tenantId,
-    periodStart,
-    periodEnd
-  );
+  // Misma caché que useDashboardMetrics cuando el rango coincide (fetchQuery)
+  const conversationData = await queryClient.fetchQuery({
+    queryKey: getConversationCountQueryKey(tenantId, periodStart, periodEnd),
+    queryFn: () =>
+      countConversations({
+        tenantId,
+        startDate: periodStart,
+        endDate: periodEnd,
+        noLimit: true,
+      }),
+    staleTime: CONV_COUNT_STALE_MS,
+  });
 
   const conversationsUsed = conversationData.totalConversations;
   const totalMessages = conversationData.totalMessages;
@@ -241,10 +267,10 @@ export function usePeriodUsage(): UsePeriodUsageReturn {
 
   const { data: usage, isLoading, error, refetch } = useQuery({
     queryKey,
-    queryFn: () => fetchPeriodUsage(tenantId!, tenantCreatedAt),
+    queryFn: () => fetchPeriodUsage(tenantId!, tenantCreatedAt, queryClient),
     // Solo ejecutar cuando tenemos tenantId
     enabled: !!tenantId,
-    staleTime: 1000 * 60 * 5, // 5 min — el realtime global invalida cuando llegan nuevas conversaciones
+    staleTime: CONV_COUNT_STALE_MS,
     refetchOnWindowFocus: false,
     refetchOnMount: true,
   });

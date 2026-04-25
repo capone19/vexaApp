@@ -95,6 +95,9 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
 
   // Paginated fetch: retrieves ALL matching rows in PAGE_SIZE batches
   const fetchSessions = useCallback(async () => {
+    if (!tenantId && !sessionId) {
+      return;
+    }
     try {
       let allData: Array<{ session_id: string }> = [];
       let offset = 0;
@@ -109,6 +112,9 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
 
         if (tenantId) {
           query = query.eq('tenant_id', tenantId);
+        }
+        if (sessionId) {
+          query = query.eq('session_id', sessionId);
         }
         if (since) {
           query = query.gte('created_at', since);
@@ -142,92 +148,114 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
     }
   }, [tenantId, since]);
 
-  // Paginated fetch for messages — batches of PAGE_SIZE via .range()
+  // Construye la query base con los filtros del hook
+  const buildQuery = useCallback(
+    (rangeStart: number) => {
+      let q = externalSupabase
+        .from('n8n_chat_histories')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(rangeStart, rangeStart + PAGE_SIZE - 1);
+      if (tenantId) q = q.eq('tenant_id', tenantId);
+      if (since) q = q.gte('created_at', since);
+      if (sessionId) q = q.eq('session_id', sessionId);
+      return q;
+    },
+    [tenantId, since, sessionId]
+  );
+
+  // Paginated fetch for messages — dos fases:
+  // Fase 1: primera página → UI interactiva de inmediato (< 2 s)
+  // Fase 2: páginas restantes en segundo plano (sin spinner)
   const fetchMessages = useCallback(async (silent = false) => {
-    if (!silent) {
-      setIsLoading(true);
+    if (!tenantId && !sessionId) {
+      if (!silent) setIsLoading(false);
+      setMessages([]);
+      return;
     }
+
+    if (!silent) setIsLoading(true);
     setError(null);
 
     try {
-      let allData: N8nChatMessage[] = [];
-      let offset = 0;
-      let hasMore = true;
+      // === FASE 1: primera página ===
+      const { data: firstData, error: firstError } = await buildQuery(0);
+      if (firstError) throw firstError;
+      if (!isMountedRef.current) return;
 
-      while (hasMore) {
-        let query = externalSupabase
-          .from('n8n_chat_histories')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .range(offset, offset + PAGE_SIZE - 1);
+      const firstMessages = (firstData ?? []) as N8nChatMessage[];
+      const dedupedFirst = deduplicateMessages(firstMessages);
 
-        if (tenantId) {
-          query = query.eq('tenant_id', tenantId);
-        }
-        if (since) {
-          query = query.gte('created_at', since);
-        }
-        if (sessionId) {
-          query = query.eq('session_id', sessionId);
+      setMessages(dedupedFirst);
+      if (dedupedFirst.length > 0) {
+        lastMessageIdRef.current = Math.max(...firstMessages.map(m => m.id));
+      }
+
+      // *** Liberar spinner — el usuario ya puede interactuar ***
+      if (!silent && isMountedRef.current) {
+        setIsLoading(false);
+      }
+
+      // === FASE 2: páginas restantes en segundo plano ===
+      if (firstMessages.length === PAGE_SIZE) {
+        let accumulated: N8nChatMessage[] = [...firstMessages];
+        let offset = PAGE_SIZE;
+        let hasMore = true;
+
+        while (hasMore && isMountedRef.current) {
+          const { data: pageData, error: pageError } = await buildQuery(offset);
+
+          if (pageError) {
+            if (isDev) console.warn('[useN8nChatHistory] Background page error:', pageError);
+            break;
+          }
+          if (!isMountedRef.current) break;
+
+          const pageMessages = (pageData ?? []) as N8nChatMessage[];
+          if (pageMessages.length === 0) {
+            hasMore = false;
+          } else {
+            accumulated = [...accumulated, ...pageMessages];
+            offset += pageMessages.length;
+            if (pageMessages.length < PAGE_SIZE) hasMore = false;
+          }
+
+          if (offset >= SAFETY_LIMIT) {
+            if (isDev) console.warn('[useN8nChatHistory] Messages hit safety limit', SAFETY_LIMIT);
+            hasMore = false;
+          }
         }
 
-        const { data, error: fetchError } = await query;
-        if (fetchError) throw fetchError;
-        if (!isMountedRef.current) return;
-
-        if (!data || data.length === 0) {
-          hasMore = false;
-        } else {
-          allData.push(...(data as N8nChatMessage[]));
-          offset += data.length;
-          if (data.length < PAGE_SIZE) hasMore = false;
-        }
-        if (offset >= SAFETY_LIMIT) {
+        if (isMountedRef.current && accumulated.length > firstMessages.length) {
           if (isDev) {
-            console.warn('[useN8nChatHistory] Messages hit safety limit', SAFETY_LIMIT);
+            console.log('[useN8nChatHistory] Background load complete:', accumulated.length, 'total rows');
           }
-          hasMore = false;
-        }
-      }
-
-      if (isDev) {
-        console.log('[useN8nChatHistory] Fetched total rows:', allData.length);
-      }
-
-      const deduplicatedMessages = deduplicateMessages(allData);
-      
-      setMessages(prev => {
-        const prevIds = new Set(prev.map(m => m.id));
-        const newIds = new Set(deduplicatedMessages.map(m => m.id));
-        
-        if (prevIds.size !== newIds.size || 
-            deduplicatedMessages.some(m => !prevIds.has(m.id))) {
-          if (deduplicatedMessages.length > 0) {
-            lastMessageIdRef.current = Math.max(...deduplicatedMessages.map(m => m.id));
+          const dedupedAll = deduplicateMessages(accumulated);
+          setMessages(dedupedAll);
+          if (dedupedAll.length > 0) {
+            lastMessageIdRef.current = Math.max(...dedupedAll.map(m => m.id));
           }
-          return deduplicatedMessages;
         }
-        return prev;
-      });
+      } else if (isDev) {
+        console.log('[useN8nChatHistory] Fetched total rows:', firstMessages.length);
+      }
     } catch (err) {
       if (!isMountedRef.current) return;
       const errorMessage = err instanceof Error ? err.message : 'Error fetching chat history';
-      if (isDev) {
-        console.error('[useN8nChatHistory] Error:', err);
-      }
-      if (!silent) {
-        setError(errorMessage);
-      }
+      if (isDev) console.error('[useN8nChatHistory] Error:', err);
+      if (!silent) setError(errorMessage);
     } finally {
+      // Garantiza que el spinner se libera aunque Phase 1 falle
       if (!silent && isMountedRef.current) {
         setIsLoading(false);
       }
     }
-  }, [sessionId, tenantId, since]);
+  }, [sessionId, tenantId, since, buildQuery]);
 
   // Polling para nuevos mensajes (fallback cuando realtime no está disponible)
   const fetchNewMessages = useCallback(async () => {
     if (!isMountedRef.current) return;
+    if (!tenantId && !sessionId) return;
     
     try {
       let query = externalSupabase
@@ -269,22 +297,27 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
           const combined = [...prev, ...newMessages];
           return deduplicateMessages(combined);
         });
-        
-        // También actualizar sessions si hay nuevas
-        fetchSessions();
+
+        setSessions((prev) => {
+          const next = new Set(prev);
+          for (const m of newMessages) {
+            next.add(m.session_id);
+          }
+          return Array.from(next);
+        });
       }
     } catch (err) {
       if (isDev) {
         console.error('[useN8nChatHistory] Polling error:', err);
       }
     }
-  }, [sessionId, tenantId, fetchSessions]);
+  }, [sessionId, tenantId]);
 
   // Subscribe to realtime changes
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
 
-    if (enableRealtime) {
+    if (enableRealtime && (tenantId || sessionId)) {
       // Construir filtro para realtime (solo soporta un filtro)
       // Priorizamos tenantId si está presente
       const realtimeFilter = tenantId 
@@ -386,11 +419,10 @@ export function useN8nChatHistory(options: UseN8nChatHistoryOptions = {}) {
     };
   }, [fetchNewMessages, pollingIntervalMs, realtimeConnected]);
 
-  // Initial fetch
+  // Carga inicial: solo mensajes (la lista de sesiones se deriva en Chats desde `messages`)
   useEffect(() => {
-    fetchSessions();
     fetchMessages();
-  }, [fetchSessions, fetchMessages]);
+  }, [fetchMessages]);
 
   return {
     messages,

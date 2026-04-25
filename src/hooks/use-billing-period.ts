@@ -1,11 +1,15 @@
 // ============================================
 // VEXA - Hook para Períodos de Facturación
 // ============================================
-// Centraliza el cálculo de períodos basado en la fecha de creación del tenant
+// Período alineado con `tenants.created_at` (mismo ancla que usePeriodUsage)
 // ============================================
 
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { getTenantRowQueryKey } from '@/lib/api/tenant-query';
 import { useSubscription } from './use-subscription';
+import { useEffectiveTenant } from './use-effective-tenant';
 import { calculatePeriods, type PeriodPreset } from '@/components/shared/PeriodFilter';
 
 interface UseBillingPeriodOptions {
@@ -28,16 +32,36 @@ interface BillingPeriodResult {
   tenantCreatedAt: Date | null;
 }
 
+const TENANT_STALE_MS = 1000 * 60 * 5;
+
 export function useBillingPeriod({ selectedPeriod }: UseBillingPeriodOptions): BillingPeriodResult {
-  const { subscription, isLoading } = useSubscription();
+  const { subscription, isLoading: subscriptionLoading } = useSubscription();
+  const { tenantId } = useEffectiveTenant();
+
+  const { data: tenantRow, isLoading: tenantRowLoading } = useQuery({
+    queryKey: tenantId ? getTenantRowQueryKey(tenantId) : ['tenant', 'row', 'none'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('tenants')
+        .select('created_at, plan')
+        .eq('id', tenantId!)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!tenantId,
+    staleTime: TENANT_STALE_MS,
+  });
   
-  // Fecha de creación del tenant (desde la suscripción o fallback)
   const tenantCreatedAt = useMemo(() => {
+    if (tenantRow?.created_at) {
+      return new Date(tenantRow.created_at);
+    }
     if (subscription?.created_at) {
       return new Date(subscription.created_at);
     }
     return null;
-  }, [subscription]);
+  }, [tenantRow, subscription]);
   
   // Calcular los períodos
   const periodInfo = useMemo(() => {
@@ -70,7 +94,7 @@ export function useBillingPeriod({ selectedPeriod }: UseBillingPeriodOptions): B
     startDate,
     endDate,
     periodInfo,
-    isLoading,
+    isLoading: subscriptionLoading || (tenantId ? tenantRowLoading : false),
     tenantCreatedAt,
   };
 }

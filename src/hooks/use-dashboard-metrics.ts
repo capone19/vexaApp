@@ -8,9 +8,13 @@
 // Se maneja en MainLayout via useChatRealtimeSync.
 // ============================================
 
-import { useQuery } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { externalSupabase, type ExternalBooking } from '@/integrations/supabase/external-client';
-import { countConversations } from '@/lib/api/conversation-counter';
+import {
+  countConversations,
+  getConversationCountQueryKey,
+} from '@/lib/api/conversation-counter';
 import type { DashboardMetrics, Appointment, DailyMetric, TopService } from '@/lib/types';
 import { format, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -55,6 +59,35 @@ const emptyMetrics: DashboardMetrics = {
   dailyData: [],
 };
 
+const DASH_COUNT_STALE_MS = 1000 * 60 * 5;
+
+const BOOKING_COLUMNS_FOR_DASH = [
+  'id',
+  'tenant_id',
+  'session_id',
+  'contact_name',
+  'contact_phone',
+  'contact_email',
+  'type',
+  'item_name',
+  'price',
+  'currency',
+  'event_date',
+  'event_time',
+  'origin',
+  'notes',
+  'metadata',
+  'created_at',
+  'updated_at',
+  'address',
+  'comuna',
+  'region',
+  'shipping_cost',
+  'payment_method',
+  'estimated_delivery_date',
+  'estimated_delivery_time',
+].join(', ');
+
 // Get short day name in Spanish
 function getShortDayName(date: Date): string {
   return format(date, 'EEE', { locale: es }).charAt(0).toUpperCase() + format(date, 'EEE', { locale: es }).slice(1, 3);
@@ -63,17 +96,15 @@ function getShortDayName(date: Date): string {
 // Función de fetch separada para usar con React Query
 async function fetchDashboardMetrics(
   tenantId: string,
-  startDate?: Date,
-  endDate?: Date
+  startDate: Date | undefined,
+  endDate: Date | undefined,
+  queryClient: QueryClient
 ): Promise<{ metrics: DashboardMetrics; appointments: Appointment[] }> {
-  // ============================================
-  // 1. USAR FUNCIÓN CENTRALIZADA DE CONTEO
-  // Esto garantiza consistencia con Facturación y Admin
-  // ============================================
-  const conversationData = await countConversations({
-    tenantId,
-    startDate,
-    endDate,
+  // Misma caché que usePeriodUsage cuando rango = período de facturación
+  const conversationData = await queryClient.fetchQuery({
+    queryKey: getConversationCountQueryKey(tenantId, startDate, endDate),
+    queryFn: () => countConversations({ tenantId, startDate, endDate }),
+    staleTime: DASH_COUNT_STALE_MS,
   });
 
   const externalTotalSessions = conversationData.totalConversations;
@@ -102,7 +133,7 @@ async function fetchDashboardMetrics(
   try {
     let bookingsQuery = externalSupabase
       .from('bookings')
-      .select('*')
+      .select(BOOKING_COLUMNS_FOR_DASH)
       .eq('tenant_id', tenantId)
       .order('event_date', { ascending: false });
 
@@ -236,6 +267,20 @@ async function fetchDashboardMetrics(
             dayData.messages++;
           }
         });
+
+        // Mensajes por (día, sesión) en una sola pasada — evita O(días×sesiones×N) con filter
+        const msgsByDayAndSession = new Map<string, Map<string, number>>();
+        chatMessagesData.forEach((msg) => {
+          const dateKey = format(new Date(msg.created_at), 'yyyy-MM-dd');
+          if (!msgsByDayAndSession.has(dateKey)) {
+            msgsByDayAndSession.set(dateKey, new Map());
+          }
+          const bySession = msgsByDayAndSession.get(dateKey)!;
+          bySession.set(
+            msg.session_id,
+            (bySession.get(msg.session_id) || 0) + 1
+          );
+        });
         
         // Build daily data array
         days.forEach(day => {
@@ -245,15 +290,14 @@ async function fetchDashboardMetrics(
           const messagesCount = dayData.messages;
           const avgMessages = chatsCount > 0 ? Math.round((messagesCount / chatsCount) * 10) / 10 : 0;
           
-          // Simple abandonment rate: sessions with only 1-2 messages / total sessions
+          // Simple abandonment rate: sessions con ≤2 mensajes ese día (agregado O(n) por día)
+          const bySession = msgsByDayAndSession.get(dateKey);
           let abandonedCount = 0;
-          dayData.sessions.forEach(sessionId => {
-            const sessionMsgs = chatMessagesData.filter(
-              m => m.session_id === sessionId && 
-              format(new Date(m.created_at), 'yyyy-MM-dd') === dateKey
-            );
-            if (sessionMsgs.length <= 2) abandonedCount++;
-          });
+          if (bySession) {
+            bySession.forEach((c) => {
+              if (c <= 2) abandonedCount++;
+            });
+          }
           const abandonmentRate = chatsCount > 0 ? Math.round((abandonedCount / chatsCount) * 100) : 0;
           
           dailyData.push({
@@ -355,6 +399,7 @@ export function useDashboardMetrics({
   dateRange,
   enableRealtime = true, // Mantenemos el parámetro por compatibilidad pero ya no se usa aquí
 }: UseDashboardMetricsOptions): UseDashboardMetricsReturn {
+  const queryClient = useQueryClient();
   // ============================================
   // NOTA: La suscripción realtime ahora es GLOBAL
   // ============================================
@@ -380,9 +425,9 @@ export function useDashboardMetrics({
   // La invalidación viene de useChatRealtimeSync en MainLayout
   const { data, isLoading, error, refetch } = useQuery({
     queryKey,
-    queryFn: () => fetchDashboardMetrics(tenantId!, startDate, endDate),
+    queryFn: () => fetchDashboardMetrics(tenantId!, startDate, endDate, queryClient),
     enabled: !!tenantId,
-    staleTime: 1000 * 60 * 5, // 5 min — cambios de fecha crean nueva queryKey, no necesita staleTime: 0
+    staleTime: DASH_COUNT_STALE_MS,
     refetchOnWindowFocus: false, // El realtime global (useChatRealtimeSync) invalida el cache
     refetchOnMount: true,
   });

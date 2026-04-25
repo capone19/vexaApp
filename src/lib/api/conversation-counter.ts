@@ -10,6 +10,42 @@
 
 import { externalSupabase } from '@/integrations/supabase/external-client';
 
+/** Clave estable para React Query: mismo rango = misma caché (dedupe Dashboard / facturación). */
+export function getConversationCountQueryKey(
+  tenantId: string,
+  startDate?: Date | null,
+  endDate?: Date | null
+) {
+  return [
+    'conversation-count',
+    tenantId,
+    startDate != null ? startDate.getTime() : 'all',
+    endDate != null ? endDate.getTime() : 'all',
+  ] as const;
+}
+
+/**
+ * Añade filtro de fechas a la query PostgREST (alinea con el filtrado en JS que había antes).
+ * Sin fechas, no se aplica límite en SQL (conteo histórico completo).
+ */
+function applyCreatedAtRangeToQuery(
+  // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/no-explicit-any
+  baseQuery: any,
+  startDate?: Date,
+  endDate?: Date
+) {
+  let q = baseQuery;
+  if (startDate) {
+    q = q.gte('created_at', startDate.toISOString());
+  }
+  if (endDate) {
+    const endOfEndDay = new Date(endDate);
+    endOfEndDay.setHours(23, 59, 59, 999);
+    q = q.lte('created_at', endOfEndDay.toISOString());
+  }
+  return q;
+}
+
 export interface ConversationCount {
   // Conteo principal
   totalConversations: number;  // Sesiones únicas
@@ -71,21 +107,26 @@ export async function countConversations(
     return emptyCount();
   }
 
+  const hasDateRange = Boolean(startDate || endDate);
+
   try {
     // ============================================
-    // PAGINACIÓN - Obtener TODOS los mensajes en lotes de 1000
-    // El servidor externo tiene un límite de 1000 filas por query
+    // PAGINACIÓN - Lotes de 1000. Con rango de fechas, el filtro va en SQL (índice friendly).
+    // Sin rango, se escanea el historial completo del tenant (hasta límite de seguridad).
     // ============================================
     const PAGE_SIZE = 1000;
+    const maxRows = options.noLimit ? 1_000_000 : 100_000;
     let allData: Array<{ session_id: string; created_at: string }> = [];
     let offset = 0;
     let hasMore = true;
 
     while (hasMore) {
-      const { data, error } = await externalSupabase
+      const base = externalSupabase
         .from('n8n_chat_histories')
         .select('session_id, created_at')
-        .eq('tenant_id', tenantId)
+        .eq('tenant_id', tenantId);
+      const filtered = applyCreatedAtRangeToQuery(base, startDate, endDate);
+      const { data, error } = await filtered
         .order('created_at', { ascending: true })
         .range(offset, offset + PAGE_SIZE - 1);
 
@@ -99,15 +140,14 @@ export async function countConversations(
       } else {
         allData.push(...data);
         offset += data.length;
-        
+
         if (data.length < PAGE_SIZE) {
           hasMore = false;
         }
       }
-      
-      // Límite de seguridad: máximo 100,000 mensajes
-      if (offset >= 100000) {
-        console.warn('[countConversations] Hit safety limit of 100,000 messages');
+
+      if (offset >= maxRows) {
+        console.warn('[countConversations] Hit safety limit of', maxRows, 'messages');
         hasMore = false;
       }
     }
@@ -118,32 +158,8 @@ export async function countConversations(
       return emptyCount();
     }
 
-    // Usar allData en lugar de data para el resto del procesamiento
-    const data = allData;
-
-    // ============================================
-    // FILTRAR POR FECHAS EN JAVASCRIPT (más confiable)
-    // ============================================
-    let filteredData = data;
-    
-    if (startDate || endDate) {
-      filteredData = data.filter(row => {
-        const rowDate = new Date(row.created_at);
-        
-        if (startDate && rowDate < startDate) {
-          return false;
-        }
-        if (endDate) {
-          // Incluir todo el día final
-          const endOfDay = new Date(endDate);
-          endOfDay.setHours(23, 59, 59, 999);
-          if (rowDate > endOfDay) {
-            return false;
-          }
-        }
-        return true;
-      });
-    }
+    // Con filtro en SQL, no hace falta re-filtrar. Sin rango, no se filtró.
+    const filteredData = allData;
 
     // ============================================
     // CONTEO SIMPLE:
@@ -165,11 +181,10 @@ export async function countConversations(
       tenantId,
       totalMessages,
       totalConversations,
-      dateRange: startDate && endDate 
-        ? `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`
+      dateRange: hasDateRange
+        ? `${startDate?.toISOString().split('T')[0] ?? '?'} to ${endDate?.toISOString().split('T')[0] ?? '?'}`
         : 'ALL TIME',
-      rawDataCount: data.length,
-      filteredCount: filteredData.length,
+      rowCount: filteredData.length,
     });
 
     // Clasificar cada sesión para el funnel

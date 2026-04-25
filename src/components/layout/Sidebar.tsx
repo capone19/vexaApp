@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   Calendar,
+  Package,
   TrendingUp,
   FileText,
   Megaphone,
@@ -36,6 +37,7 @@ const mainNavItems: NavItem[] = [
   { title: "Ajustes del Agente", href: "/ajustes-agente", icon: Bot },
   { title: "Chats", href: "/chats", icon: MessageSquare },
   { title: "Calendario", href: "/calendario", icon: Calendar },
+  { title: "Entregas", href: "/entregas", icon: Package },
   {
     title: "Resultados",
     href: "/resultados",
