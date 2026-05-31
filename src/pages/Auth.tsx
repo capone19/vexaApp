@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useLocation, type Location } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,29 @@ import { isAdminEmail } from "@/lib/admin-config";
 import { useAuthContext } from "@/contexts/AuthContext";
 
 type AuthMode = "login" | "register";
+
+function translateAuthError(error: string): string {
+  const lower = error.toLowerCase();
+  if (lower.includes('invalid login credentials') || lower.includes('invalid_credentials'))
+    return 'Email o contraseña incorrectos.';
+  if (lower.includes('email not confirmed'))
+    return 'Debes confirmar tu email antes de iniciar sesión. Revisa tu bandeja de entrada.';
+  if (lower.includes('user already registered') || lower.includes('already registered'))
+    return 'Este correo ya está registrado. Intenta iniciar sesión.';
+  if (lower.includes('password should be at least') || lower.includes('weak_password'))
+    return 'La contraseña debe tener al menos 6 caracteres.';
+  if (lower.includes('rate limit') || lower.includes('too_many_requests') || lower.includes('over_email_send_rate_limit'))
+    return 'Demasiados intentos. Espera unos segundos e inténtalo de nuevo.';
+  if (lower.includes('network') || lower.includes('fetch'))
+    return 'Error de conexión. Verifica tu internet e inténtalo de nuevo.';
+  if (lower.includes('signup_disabled') || lower.includes('signups not allowed'))
+    return 'El registro está temporalmente deshabilitado.';
+  if (lower.includes('email_address_not_authorized'))
+    return 'Este correo no está autorizado para registrarse.';
+  if (lower.includes('user not found'))
+    return 'No existe una cuenta con ese email.';
+  return error;
+}
 
 function getReturnPathFromState(state: unknown): string | null {
   const from = (state as { from?: Location } | null)?.from;
@@ -37,6 +60,17 @@ export default function Auth() {
 
   // Focus states for premium input effects
   const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  // Memoize particle positions so they don't jump on every re-render
+  const particles = useMemo(() =>
+    Array.from({ length: 15 }, (_, i) => ({
+      id: i,
+      left: `${Math.random() * 100}%`,
+      top: `${Math.random() * 100}%`,
+      delay: `${Math.random() * 5}s`,
+      duration: `${3 + Math.random() * 4}s`,
+    })),
+  []);
 
   // Navegar cuando AuthContext confirma que el usuario está autenticado y listo.
   // Esto evita la race condition donde Auth.tsx navegaba a "/" antes de que
@@ -67,28 +101,28 @@ export default function Auth() {
     try {
       if (mode === "login") {
         const result = await login({ email: formData.email, password: formData.password });
-        
+
         if (result.success) {
           toast.success("¡Bienvenido de vuelta!");
-          setIsLoading(false);
-          // La navegación ocurre en el useEffect que observa authIsLoading + isAuthenticated
+          // Don't reset isLoading — keep spinner until the component unmounts on navigation.
+          // AuthContext processes SIGNED_IN async; resetting here causes a visible idle flicker.
         } else {
-          toast.error(result.error || "Error al iniciar sesión");
+          toast.error(translateAuthError(result.error || "Error al iniciar sesión"));
           setIsLoading(false);
         }
       } else {
         const result = await register(formData.name, formData.email, formData.password);
-        
+
         if (result.success) {
-          toast.success("¡Cuenta creada exitosamente!");
-          // Navigation will happen via onAuthStateChange
+          toast.success("¡Cuenta creada! Revisa tu email para confirmar tu cuenta.");
+          setIsLoading(false);
         } else {
-          toast.error(result.error || "Error al crear cuenta");
+          toast.error(translateAuthError(result.error || "Error al crear cuenta"));
           setIsLoading(false);
         }
       }
     } catch (error) {
-      toast.error("Ha ocurrido un error inesperado");
+      toast.error("Ha ocurrido un error inesperado. Inténtalo de nuevo.");
       setIsLoading(false);
     }
   };
@@ -126,15 +160,15 @@ export default function Auth() {
         />
 
         {/* Floating particles - dark */}
-        {[...Array(15)].map((_, i) => (
+        {particles.map((p) => (
           <div
-            key={i}
+            key={p.id}
             className="absolute w-1 h-1 bg-slate-400/40 rounded-full animate-float"
             style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 5}s`,
-              animationDuration: `${3 + Math.random() * 4}s`,
+              left: p.left,
+              top: p.top,
+              animationDelay: p.delay,
+              animationDuration: p.duration,
             }}
           />
         ))}
@@ -297,7 +331,7 @@ export default function Auth() {
               {/* Submit Button */}
               <Button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || authIsLoading}
                 className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-lg shadow-lg shadow-primary/20 transition-all duration-300 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-[0.98] group"
               >
                 {isLoading ? (
@@ -325,7 +359,7 @@ export default function Auth() {
               type="button"
               variant="outline"
               onClick={handleGoogleAuth}
-              disabled={isLoading}
+              disabled={isLoading || authIsLoading}
               className="w-full h-12 bg-secondary border-border text-foreground hover:bg-secondary/80 hover:border-foreground/20 rounded-lg transition-all duration-200 group"
             >
               <svg className="h-5 w-5 mr-3" viewBox="0 0 24 24">
