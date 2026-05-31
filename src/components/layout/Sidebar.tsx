@@ -5,24 +5,15 @@ import { Logo } from "@/components/shared/Logo";
 import {
   LayoutDashboard,
   MessageSquare,
-  Calendar,
   Package,
   TrendingUp,
-  FileText,
-  Megaphone,
-  CreditCard,
   Bot,
   Bell,
   HelpCircle,
   Cog,
   ChevronDown,
   ChevronRight,
-  Lock,
-  Zap,
-  Sparkles,
 } from "lucide-react";
-import { useSubscription } from "@/hooks/use-subscription";
-import type { PlanId } from "@/lib/plan";
 
 interface NavItem {
   title: string;
@@ -36,7 +27,6 @@ const mainNavItems: NavItem[] = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
   { title: "Ajustes del Agente", href: "/ajustes-agente", icon: Bot },
   { title: "Chats", href: "/chats", icon: MessageSquare },
-  { title: "Calendario", href: "/calendario", icon: Calendar },
   { title: "Entregas", href: "/entregas", icon: Package },
   {
     title: "Resultados",
@@ -47,18 +37,6 @@ const mainNavItems: NavItem[] = [
       { title: "Ventas", href: "/resultados/ventas" },
     ],
   },
-  { title: "Facturación", href: "/facturacion", icon: CreditCard },
-  {
-    title: "Marketing",
-    href: "/marketing",
-    icon: Megaphone,
-    children: [
-      { title: "Plantillas", href: "/marketing/plantillas" },
-      { title: "Performance", href: "/marketing/performance" },
-      { title: "Créditos", href: "/marketing/creditos" },
-    ],
-  },
-  { title: "Reportes", href: "/reportes", icon: FileText, isUpgrade: true },
 ];
 
 const bottomNavItems: NavItem[] = [
@@ -75,11 +53,6 @@ interface SidebarProps {
 export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
   const location = useLocation();
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
-  
-  // Obtener plan real de la suscripción
-  const { subscription } = useSubscription();
-  const currentPlan: PlanId = (subscription?.plan as PlanId) || 'basic';
-  const hasPremium = currentPlan === 'pro' || currentPlan === 'enterprise';
 
   const toggleExpanded = (title: string) => {
     setExpandedItems((prev) =>
@@ -146,9 +119,6 @@ export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
                       )}>
                         {item.title}
                       </span>
-                      {item.isUpgrade && isExpanded && !hasPremium && (
-                        <Lock className="h-3.5 w-3.5 text-warning" />
-                      )}
                     </div>
                     {isExpanded && (
                       expandedItems.includes(item.title) ? (
@@ -202,45 +172,12 @@ export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
                   )}>
                     {item.title}
                   </span>
-                  {item.isUpgrade && isExpanded && !hasPremium && (
-                    <Lock className="h-3.5 w-3.5 text-warning" />
-                  )}
                 </NavLink>
               )}
             </li>
           ))}
         </ul>
       </nav>
-
-      {/* VEXA Ads - Premium Module */}
-      <div className="px-3 py-3 border-t border-border">
-        <NavLink
-          to="/vexa-ads"
-          className={({ isActive }) =>
-            cn(
-              "flex items-center rounded-xl px-3 py-3 text-sm font-medium transition-all",
-              isExpanded ? "gap-3" : "justify-center",
-              isActive
-                ? "bg-gradient-to-r from-violet-500/20 to-purple-500/20 text-violet-300 border border-violet-500/30"
-                : "bg-gradient-to-r from-violet-500/10 to-purple-500/10 text-violet-400 hover:from-violet-500/20 hover:to-purple-500/20 border border-violet-500/20"
-            )
-          }
-          title={!isExpanded ? "VEXA Ads" : undefined}
-        >
-          <div className="relative">
-            <Zap className="h-5 w-5 shrink-0" />
-            <Sparkles className="h-2.5 w-2.5 absolute -top-1 -right-1 text-violet-300" />
-          </div>
-          {isExpanded && (
-            <>
-              <span className="whitespace-nowrap font-semibold">VEXA Ads</span>
-              <span className="ml-auto px-1.5 py-0.5 text-[10px] rounded bg-violet-500/30 text-violet-200">
-                Premium
-              </span>
-            </>
-          )}
-        </NavLink>
-      </div>
 
       {/* Bottom Navigation */}
       <div className="border-t border-border px-3 py-4">

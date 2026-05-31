@@ -14,6 +14,7 @@ import {
   Pencil,
   Save,
   X,
+  Plus,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -109,6 +110,42 @@ interface EditForm {
   total: string;
 }
 
+interface CreateForm {
+  contact_name: string;
+  contact_phone: string;
+  contact_email: string;
+  type: 'product' | 'service';
+  item_name: string;
+  currency: string;
+  estimated_delivery_date: string;
+  estimated_delivery_time: string;
+  address: string;
+  comuna: string;
+  region: string;
+  price: string;
+  shipping_cost: string;
+  payment_method: string;
+  notes: string;
+}
+
+const EMPTY_CREATE_FORM: CreateForm = {
+  contact_name: '',
+  contact_phone: '',
+  contact_email: '',
+  type: 'product',
+  item_name: '',
+  currency: 'CLP',
+  estimated_delivery_date: '',
+  estimated_delivery_time: '',
+  address: '',
+  comuna: '',
+  region: '',
+  price: '',
+  shipping_cost: '',
+  payment_method: '',
+  notes: '',
+};
+
 function getEffectiveTotal(b: ExternalBooking): number | null {
   const meta = b.metadata as Record<string, unknown> | null;
   const metaTotal = meta?.total ?? meta?.total_pedido;
@@ -147,6 +184,11 @@ export default function Entregas() {
   const [editingBooking, setEditingBooking] = useState<ExternalBooking | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Create dialog state
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState<CreateForm>(EMPTY_CREATE_FORM);
+  const [isCreating, setIsCreating] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!tenantId) return;
@@ -337,6 +379,84 @@ export default function Entregas() {
     []
   );
 
+  const updateCreateField = useCallback(
+    <K extends keyof CreateForm>(key: K, value: CreateForm[K]) => {
+      setCreateForm((prev) => ({ ...prev, [key]: value }));
+    },
+    []
+  );
+
+  const openCreateDialog = useCallback(() => {
+    setCreateForm({
+      ...EMPTY_CREATE_FORM,
+      currency: toDisplayCurrency(tenantCurrency),
+    });
+    setCreateOpen(true);
+  }, [tenantCurrency]);
+
+  const handleCreate = useCallback(async () => {
+    if (!tenantId) return;
+    if (!createForm.contact_name.trim()) {
+      toast({ title: 'Campo requerido', description: 'El nombre del cliente es obligatorio.', variant: 'destructive' });
+      return;
+    }
+    if (!createForm.item_name.trim()) {
+      toast({ title: 'Campo requerido', description: 'El nombre del producto/servicio es obligatorio.', variant: 'destructive' });
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const priceNum = createForm.price.trim() !== '' ? Number(createForm.price.trim()) : 0;
+      const shippingNum = createForm.shipping_cost.trim() !== '' ? Number(createForm.shipping_cost.trim()) : null;
+      const today = new Date().toISOString().split('T')[0];
+
+      const newBooking: Omit<ExternalBooking, 'id' | 'created_at' | 'updated_at'> = {
+        tenant_id: tenantId,
+        session_id: null,
+        contact_name: createForm.contact_name.trim(),
+        contact_phone: createForm.contact_phone.trim() || null,
+        contact_email: createForm.contact_email.trim() || null,
+        type: createForm.type,
+        item_name: createForm.item_name.trim(),
+        price: priceNum,
+        currency: createForm.currency,
+        event_date: createForm.estimated_delivery_date.trim() || today,
+        event_time: null,
+        origin: 'manual',
+        notes: createForm.notes.trim() || null,
+        metadata: { total: priceNum },
+        address: createForm.address.trim() || null,
+        comuna: createForm.comuna.trim() || null,
+        region: createForm.region.trim() || null,
+        shipping_cost: shippingNum,
+        payment_method: createForm.payment_method.trim() || null,
+        estimated_delivery_date: createForm.estimated_delivery_date.trim() || null,
+        estimated_delivery_time: createForm.estimated_delivery_time.trim() || null,
+      };
+
+      const { data, error: insertError } = await externalSupabase
+        .from('bookings')
+        .insert(newBooking)
+        .select()
+        .single();
+
+      if (insertError) {
+        toast({ title: 'Error al crear', description: insertError.message, variant: 'destructive' });
+        return;
+      }
+
+      setBookings((prev) => [data as ExternalBooking, ...prev]);
+      setCreateOpen(false);
+      setCreateForm(EMPTY_CREATE_FORM);
+      toast({ title: 'Pedido creado', description: 'El pedido fue registrado correctamente.' });
+    } catch (e) {
+      toast({ title: 'Error', description: e instanceof Error ? e.message : 'Error desconocido', variant: 'destructive' });
+    } finally {
+      setIsCreating(false);
+    }
+  }, [tenantId, createForm]);
+
   const totalPages = Math.max(1, Math.ceil(filteredBookings.length / PAGE_SIZE));
   const paginatedBookings = filteredBookings.slice(
     (currentPage - 1) * PAGE_SIZE,
@@ -380,10 +500,16 @@ export default function Entregas() {
           title="Entregas"
           subtitle={`Cliente, entrega y monto (${filteredBookings.length} registros)`}
           actions={
-            <Button onClick={fetchData} variant="outline" size="sm">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Actualizar
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button onClick={fetchData} variant="outline" size="sm">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Actualizar
+              </Button>
+              <Button onClick={openCreateDialog} size="sm">
+                <Plus className="h-4 w-4 mr-2" />
+                Nuevo pedido
+              </Button>
+            </div>
           }
         />
 
@@ -624,6 +750,219 @@ export default function Entregas() {
           </div>
         )}
       </div>
+
+      {/* Create Dialog */}
+      <Dialog open={createOpen} onOpenChange={(open) => { if (!open && !isCreating) { setCreateOpen(false); } }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Nuevo pedido manual
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-5 py-2">
+            {/* Tipo */}
+            <div className="grid gap-1.5">
+              <Label>Tipo de pedido</Label>
+              <Select value={createForm.type} onValueChange={(v) => updateCreateField('type', v as 'product' | 'service')}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="product">Producto</SelectItem>
+                  <SelectItem value="service">Servicio</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Producto / Servicio */}
+            <div className="grid gap-1.5">
+              <Label htmlFor="create-item">
+                {createForm.type === 'product' ? 'Nombre del producto' : 'Nombre del servicio'} *
+              </Label>
+              <Input
+                id="create-item"
+                value={createForm.item_name}
+                onChange={(e) => updateCreateField('item_name', e.target.value)}
+                placeholder={createForm.type === 'product' ? 'Ej: Torta de chocolate' : 'Ej: Corte de cabello'}
+              />
+            </div>
+
+            {/* Nombre del cliente */}
+            <div className="grid gap-1.5">
+              <Label htmlFor="create-name">Nombre del cliente *</Label>
+              <Input
+                id="create-name"
+                value={createForm.contact_name}
+                onChange={(e) => updateCreateField('contact_name', e.target.value)}
+                placeholder="Nombre completo"
+              />
+            </div>
+
+            {/* Teléfono y Email */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-1.5">
+                <Label htmlFor="create-phone">Teléfono</Label>
+                <Input
+                  id="create-phone"
+                  value={createForm.contact_phone}
+                  onChange={(e) => updateCreateField('contact_phone', e.target.value)}
+                  placeholder="+56 9 1234 5678"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="create-email">Email</Label>
+                <Input
+                  id="create-email"
+                  type="email"
+                  value={createForm.contact_email}
+                  onChange={(e) => updateCreateField('contact_email', e.target.value)}
+                  placeholder="correo@ejemplo.com"
+                />
+              </div>
+            </div>
+
+            {/* Fecha y Horario */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-1.5">
+                <Label htmlFor="create-date">Fecha de entrega</Label>
+                <Input
+                  id="create-date"
+                  type="date"
+                  value={createForm.estimated_delivery_date}
+                  onChange={(e) => updateCreateField('estimated_delivery_date', e.target.value)}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="create-time">Horario de entrega</Label>
+                <Input
+                  id="create-time"
+                  value={createForm.estimated_delivery_time}
+                  onChange={(e) => updateCreateField('estimated_delivery_time', e.target.value)}
+                  placeholder="16:00-22:00"
+                />
+              </div>
+            </div>
+
+            {/* Dirección */}
+            <div className="grid gap-1.5">
+              <Label htmlFor="create-address">Dirección</Label>
+              <Input
+                id="create-address"
+                value={createForm.address}
+                onChange={(e) => updateCreateField('address', e.target.value)}
+                placeholder="Av. Ejemplo 123, Depto 4B"
+              />
+            </div>
+
+            {/* Comuna y Región */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-1.5">
+                <Label htmlFor="create-comuna">Comuna</Label>
+                <Input
+                  id="create-comuna"
+                  value={createForm.comuna}
+                  onChange={(e) => updateCreateField('comuna', e.target.value)}
+                  placeholder="La Cisterna"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="create-region">Región</Label>
+                <Input
+                  id="create-region"
+                  value={createForm.region}
+                  onChange={(e) => updateCreateField('region', e.target.value)}
+                  placeholder="Metropolitana"
+                />
+              </div>
+            </div>
+
+            {/* Monto, Costo de envío y Moneda */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="grid gap-1.5 col-span-1">
+                <Label htmlFor="create-currency">Moneda</Label>
+                <Select value={createForm.currency} onValueChange={(v) => updateCreateField('currency', v)}>
+                  <SelectTrigger id="create-currency">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CLP">CLP</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="BOB">BOB</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="create-price">Monto total</Label>
+                <Input
+                  id="create-price"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={createForm.price}
+                  onChange={(e) => updateCreateField('price', e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="create-shipping">Envío</Label>
+                <Input
+                  id="create-shipping"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={createForm.shipping_cost}
+                  onChange={(e) => updateCreateField('shipping_cost', e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+
+            {/* Método de pago */}
+            <div className="grid gap-1.5">
+              <Label htmlFor="create-payment">Método de pago</Label>
+              <Input
+                id="create-payment"
+                value={createForm.payment_method}
+                onChange={(e) => updateCreateField('payment_method', e.target.value)}
+                placeholder="Transferencia, efectivo, débito..."
+              />
+            </div>
+
+            {/* Notas */}
+            <div className="grid gap-1.5">
+              <Label htmlFor="create-notes">Notas</Label>
+              <Textarea
+                id="create-notes"
+                value={createForm.notes}
+                onChange={(e) => updateCreateField('notes', e.target.value)}
+                placeholder="Indicaciones adicionales, sabor, decoración..."
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => { if (!isCreating) setCreateOpen(false); }}
+              disabled={isCreating}
+            >
+              <X className="h-4 w-4 mr-1.5" />
+              Cancelar
+            </Button>
+            <Button onClick={handleCreate} disabled={isCreating}>
+              {isCreating ? (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-1.5" />
+              )}
+              Crear pedido
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Dialog */}
       <Dialog open={!!editingBooking} onOpenChange={(open) => { if (!open) closeEditDialog(); }}>

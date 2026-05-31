@@ -10,7 +10,6 @@ import { ImpersonationBanner } from "@/components/admin/ImpersonationBanner";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AdminRoute } from "@/components/auth/AdminRoute";
 import { PremiumRoute } from "@/components/auth/PremiumRoute";
-import { VexaAdsRoute } from "@/components/auth/VexaAdsRoute";
 import { Loader2 } from "lucide-react";
 
 // Lazy load de páginas para code splitting
@@ -43,17 +42,6 @@ const AdminTicketDetail = lazy(() => import("./pages/admin/AdminTicketDetail"));
 const AdminHealthCheck = lazy(() => import("./pages/admin/AdminHealthCheck"));
 const AdminEntregas = lazy(() => import("./pages/admin/AdminEntregas"));
 const Entregas = lazy(() => import("./pages/Entregas"));
-
-// VEXA Ads - Módulo Premium Demo (aislado) - Estructura reestructurada
-const VexaAdsOverview = lazy(() => import("./pages/vexa-ads/VexaAdsOverview"));
-const VexaAdsDiagnostico = lazy(() => import("./pages/vexa-ads/VexaAdsDiagnostico"));
-const VexaAdsEstrategia = lazy(() => import("./pages/vexa-ads/VexaAdsEstrategia"));
-const VexaAdsCreativos = lazy(() => import("./pages/vexa-ads/VexaAdsCreativos"));
-const VexaAdsCampanas = lazy(() => import("./pages/vexa-ads/VexaAdsCampanas"));
-const VexaAdsAnalisis = lazy(() => import("./pages/vexa-ads/VexaAdsAnalisis"));
-const VexaAdsRecomendaciones = lazy(() => import("./pages/vexa-ads/VexaAdsRecomendaciones"));
-const VexaAdsVideoAsesor = lazy(() => import("./pages/vexa-ads/VexaAdsVideoAsesor"));
-const VexaAdsConfiguracion = lazy(() => import("./pages/vexa-ads/VexaAdsConfiguracion"));
 
 // Componente de loading para Suspense
 const PageLoader = () => (
@@ -121,18 +109,6 @@ const App = () => (
 <Route path="/admin/tickets/:ticketId" element={<AdminRoute><AdminTicketDetail /></AdminRoute>} />
               <Route path="/admin/entregas" element={<AdminRoute><AdminEntregas /></AdminRoute>} />
               <Route path="/admin/health" element={<AdminRoute><AdminHealthCheck /></AdminRoute>} />
-              
-              {/* VEXA Ads - Módulo controlado por tenant (vexa_ads_enabled) */}
-              <Route path="/vexa-ads" element={<ProtectedRoute><VexaAdsRoute><VexaAdsOverview /></VexaAdsRoute></ProtectedRoute>} />
-              <Route path="/vexa-ads/diagnostico" element={<ProtectedRoute><VexaAdsRoute><VexaAdsDiagnostico /></VexaAdsRoute></ProtectedRoute>} />
-              <Route path="/vexa-ads/estrategia" element={<ProtectedRoute><VexaAdsRoute><VexaAdsEstrategia /></VexaAdsRoute></ProtectedRoute>} />
-              <Route path="/vexa-ads/creativos" element={<ProtectedRoute><VexaAdsRoute><VexaAdsCreativos /></VexaAdsRoute></ProtectedRoute>} />
-              <Route path="/vexa-ads/campanas" element={<ProtectedRoute><VexaAdsRoute><VexaAdsCampanas /></VexaAdsRoute></ProtectedRoute>} />
-              <Route path="/vexa-ads/campanas/presupuesto" element={<ProtectedRoute><VexaAdsRoute><VexaAdsCampanas /></VexaAdsRoute></ProtectedRoute>} />
-              <Route path="/vexa-ads/analisis" element={<ProtectedRoute><VexaAdsRoute><VexaAdsAnalisis /></VexaAdsRoute></ProtectedRoute>} />
-              <Route path="/vexa-ads/recomendaciones" element={<ProtectedRoute><VexaAdsRoute><VexaAdsRecomendaciones /></VexaAdsRoute></ProtectedRoute>} />
-              <Route path="/vexa-ads/recomendaciones/video" element={<ProtectedRoute><VexaAdsRoute><VexaAdsVideoAsesor /></VexaAdsRoute></ProtectedRoute>} />
-              <Route path="/vexa-ads/configuracion" element={<ProtectedRoute><VexaAdsRoute><VexaAdsConfiguracion /></VexaAdsRoute></ProtectedRoute>} />
               
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />

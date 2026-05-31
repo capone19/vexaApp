@@ -7,9 +7,9 @@ import { cn } from "@/lib/utils";
 import { Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { login, register, signInWithGoogle } from "@/lib/auth";
-import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/shared/Logo";
 import { isAdminEmail } from "@/lib/admin-config";
+import { useAuthContext } from "@/contexts/AuthContext";
 
 type AuthMode = "login" | "register";
 
@@ -23,6 +23,7 @@ function getReturnPathFromState(state: unknown): string | null {
 export default function Auth() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { isAuthenticated, isLoading: authIsLoading, user } = useAuthContext();
   const [mode, setMode] = useState<AuthMode>("login");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -37,36 +38,23 @@ export default function Auth() {
   // Focus states for premium input effects
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
-  // Si ya hay sesión (p. ej. tras refresh: ProtectedRoute mandó aquí un instante), volver a la ruta
-  // original en lugar de forzar siempre "/" — evita perder /chats, /ajustes-agente, etc.
+  // Navegar cuando AuthContext confirma que el usuario está autenticado y listo.
+  // Esto evita la race condition donde Auth.tsx navegaba a "/" antes de que
+  // AuthContext terminara de resolver el usuario, causando que ProtectedRoute
+  // redirigiera de vuelta a /auth por ver user=null con isLoading=false.
   useEffect(() => {
-    const goIfSession = (session: { user: { email?: string | null } } | null) => {
-      if (!session?.user) return;
-      const email = session.user.email || "";
-      const returnTo = getReturnPathFromState(location.state);
-      if (isAdminEmail(email)) {
-        navigate("/admin", { replace: true });
-      } else if (returnTo) {
-        navigate(returnTo, { replace: true });
-      } else {
-        navigate("/", { replace: true });
-      }
-    };
+    if (authIsLoading) return;
+    if (!isAuthenticated || !user) return;
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      goIfSession(session);
-    });
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      goIfSession(session);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [navigate, location.state]);
+    const returnTo = getReturnPathFromState(location.state);
+    if (isAdminEmail(user.email)) {
+      navigate("/admin", { replace: true });
+    } else if (returnTo) {
+      navigate(returnTo, { replace: true });
+    } else {
+      navigate("/", { replace: true });
+    }
+  }, [authIsLoading, isAuthenticated, user, navigate, location.state]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -83,7 +71,7 @@ export default function Auth() {
         if (result.success) {
           toast.success("¡Bienvenido de vuelta!");
           setIsLoading(false);
-          // Navegación: onAuthStateChange en esta página + AuthContext (isLoading durante resolveUser)
+          // La navegación ocurre en el useEffect que observa authIsLoading + isAuthenticated
         } else {
           toast.error(result.error || "Error al iniciar sesión");
           setIsLoading(false);

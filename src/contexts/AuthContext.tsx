@@ -136,28 +136,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, []);
 
-  // Inicializar auth
-  const initAuth = useCallback(async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const resolvedUser = await resolveUser(session);
-      setUser(resolvedUser);
-      setHasTenant(!!resolvedUser?.tenantId);
-      
-      // Cargar suscripción si hay tenant
-      if (resolvedUser?.tenantId) {
-        await fetchSubscription(resolvedUser.tenantId);
-      }
-    } catch (error) {
-      console.error('[AuthContext] Init error:', error);
-      setUser(null);
-      setHasTenant(false);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [resolveUser, fetchSubscription]);
-
   // Refetch manual de usuario
   const refetchUser = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -186,26 +164,54 @@ export function AuthProvider({ children }: AuthProviderProps) {
           setSubscription(null);
           setHasTenant(false);
         } else if (event === 'SIGNED_IN') {
-          // Marcar loading ANTES de cualquier await para que ProtectedRoute no redirija
-          // a /auth mientras resolveUser corre (evita "login OK pero no entro al dashboard").
           if (isInitialized && session?.user) {
             setIsLoading(true);
+            let resolvedUser: User | null = null;
+
             try {
-              const resolvedUser = await resolveUser(session);
-              if (resolvedUser) {
-                setUser(resolvedUser);
-                setHasTenant(!!resolvedUser.tenantId);
-                if (resolvedUser.tenantId) {
-                  await fetchSubscription(resolvedUser.tenantId);
-                }
-              }
-              // Si resolvedUser es null pero session existe, mantener estado actual
+              resolvedUser = await resolveUser(session);
             } catch (resolveError) {
               if (resolveError instanceof Error && resolveError.message === 'TIMEOUT_KEEP_STATE') {
-                console.warn('[AuthContext] SIGNED_IN timeout - manteniendo estado actual');
+                console.warn('[AuthContext] SIGNED_IN timeout - usando fallback de sesión');
               } else {
                 throw resolveError;
               }
+            }
+
+            if (resolvedUser) {
+              setUser(resolvedUser);
+              setHasTenant(!!resolvedUser.tenantId);
+              if (resolvedUser.tenantId) {
+                await fetchSubscription(resolvedUser.tenantId);
+              }
+            } else {
+              // resolveUser falló o hizo timeout: usar datos básicos de la sesión para que
+              // isAuthenticated = true y ProtectedRoute no redirija de vuelta a /auth.
+              // hasTenant queda false → ProtectedRoute → /cuenta-pendiente.
+              // El refetch en background corregirá el tenantId si existe.
+              const supaUser = session.user;
+              const fallback: User = {
+                id: supaUser.id,
+                email: supaUser.email || '',
+                name: supaUser.user_metadata?.full_name || supaUser.email?.split('@')[0] || 'Usuario',
+                role: 'viewer',
+                tenantId: null,
+              };
+              setUser(fallback);
+              setHasTenant(false);
+              // Refetch en background: si el usuario tiene tenant, /cuenta-pendiente lo redirige a /
+              setTimeout(async () => {
+                try {
+                  const { data: { session: fresh } } = await supabase.auth.getSession();
+                  if (!fresh) return;
+                  const freshUser = await resolveUser(fresh);
+                  if (freshUser?.tenantId) {
+                    setUser(freshUser);
+                    setHasTenant(true);
+                    fetchSubscription(freshUser.tenantId);
+                  }
+                } catch { /* ignorar errores del refetch en background */ }
+              }, 2500);
             }
           }
         } else if (event === 'TOKEN_REFRESHED') {
@@ -255,14 +261,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
     };
 
-    // Obtener sesión inicial
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      handleAuthChange('INITIAL_SESSION', session);
-    }).catch((error) => {
-      console.error('[AuthContext] Error getting initial session:', error);
-      setIsLoading(false);
-    });
-
+    // onAuthStateChange emite INITIAL_SESSION automáticamente al suscribirse,
+    // con la sesión actual (o null). No es necesario llamar getSession() manualmente.
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
       (event, session) => handleAuthChange(event, session)
     );

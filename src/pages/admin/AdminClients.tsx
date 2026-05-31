@@ -44,7 +44,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Loader2, Building2, CheckCircle, XCircle, Copy, Eye, RefreshCw, Sparkles, FileText } from 'lucide-react';
+import { Loader2, Building2, CheckCircle, XCircle, Copy, Eye, RefreshCw, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -65,7 +65,6 @@ interface Tenant {
   slug: string;
   plan: string;
   is_active: boolean | null;
-  vexa_ads_enabled: boolean | null;
   whatsapp_phone_id: string | null;
   whatsapp_integration?: WhatsAppIntegration; // Nuevo campo para tipo de integración
   created_at: string | null;
@@ -122,7 +121,6 @@ export default function AdminClients() {
   const [error, setError] = useState<string | null>(null);
   const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [togglingVexaAdsId, setTogglingVexaAdsId] = useState<string | null>(null);
   const [updatingCurrencyId, setUpdatingCurrencyId] = useState<string | null>(null);
   const [updatingWhatsAppId, setUpdatingWhatsAppId] = useState<string | null>(null);
   
@@ -331,30 +329,6 @@ export default function AdminClients() {
     }
   };
 
-  // Handler para toggle de VEXA Ads
-  const handleToggleVexaAds = async (tenantId: string, enabled: boolean) => {
-    setTogglingVexaAdsId(tenantId);
-    try {
-      const { data, error } = await supabase.functions.invoke('admin-toggle-vexa-ads', {
-        body: { tenantId, enabled }
-      });
-      
-      if (error) throw error;
-      
-      // Actualizar estado local
-      setTenants(prev => prev.map(t => 
-        t.id === tenantId ? { ...t, vexa_ads_enabled: enabled } : t
-      ));
-      
-      toast.success(enabled ? 'VEXA Ads activado' : 'VEXA Ads desactivado');
-    } catch (err) {
-      console.error('[AdminClients] Toggle VEXA Ads error:', err);
-      toast.error('Error al cambiar estado de VEXA Ads');
-    } finally {
-      setTogglingVexaAdsId(null);
-    }
-  };
-
   // Handler para cambiar la integración de WhatsApp
   const handleChangeWhatsAppIntegration = async (tenantId: string, integration: WhatsAppIntegration) => {
     setUpdatingWhatsAppId(tenantId);
@@ -514,7 +488,6 @@ export default function AdminClients() {
                       <TableHead>Chats Extra</TableHead>
                       <TableHead>Cobro Extra</TableHead>
                       <TableHead>Estado</TableHead>
-                      <TableHead>VEXA Ads</TableHead>
                       <TableHead>Reportes</TableHead>
                       <TableHead>WhatsApp</TableHead>
                       <TableHead>Creado</TableHead>
@@ -657,28 +630,6 @@ export default function AdminClients() {
                               ) : (
                                 <span className={tenant.is_active !== false ? 'text-green-600 text-sm' : 'text-destructive text-sm'}>
                                   {tenant.is_active !== false ? 'Activo' : 'Inactivo'}
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                          {/* VEXA Ads Toggle */}
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={tenant.vexa_ads_enabled === true}
-                                onCheckedChange={(checked) => handleToggleVexaAds(tenant.id, checked)}
-                                disabled={togglingVexaAdsId === tenant.id}
-                              />
-                              {togglingVexaAdsId === tenant.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                              ) : (
-                                <span className={tenant.vexa_ads_enabled === true ? 'text-primary text-sm flex items-center gap-1' : 'text-muted-foreground text-sm'}>
-                                  {tenant.vexa_ads_enabled === true ? (
-                                    <>
-                                      <Sparkles className="h-3 w-3" />
-                                      Activo
-                                    </>
-                                  ) : 'Off'}
                                 </span>
                               )}
                             </div>
