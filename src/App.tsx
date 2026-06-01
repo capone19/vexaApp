@@ -43,6 +43,12 @@ const AdminHealthCheck = lazy(() => import("./pages/admin/AdminHealthCheck"));
 const AdminEntregas = lazy(() => import("./pages/admin/AdminEntregas"));
 const Entregas = lazy(() => import("./pages/Entregas"));
 
+// Publicidad - módulo con tema dark-violeta propio
+const PublicidadLayout = lazy(() => import("./pages/publicidad/PublicidadLayout"));
+const PublicidadGraficas = lazy(() => import("./pages/publicidad/PublicidadGraficas"));
+const PublicidadCampanas = lazy(() => import("./pages/publicidad/PublicidadCampanas"));
+const PublicidadAjustes = lazy(() => import("./pages/publicidad/PublicidadAjustes"));
+
 // Componente de loading para Suspense
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
@@ -110,6 +116,14 @@ const App = () => (
               <Route path="/admin/entregas" element={<AdminRoute><AdminEntregas /></AdminRoute>} />
               <Route path="/admin/health" element={<AdminRoute><AdminHealthCheck /></AdminRoute>} />
               
+              {/* Publicidad - layout propio con tema dark-violeta */}
+              <Route path="/publicidad" element={<ProtectedRoute><PublicidadLayout /></ProtectedRoute>}>
+                <Route index element={<PublicidadGraficas />} />
+                <Route path="graficas" element={<PublicidadGraficas />} />
+                <Route path="campanas" element={<PublicidadCampanas />} />
+                <Route path="ajustes" element={<PublicidadAjustes />} />
+              </Route>
+
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>

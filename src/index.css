@@ -374,3 +374,48 @@
     transform: scale(1);
   }
 }
+
+/* ============================================
+   PUBLICIDAD - Dark Violet Theme (scoped)
+   Aplica solo dentro de [data-theme="publicidad"]
+   ============================================ */
+[data-theme="publicidad"] {
+  --background: 240 10% 4%;
+  --foreground: 250 10% 92%;
+
+  --card: 240 10% 7%;
+  --card-foreground: 250 10% 92%;
+
+  --popover: 240 10% 7%;
+  --popover-foreground: 250 10% 92%;
+
+  --primary: 263 70% 58%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 260 20% 14%;
+  --secondary-foreground: 250 10% 85%;
+
+  --muted: 260 15% 12%;
+  --muted-foreground: 250 10% 55%;
+
+  --accent: 263 50% 20%;
+  --accent-foreground: 263 70% 80%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 260 15% 15%;
+  --input: 260 15% 15%;
+  --ring: 263 70% 58%;
+
+  --radius: 0.5rem;
+
+  --sidebar-background: 240 10% 6%;
+  --sidebar-foreground: 250 10% 60%;
+  --sidebar-primary: 263 70% 58%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 263 50% 15%;
+  --sidebar-accent-foreground: 263 70% 85%;
+  --sidebar-border: 260 15% 12%;
+  --sidebar-ring: 263 70% 58%;
+}

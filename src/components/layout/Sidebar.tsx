@@ -8,6 +8,7 @@ import {
   Package,
   TrendingUp,
   Bot,
+  Megaphone,
   Bell,
   HelpCircle,
   Cog,
@@ -178,6 +179,31 @@ export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
           ))}
         </ul>
       </nav>
+
+      {/* Publicidad */}
+      <div className="px-3 pb-2">
+        <NavLink
+          to="/publicidad"
+          className={({ isActive }) =>
+            cn(
+              "flex items-center rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
+              isExpanded ? "gap-3" : "justify-center",
+              isActive
+                ? "bg-violet-500/20 text-violet-300 shadow-[0_0_12px_rgba(139,92,246,0.25)] border border-violet-500/30"
+                : "text-violet-400 hover:bg-violet-500/10 border border-transparent hover:border-violet-500/20"
+            )
+          }
+          title={!isExpanded ? "Publicidad" : undefined}
+        >
+          <Megaphone className="h-5 w-5 shrink-0" />
+          <span className={cn(
+            "whitespace-nowrap font-semibold transition-all duration-300",
+            isExpanded ? "opacity-100" : "opacity-0 w-0 overflow-hidden"
+          )}>
+            Publicidad
+          </span>
+        </NavLink>
+      </div>
 
       {/* Bottom Navigation */}
       <div className="border-t border-border px-3 py-4">
