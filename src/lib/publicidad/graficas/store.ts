@@ -1,11 +1,16 @@
 import { useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import type { GenerationConfig, Generation } from './types';
 import { DEFAULT_CONFIG } from './types';
-import { MOCK_HISTORY } from './mock-history';
+import {
+  generateAdImage,
+  validateGenerationConfig,
+  getGenerateErrorMessage,
+} from './generate-image';
 
 export function useGenerationStore() {
   const [config, setConfig] = useState<GenerationConfig>({ ...DEFAULT_CONFIG });
-  const [generations, setGenerations] = useState<Generation[]>(MOCK_HISTORY);
+  const [generations, setGenerations] = useState<Generation[]>([]);
   const [currentGeneration, setCurrentGeneration] = useState<Generation | null>(null);
 
   const updateConfig = useCallback(<K extends keyof GenerationConfig>(
@@ -15,37 +20,60 @@ export function useGenerationStore() {
     setConfig(prev => ({ ...prev, [key]: value }));
   }, []);
 
-  const handleGenerate = useCallback(() => {
-    if (!config.prompt.trim()) return;
+  const handleGenerate = useCallback(async (brandNames: string[]) => {
+    const validation = validateGenerationConfig(config, brandNames);
+    if (!validation.ok) {
+      toast.error(validation.message);
+      return;
+    }
 
     const id = `gen-${Date.now()}`;
     const { referenceImage, ...configWithoutFile } = config;
 
-    const newGen: Generation = {
+    const pendingGen: Generation = {
       id,
       config: configWithoutFile,
-      finalPrompt: config.prompt,
+      finalPrompt: config.prompt.trim(),
       status: 'pending',
       resultUrls: [],
       createdAt: new Date().toISOString(),
     };
 
-    setCurrentGeneration(newGen);
-    setGenerations(prev => [newGen, ...prev]);
+    setCurrentGeneration(pendingGen);
 
-    // TODO: reemplazar por POST al webhook de n8n
-    setTimeout(() => {
+    try {
+      const result = await generateAdImage(config, brandNames);
+
       const completed: Generation = {
-        ...newGen,
+        ...pendingGen,
         status: 'completed',
-        resultUrls: Array.from({ length: config.variations }, (_, i) =>
-          `https://picsum.photos/512/512?random=${Date.now() + i}`
-        ),
+        resultUrls: result.resultUrls,
+        promptUsed: result.promptUsed,
+        requestId: result.requestId,
+        finalPrompt: result.promptUsed,
       };
+
       setCurrentGeneration(completed);
-      setGenerations(prev => prev.map(g => g.id === id ? completed : g));
-    }, 2000);
+      setGenerations(prev => [completed, ...prev]);
+
+      const count = result.resultUrls.length;
+      toast.success(
+        count === 1 ? '✓ Gráfica generada' : `✓ ${count} gráficas generadas`,
+      );
+    } catch (err) {
+      const message = getGenerateErrorMessage(err);
+      const failed: Generation = {
+        ...pendingGen,
+        status: 'failed',
+        errorMessage: message,
+      };
+
+      setCurrentGeneration(failed);
+      toast.error(message);
+    }
   }, [config]);
+
+  const isGenerating = currentGeneration?.status === 'pending';
 
   return {
     config,
@@ -53,5 +81,6 @@ export function useGenerationStore() {
     generations,
     currentGeneration,
     handleGenerate,
+    isGenerating,
   };
 }

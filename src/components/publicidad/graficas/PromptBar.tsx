@@ -46,6 +46,7 @@ export function PromptBar({ prompt, onPromptChange, onGenerate, isGenerating }: 
           value={prompt}
           onChange={e => onPromptChange(e.target.value)}
           onKeyDown={handleKeyDown}
+          disabled={isGenerating}
           placeholder="Describe la gráfica... ej: producto sobre fondo beige con luz natural, estilo editorial"
           rows={1}
           className="flex-1 resize-none bg-secondary/50 border border-violet-500/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20 transition-all scrollbar-thin"

@@ -1,14 +1,14 @@
 import { useState, useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import type { Generation, Brand } from '@/lib/publicidad/graficas/types';
-import { BRANDS } from '@/lib/publicidad/graficas/types';
+import type { Generation } from '@/lib/publicidad/graficas/types';
 
 interface HistoryGridProps {
   generations: Generation[];
+  brands: string[];
   onImageClick: (gen: Generation, index: number) => void;
 }
 
-type FilterValue = 'Todas' | Brand;
+type FilterValue = 'Todas' | string;
 
 function getDateGroup(dateStr: string): string {
   const date = new Date(dateStr);
@@ -22,7 +22,7 @@ function getDateGroup(dateStr: string): string {
   return 'Anteriores';
 }
 
-export function HistoryGrid({ generations, onImageClick }: HistoryGridProps) {
+export function HistoryGrid({ generations, brands, onImageClick }: HistoryGridProps) {
   const [filter, setFilter] = useState<FilterValue>('Todas');
 
   const completed = useMemo(() =>
@@ -51,7 +51,7 @@ export function HistoryGrid({ generations, onImageClick }: HistoryGridProps) {
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-foreground">Historial</h3>
         <div className="flex gap-1.5">
-          {(['Todas', ...BRANDS] as FilterValue[]).map(f => (
+          {(['Todas', ...brands] as FilterValue[]).map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}

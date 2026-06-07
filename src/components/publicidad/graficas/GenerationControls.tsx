@@ -1,12 +1,14 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import {
-  Package, Sun, Quote, ArrowLeftRight, ZoomIn, Tag,
-  Upload, X, ChevronDown,
+  Package, Sun, Quote, ArrowLeftRight, ZoomIn, Tag, Smartphone,
+  Upload, X,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
   Accordion,
   AccordionContent,
@@ -14,18 +16,23 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import type {
-  GenerationConfig, Brand, GraphicType, Format, StyleOption,
+  GenerationConfig, GraphicType, StyleOption, CtaDestino,
 } from '@/lib/publicidad/graficas/types';
 import {
-  BRANDS, GRAPHIC_TYPES, FORMATS, STYLE_OPTIONS, MODEL_OPTIONS,
+  GRAPHIC_TYPES, FORMATS, STYLE_OPTIONS, MODEL_OPTIONS, MAX_REFERENCE_IMAGE_BYTES,
 } from '@/lib/publicidad/graficas/types';
 
 const TYPE_ICONS: Record<string, React.ElementType> = {
-  Package, Sun, Quote, ArrowLeftRight, ZoomIn, Tag,
+  Package, Sun, Quote, ArrowLeftRight, ZoomIn, Tag, Smartphone,
 };
+
+const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 
 interface GenerationControlsProps {
   config: GenerationConfig;
+  brands: string[];
+  brandsLoading?: boolean;
+  disabled?: boolean;
   onUpdate: <K extends keyof GenerationConfig>(key: K, value: GenerationConfig[K]) => void;
 }
 
@@ -38,54 +45,117 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-export function GenerationControls({ config, onUpdate }: GenerationControlsProps) {
+export function GenerationControls({
+  config,
+  brands,
+  brandsLoading,
+  disabled,
+  onUpdate,
+}: GenerationControlsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const applyFile = useCallback((file: File) => {
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+      toast.error('Formato no soportado. Usá JPG, PNG o WebP.');
+      return;
+    }
+    if (file.size > MAX_REFERENCE_IMAGE_BYTES) {
+      toast.error('La imagen supera el límite de 10 MB.');
+      return;
+    }
+    if (config.referenceImagePreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(config.referenceImagePreview);
+    }
+    onUpdate('referenceImage', file);
+    onUpdate('referenceImagePreview', URL.createObjectURL(file));
+  }, [config.referenceImagePreview, onUpdate]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    onUpdate('referenceImage', file);
-    const url = URL.createObjectURL(file);
-    onUpdate('referenceImagePreview', url);
-  }, [onUpdate]);
+    applyFile(file);
+  }, [applyFile]);
 
   const clearImage = useCallback(() => {
-    if (config.referenceImagePreview) URL.revokeObjectURL(config.referenceImagePreview);
+    if (config.referenceImagePreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(config.referenceImagePreview);
+    }
     onUpdate('referenceImage', null);
     onUpdate('referenceImagePreview', null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [config.referenceImagePreview, onUpdate]);
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    if (!disabled) setIsDragging(true);
+  }, [disabled]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (disabled) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file) applyFile(file);
+  }, [disabled, applyFile]);
+
   const toggleStyle = useCallback((s: StyleOption) => {
+    if (disabled) return;
     const next = config.styles.includes(s)
       ? config.styles.filter(x => x !== s)
       : [...config.styles, s];
     onUpdate('styles', next);
-  }, [config.styles, onUpdate]);
+  }, [config.styles, disabled, onUpdate]);
+
+  const controlBtn = (active: boolean) => cn(
+    'transition-all',
+    disabled && 'opacity-50 pointer-events-none',
+    active
+      ? 'bg-violet-500/20 border-violet-500 text-violet-300'
+      : 'bg-secondary border-transparent text-muted-foreground hover:bg-violet-500/10',
+  );
 
   return (
-    <div className="w-80 shrink-0 overflow-y-auto border-r border-border p-4 space-y-4 scrollbar-thin hidden lg:block">
-      {/* Marca */}
+    <div className={cn(
+      'w-80 shrink-0 overflow-y-auto border-r border-border p-4 space-y-4 scrollbar-thin hidden lg:block',
+      disabled && 'opacity-60 pointer-events-none',
+    )}>
       <Section label="Marca">
-        <div className="flex flex-wrap gap-2">
-          {BRANDS.map(b => (
-            <button
-              key={b}
-              onClick={() => onUpdate('brand', b)}
-              className={cn(
-                'px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all',
-                config.brand === b
-                  ? 'bg-violet-500/20 border-violet-500 text-violet-300'
-                  : 'bg-secondary border-transparent text-muted-foreground hover:bg-violet-500/10'
-              )}
-            >
-              {b}
-            </button>
-          ))}
-        </div>
+        {brandsLoading ? (
+          <div className="flex gap-2">
+            {[1, 2].map(i => (
+              <div key={i} className="h-8 w-16 rounded-lg bg-secondary animate-pulse" />
+            ))}
+          </div>
+        ) : brands.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            No hay marcas. Créalas en Identidad de Marca.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {brands.map(b => (
+              <button
+                key={b}
+                type="button"
+                disabled={disabled}
+                onClick={() => onUpdate('brand', b)}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs font-semibold border',
+                  controlBtn(config.brand === b),
+                )}
+              >
+                {b}
+              </button>
+            ))}
+          </div>
+        )}
       </Section>
 
-      {/* Tipo */}
       <Section label="Tipo de gráfica">
         <div className="grid grid-cols-2 gap-2">
           {GRAPHIC_TYPES.map(t => {
@@ -93,12 +163,12 @@ export function GenerationControls({ config, onUpdate }: GenerationControlsProps
             return (
               <button
                 key={t.value}
-                onClick={() => onUpdate('type', t.value)}
+                type="button"
+                disabled={disabled}
+                onClick={() => onUpdate('type', t.value as GraphicType)}
                 className={cn(
-                  'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-all',
-                  config.type === t.value
-                    ? 'bg-violet-500/20 border-violet-500 text-violet-300'
-                    : 'bg-secondary border-transparent text-muted-foreground hover:bg-violet-500/10'
+                  'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border',
+                  controlBtn(config.type === t.value),
                 )}
               >
                 <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -109,13 +179,13 @@ export function GenerationControls({ config, onUpdate }: GenerationControlsProps
         </div>
       </Section>
 
-      {/* Imagen de referencia */}
       <Section label="Imagen de referencia">
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/png,image/jpeg"
+          accept="image/jpeg,image/jpg,image/png,image/webp"
           className="hidden"
+          disabled={disabled}
           onChange={handleFileChange}
         />
         {config.referenceImagePreview ? (
@@ -126,24 +196,56 @@ export function GenerationControls({ config, onUpdate }: GenerationControlsProps
               className="w-full h-32 object-cover rounded-lg border border-violet-500/20"
             />
             <button
+              type="button"
+              disabled={disabled}
               onClick={clearImage}
-              className="absolute top-2 right-2 rounded-full bg-black/60 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute top-2 right-2 rounded-full bg-black/60 p-1.5 hover:bg-black/80 transition-colors"
             >
               <X className="h-3.5 w-3.5 text-white" />
             </button>
           </div>
         ) : (
           <button
+            type="button"
+            disabled={disabled}
             onClick={() => fileInputRef.current?.click()}
-            className="w-full h-28 rounded-lg border-2 border-dashed border-violet-500/30 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:border-violet-500/50 hover:bg-violet-500/5 transition-all"
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={cn(
+              'w-full h-28 rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-2 text-muted-foreground transition-all',
+              isDragging
+                ? 'border-violet-500 bg-violet-500/10'
+                : 'border-violet-500/30 hover:border-violet-500/50 hover:bg-violet-500/5',
+            )}
           >
             <Upload className="h-5 w-5" />
             <span className="text-xs">Arrastrá una imagen o hacé click</span>
           </button>
         )}
+
+        <div className="flex items-start justify-between gap-3 pt-1">
+          <div className="space-y-0.5">
+            <Label
+              htmlFor="use-product-colors"
+              className="text-sm text-foreground font-medium cursor-pointer"
+            >
+              Usar colores del producto
+            </Label>
+            <p className="text-[10px] text-muted-foreground leading-snug">
+              El acento se deriva de la foto en vez de la paleta de marca
+            </p>
+          </div>
+          <Switch
+            id="use-product-colors"
+            checked={config.useProductColors}
+            onCheckedChange={v => onUpdate('useProductColors', v)}
+            disabled={disabled}
+            className="data-[state=checked]:bg-violet-600 shrink-0 mt-0.5"
+          />
+        </div>
       </Section>
 
-      {/* Formato */}
       <Section label="Formato">
         <div className="flex gap-2">
           {FORMATS.map(f => {
@@ -154,18 +256,18 @@ export function GenerationControls({ config, onUpdate }: GenerationControlsProps
             return (
               <button
                 key={f.value}
+                type="button"
+                disabled={disabled}
                 onClick={() => onUpdate('format', f.value)}
                 className={cn(
-                  'flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-lg border transition-all',
-                  config.format === f.value
-                    ? 'bg-violet-500/20 border-violet-500 text-violet-300'
-                    : 'bg-secondary border-transparent text-muted-foreground hover:bg-violet-500/10'
+                  'flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-lg border',
+                  controlBtn(config.format === f.value),
                 )}
               >
                 <div
                   className={cn(
                     'rounded-sm border',
-                    config.format === f.value ? 'border-violet-400 bg-violet-500/30' : 'border-muted-foreground/30 bg-white/[0.05]'
+                    config.format === f.value ? 'border-violet-400 bg-violet-500/30' : 'border-muted-foreground/30 bg-white/[0.05]',
                   )}
                   style={{ width: w, height: h }}
                 />
@@ -176,18 +278,19 @@ export function GenerationControls({ config, onUpdate }: GenerationControlsProps
         </div>
       </Section>
 
-      {/* Estilos */}
       <Section label="Estilo (opcional)">
         <div className="flex flex-wrap gap-2">
           {STYLE_OPTIONS.map(s => (
             <button
               key={s}
+              type="button"
+              disabled={disabled}
               onClick={() => toggleStyle(s)}
               className={cn(
-                'px-2.5 py-1 rounded-md text-xs font-medium border transition-all',
+                'px-2.5 py-1 rounded-md text-xs font-medium border',
                 config.styles.includes(s)
                   ? 'bg-violet-500/15 border-violet-500/50 text-violet-300'
-                  : 'bg-secondary border-transparent text-muted-foreground hover:bg-violet-500/10'
+                  : controlBtn(false),
               )}
             >
               {s}
@@ -196,7 +299,6 @@ export function GenerationControls({ config, onUpdate }: GenerationControlsProps
         </div>
       </Section>
 
-      {/* Variaciones */}
       <Section label="Variaciones">
         <div className="flex items-center gap-4">
           <Slider
@@ -205,6 +307,7 @@ export function GenerationControls({ config, onUpdate }: GenerationControlsProps
             min={1}
             max={4}
             step={1}
+            disabled={disabled}
             className="flex-1"
           />
           <span className="text-2xl font-bold text-violet-300 w-8 text-center tabular-nums">
@@ -213,7 +316,6 @@ export function GenerationControls({ config, onUpdate }: GenerationControlsProps
         </div>
       </Section>
 
-      {/* Avanzado */}
       <Accordion type="single" collapsible>
         <AccordionItem value="advanced" className="border-none">
           <AccordionTrigger className="rounded-xl bg-white/[0.02] border border-violet-500/10 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:no-underline [&[data-state=open]>svg]:rotate-180">
@@ -221,50 +323,117 @@ export function GenerationControls({ config, onUpdate }: GenerationControlsProps
           </AccordionTrigger>
           <AccordionContent className="rounded-b-xl bg-white/[0.02] border border-t-0 border-violet-500/10 px-4 pb-4 pt-2 space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Modelo</Label>
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Precio actual (opcional)
+              </Label>
+              <Input
+                value={config.advanced.precioAhora ?? ''}
+                onChange={e => onUpdate('advanced', {
+                  ...config.advanced,
+                  precioAhora: e.target.value || undefined,
+                })}
+                placeholder="Ej: $29.990"
+                disabled={disabled}
+                className="h-8 text-xs bg-secondary border-transparent focus:border-violet-500/50"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Se mostrará destacado en la gráfica si se usa el concepto Promo.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Precio anterior (opcional)
+              </Label>
+              <Input
+                value={config.advanced.precioAntes ?? ''}
+                onChange={e => onUpdate('advanced', {
+                  ...config.advanced,
+                  precioAntes: e.target.value || undefined,
+                })}
+                placeholder="Ej: $36.980"
+                disabled={disabled}
+                className="h-8 text-xs bg-secondary border-transparent focus:border-violet-500/50"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Se mostrará tachado al lado del precio actual.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Destino del CTA
+              </Label>
               <div className="flex gap-2">
-                {MODEL_OPTIONS.map(m => (
+                {(['web', 'whatsapp'] as CtaDestino[]).map(dest => (
                   <button
-                    key={m}
-                    onClick={() => onUpdate('advanced', { ...config.advanced, model: m })}
+                    key={dest}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => onUpdate('advanced', { ...config.advanced, ctaDestino: dest })}
                     className={cn(
-                      'flex-1 py-1.5 rounded-lg text-xs font-medium border transition-all text-center',
-                      config.advanced.model === m
-                        ? 'bg-violet-500/20 border-violet-500 text-violet-300'
-                        : 'bg-secondary border-transparent text-muted-foreground hover:bg-violet-500/10'
+                      'flex-1 py-1.5 rounded-lg text-xs font-medium border capitalize',
+                      controlBtn((config.advanced.ctaDestino ?? 'web') === dest),
                     )}
                   >
-                    {m}
+                    {dest === 'web' ? 'Web' : 'WhatsApp'}
                   </button>
                 ))}
               </div>
+              <p className="text-[10px] text-muted-foreground">
+                Define el color y texto del botón de llamada a la acción.
+              </p>
             </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Seed (opcional)</Label>
-              <Input
-                type="number"
-                placeholder="Aleatorio"
-                value={config.advanced.seed ?? ''}
-                onChange={e => {
-                  const val = e.target.value ? Number(e.target.value) : undefined;
-                  onUpdate('advanced', { ...config.advanced, seed: val });
-                }}
-                className="h-8 text-xs bg-secondary border-transparent focus:border-violet-500/50"
-              />
-            </div>
+            <div className="border-t border-violet-500/10 pt-4 space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Modelo</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {MODEL_OPTIONS.map(m => (
+                    <button
+                      key={m.value}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => onUpdate('advanced', { ...config.advanced, model: m.value })}
+                      className={cn(
+                        'py-2 px-2 rounded-lg text-[10px] leading-tight font-medium border text-center',
+                        controlBtn(config.advanced.model === m.value),
+                      )}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">
-                Guidance Scale: <span className="text-violet-300">{config.advanced.guidance}</span>
-              </Label>
-              <Slider
-                value={[config.advanced.guidance]}
-                onValueChange={([v]) => onUpdate('advanced', { ...config.advanced, guidance: v })}
-                min={1}
-                max={10}
-                step={0.5}
-              />
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Seed (opcional)</Label>
+                <Input
+                  type="number"
+                  placeholder="Aleatorio"
+                  value={config.advanced.seed ?? ''}
+                  disabled={disabled}
+                  onChange={e => {
+                    const val = e.target.value ? Number(e.target.value) : undefined;
+                    onUpdate('advanced', { ...config.advanced, seed: val });
+                  }}
+                  className="h-8 text-xs bg-secondary border-transparent focus:border-violet-500/50"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">
+                  Guidance Scale: <span className="text-violet-300">{config.advanced.guidance}</span>
+                </Label>
+                <Slider
+                  value={[config.advanced.guidance]}
+                  onValueChange={([v]) => onUpdate('advanced', { ...config.advanced, guidance: v })}
+                  min={1}
+                  max={10}
+                  step={0.5}
+                  disabled={disabled}
+                />
+              </div>
             </div>
           </AccordionContent>
         </AccordionItem>

@@ -6,6 +6,7 @@ import {
   Target,
   Settings,
   ArrowLeft,
+  Palette,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -17,6 +18,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { title: 'Gráficas', href: '/publicidad/graficas', icon: Image },
+  { title: 'Identidad de Marca', href: '/publicidad/identidad-de-marca', icon: Palette },
   { title: 'Campañas', href: '/publicidad/campanas', icon: Target },
   { title: 'Ajustes', href: '/publicidad/ajustes', icon: Settings },
 ];

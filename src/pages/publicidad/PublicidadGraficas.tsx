@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useGenerationStore } from '@/lib/publicidad/graficas/store';
+import { useBrandIdentities } from '@/hooks/use-brand-identities';
 import { GenerationControls } from '@/components/publicidad/graficas/GenerationControls';
 import { GenerationCanvas } from '@/components/publicidad/graficas/GenerationCanvas';
 import { PromptBar } from '@/components/publicidad/graficas/PromptBar';
@@ -14,7 +15,17 @@ export default function PublicidadGraficas() {
     generations,
     currentGeneration,
     handleGenerate,
+    isGenerating,
   } = useGenerationStore();
+
+  const { brandNames, isLoading: brandsLoading } = useBrandIdentities();
+
+  useEffect(() => {
+    if (brandNames.length === 0) return;
+    if (!config.brand || !brandNames.includes(config.brand)) {
+      updateConfig('brand', brandNames[0]);
+    }
+  }, [brandNames, config.brand, updateConfig]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalGen, setModalGen] = useState<Generation | null>(null);
@@ -26,54 +37,45 @@ export default function PublicidadGraficas() {
     setModalOpen(true);
   }, []);
 
-  const handleUseAsReference = useCallback((url: string) => {
-    fetch(url)
-      .then(r => r.blob())
-      .then(blob => {
-        const file = new File([blob], 'reference.jpg', { type: blob.type });
-        updateConfig('referenceImage', file);
-        updateConfig('referenceImagePreview', url);
-      })
-      .catch(() => {
-        updateConfig('referenceImagePreview', url);
-      });
-  }, [updateConfig]);
+  const onGenerate = useCallback(() => {
+    handleGenerate(brandNames);
+  }, [handleGenerate, brandNames]);
 
   return (
     <div className="flex h-full -m-6 md:-m-8">
-      {/* Panel izquierdo */}
-      <GenerationControls config={config} onUpdate={updateConfig} />
+      <GenerationControls
+        config={config}
+        brands={brandNames}
+        brandsLoading={brandsLoading}
+        disabled={isGenerating}
+        onUpdate={updateConfig}
+      />
 
-      {/* Centro */}
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex-1 overflow-y-auto p-6 space-y-8">
-          {/* Canvas de generación */}
           <GenerationCanvas
             currentGeneration={currentGeneration}
             onImageClick={openModal}
-            onUseAsReference={handleUseAsReference}
+            onRetry={onGenerate}
           />
 
-          {/* Separador */}
           <div className="border-t border-border" />
 
-          {/* Historial */}
           <HistoryGrid
             generations={generations}
+            brands={brandNames}
             onImageClick={openModal}
           />
         </div>
 
-        {/* Prompt Bar sticky */}
         <PromptBar
           prompt={config.prompt}
           onPromptChange={v => updateConfig('prompt', v)}
-          onGenerate={handleGenerate}
-          isGenerating={currentGeneration?.status === 'pending'}
+          onGenerate={onGenerate}
+          isGenerating={isGenerating}
         />
       </div>
 
-      {/* Modal */}
       <ImageModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}

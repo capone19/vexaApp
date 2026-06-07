@@ -48,6 +48,7 @@ const PublicidadLayout = lazy(() => import("./pages/publicidad/PublicidadLayout"
 const PublicidadGraficas = lazy(() => import("./pages/publicidad/PublicidadGraficas"));
 const PublicidadCampanas = lazy(() => import("./pages/publicidad/PublicidadCampanas"));
 const PublicidadAjustes = lazy(() => import("./pages/publicidad/PublicidadAjustes"));
+const PublicidadIdentidadMarca = lazy(() => import("./pages/publicidad/PublicidadIdentidadMarca"));
 
 // Componente de loading para Suspense
 const PageLoader = () => (
@@ -120,6 +121,7 @@ const App = () => (
               <Route path="/publicidad" element={<ProtectedRoute><PublicidadLayout /></ProtectedRoute>}>
                 <Route index element={<PublicidadGraficas />} />
                 <Route path="graficas" element={<PublicidadGraficas />} />
+                <Route path="identidad-de-marca" element={<PublicidadIdentidadMarca />} />
                 <Route path="campanas" element={<PublicidadCampanas />} />
                 <Route path="ajustes" element={<PublicidadAjustes />} />
               </Route>

@@ -1,15 +1,20 @@
-export type Brand = 'ALIVIA+' | 'NOMAD' | 'WELL-V';
+export type Brand = string;
 
-export type GraphicType = 'producto' | 'lifestyle' | 'testimonio' | 'antes-despues' | 'detalle' | 'promo';
+export type GraphicType = 'producto' | 'lifestyle' | 'testimonio' | 'antes-despues' | 'detalle' | 'promo' | 'ugc';
 
 export type Format = '1:1' | '4:5' | '9:16' | '16:9';
 
-export type StyleOption = 'Minimalista' | 'Editorial' | 'Studio' | 'Outdoor' | 'Cinematográfico';
+export type StyleOption = 'Minimalista' | 'Editorial' | 'Studio' | 'Outdoor' | 'Cinematográfico' | 'iPhone';
+
+export type CtaDestino = 'web' | 'whatsapp';
 
 export interface AdvancedConfig {
-  model: string;
+  model: ModelOption;
   seed?: number;
   guidance: number;
+  precioAhora?: string;
+  precioAntes?: string;
+  ctaDestino: CtaDestino;
 }
 
 export interface GenerationConfig {
@@ -17,6 +22,7 @@ export interface GenerationConfig {
   type: GraphicType;
   referenceImage: File | null;
   referenceImagePreview: string | null;
+  useProductColors: boolean;
   format: Format;
   styles: StyleOption[];
   variations: number;
@@ -31,9 +37,10 @@ export interface Generation {
   status: 'pending' | 'completed' | 'failed';
   resultUrls: string[];
   createdAt: string;
+  errorMessage?: string;
+  promptUsed?: string;
+  requestId?: string;
 }
-
-export const BRANDS: Brand[] = ['ALIVIA+', 'NOMAD', 'WELL-V'];
 
 export const GRAPHIC_TYPES: { value: GraphicType; label: string; icon: string }[] = [
   { value: 'producto', label: 'Producto', icon: 'Package' },
@@ -42,6 +49,7 @@ export const GRAPHIC_TYPES: { value: GraphicType; label: string; icon: string }[
   { value: 'antes-despues', label: 'Antes/Después', icon: 'ArrowLeftRight' },
   { value: 'detalle', label: 'Detalle', icon: 'ZoomIn' },
   { value: 'promo', label: 'Promo', icon: 'Tag' },
+  { value: 'ugc', label: 'UGC', icon: 'Smartphone' },
 ];
 
 export const FORMATS: { value: Format; w: number; h: number }[] = [
@@ -52,19 +60,58 @@ export const FORMATS: { value: Format; w: number; h: number }[] = [
 ];
 
 export const STYLE_OPTIONS: StyleOption[] = [
-  'Minimalista', 'Editorial', 'Studio', 'Outdoor', 'Cinematográfico',
+  'Minimalista', 'Editorial', 'Studio', 'Outdoor', 'Cinematográfico', 'iPhone',
 ];
 
-export const MODEL_OPTIONS = ['Flux', 'Kling', 'Higgsfield'] as const;
+export type ModelOption =
+  | 'nano-banana-pro-edit'
+  | 'flux'
+  | 'kling'
+  | 'higgsfield';
+
+export interface ModelConfig {
+  value: ModelOption;
+  label: string;
+  /** ID del modelo en fal.ai */
+  falModelId: string;
+}
+
+export const MODEL_OPTIONS: ModelConfig[] = [
+  {
+    value: 'nano-banana-pro-edit',
+    label: 'Nano Banana Pro Edit Image',
+    falModelId: 'fal-ai/nano-banana-pro/edit',
+  },
+  { value: 'flux', label: 'Flux', falModelId: 'flux' },
+  { value: 'kling', label: 'Kling', falModelId: 'kling' },
+  { value: 'higgsfield', label: 'Higgsfield', falModelId: 'higgsfield' },
+];
+
+export const DEFAULT_MODEL: ModelOption = 'nano-banana-pro-edit';
+
+export const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
 
 export const DEFAULT_CONFIG: GenerationConfig = {
-  brand: 'ALIVIA+',
+  brand: '',
   type: 'producto',
   referenceImage: null,
   referenceImagePreview: null,
+  useProductColors: false,
   format: '1:1',
   styles: [],
   variations: 2,
-  advanced: { model: 'Flux', guidance: 7 },
+  advanced: { model: DEFAULT_MODEL, guidance: 7, ctaDestino: 'web' },
   prompt: '',
 };
+
+export function getGraphicTypeLabel(type: GraphicType): string {
+  return GRAPHIC_TYPES.find(t => t.value === type)?.label ?? type;
+}
+
+export function getModelConfig(model: ModelOption | string): ModelConfig {
+  return MODEL_OPTIONS.find(m => m.value === model) ?? MODEL_OPTIONS[0];
+}
+
+export function getModelLabel(model: ModelOption | string): string {
+  return getModelConfig(model).label;
+}

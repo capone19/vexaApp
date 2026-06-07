@@ -1,12 +1,15 @@
 import { cn } from '@/lib/utils';
-import { Sparkles, Download, RefreshCw, Image as ImageIcon, Copy } from 'lucide-react';
+import { Sparkles, Download, Eye, Copy, Image as ImageIcon, RefreshCw, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 import type { Generation } from '@/lib/publicidad/graficas/types';
+import { getGraphicTypeLabel } from '@/lib/publicidad/graficas/types';
+import { GenerationDetails } from './GenerationDetails';
 
 interface GenerationCanvasProps {
   currentGeneration: Generation | null;
   onImageClick: (gen: Generation, index: number) => void;
-  onUseAsReference: (url: string) => void;
+  onRetry: () => void;
 }
 
 function EmptyState() {
@@ -30,91 +33,167 @@ function EmptyState() {
 
 function LoadingState({ count }: { count: number }) {
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col items-center py-12 px-4 space-y-8">
       <div className={cn(
-        'grid gap-3',
-        count <= 2 ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3'
+        'grid gap-4 w-full max-w-2xl',
+        count === 1 ? 'grid-cols-1' : 'grid-cols-2',
       )}>
         {Array.from({ length: count }).map((_, i) => (
           <div
             key={i}
-            className="aspect-square rounded-xl bg-violet-500/10 animate-pulse"
+            className={cn(
+              'rounded-xl bg-violet-500/10 animate-pulse border border-violet-500/20',
+              count === 1 ? 'aspect-[4/5] max-h-[50vh]' : 'aspect-square',
+            )}
           />
         ))}
       </div>
-      <p className="text-xs text-muted-foreground text-center">
-        Generando... ~15 seg
-      </p>
+
+      <div className="text-center space-y-3 max-w-md">
+        <h3 className="text-lg font-semibold text-foreground">Generando tu gráfica...</h3>
+        <p className="text-sm text-muted-foreground">
+          Esto puede tomar entre 30 segundos y 2 minutos. Estamos construyendo el prompt y renderizando la imagen.
+        </p>
+        <div className="h-1.5 w-full max-w-xs mx-auto rounded-full bg-violet-500/20 overflow-hidden">
+          <div className="h-full w-full rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 animate-pulse" />
+        </div>
+        <div className="flex justify-center gap-1.5 pt-1">
+          {[0, 1, 2].map(i => (
+            <span
+              key={i}
+              className="h-2 w-2 rounded-full bg-violet-500 animate-pulse"
+              style={{ animationDelay: `${i * 200}ms` }}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
-function ResultGrid({ generation, onImageClick, onUseAsReference }: {
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-8 space-y-4">
+      <div className="rounded-2xl bg-destructive/10 border border-destructive/30 p-4">
+        <AlertCircle className="h-10 w-10 text-destructive" />
+      </div>
+      <h3 className="text-lg font-semibold text-foreground">No se pudo generar</h3>
+      <p className="text-sm text-muted-foreground text-center max-w-md">{message}</p>
+      <Button
+        onClick={onRetry}
+        className="bg-gradient-to-r from-violet-600 to-fuchsia-600 gap-2"
+      >
+        <RefreshCw className="h-4 w-4" />
+        Reintentar
+      </Button>
+    </div>
+  );
+}
+
+async function downloadImage(url: string, filename: string) {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(blobUrl);
+  } catch {
+    window.open(url, '_blank');
+  }
+}
+
+function ResultGrid({
+  generation,
+  onImageClick,
+}: {
   generation: Generation;
   onImageClick: (gen: Generation, index: number) => void;
-  onUseAsReference: (url: string) => void;
 }) {
   const count = generation.resultUrls.length;
+  const cfg = generation.config;
+  const tipoSlug = getGraphicTypeLabel(cfg.type).toLowerCase().replace(/\s+/g, '-');
+  const timestamp = new Date(generation.createdAt).getTime();
+
+  const gridClass = cn(
+    'grid gap-4 w-full',
+    count === 1 && 'grid-cols-1 max-w-xl mx-auto',
+    count === 2 && 'grid-cols-2',
+    count >= 3 && 'grid-cols-2',
+  );
 
   return (
-    <div className={cn(
-      'grid gap-3',
-      count <= 2 ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3'
-    )}>
-      {generation.resultUrls.map((url, i) => (
-        <div
-          key={i}
-          className="group relative aspect-square rounded-xl overflow-hidden cursor-pointer border border-violet-500/10 hover:border-violet-500/30 transition-all"
-          onClick={() => onImageClick(generation, i)}
-        >
-          <img
-            src={url}
-            alt={`Resultado ${i + 1}`}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-            <div className="flex gap-2">
-              <button
-                onClick={(e) => { e.stopPropagation(); window.open(url, '_blank'); }}
-                className="rounded-lg bg-white/10 backdrop-blur-sm p-2 hover:bg-white/20 transition-colors"
-                title="Descargar"
-              >
-                <Download className="h-4 w-4 text-white" />
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); }}
-                className="rounded-lg bg-white/10 backdrop-blur-sm p-2 hover:bg-white/20 transition-colors"
-                title="Regenerar"
-              >
-                <RefreshCw className="h-4 w-4 text-white" />
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); onUseAsReference(url); }}
-                className="rounded-lg bg-white/10 backdrop-blur-sm p-2 hover:bg-white/20 transition-colors"
-                title="Usar como referencia"
-              >
-                <ImageIcon className="h-4 w-4 text-white" />
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigator.clipboard.writeText(generation.finalPrompt);
-                }}
-                className="rounded-lg bg-white/10 backdrop-blur-sm p-2 hover:bg-white/20 transition-colors"
-                title="Copiar prompt"
-              >
-                <Copy className="h-4 w-4 text-white" />
-              </button>
+    <div>
+      <div className={gridClass}>
+        {generation.resultUrls.map((url, i) => (
+          <div
+            key={i}
+            className={cn(
+              'group relative rounded-xl overflow-hidden border border-violet-500/10 hover:border-violet-500/30 transition-all shadow-lg shadow-black/20',
+              count === 1 ? 'max-h-[70vh]' : 'aspect-square',
+            )}
+          >
+            <img
+              src={url}
+              alt={`Resultado ${i + 1}`}
+              className={cn(
+                'w-full cursor-pointer transition-transform group-hover:scale-[1.02]',
+                count === 1 ? 'max-h-[70vh] object-contain bg-black/20' : 'h-full object-cover',
+              )}
+              loading="lazy"
+              onClick={() => onImageClick(generation, i)}
+            />
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const filename = `${cfg.brand}-${tipoSlug}-${timestamp}-${i + 1}.jpg`;
+                    downloadImage(url, filename);
+                  }}
+                  className="rounded-lg bg-white/10 backdrop-blur-sm p-2.5 hover:bg-white/20 transition-colors"
+                  title="Descargar"
+                >
+                  <Download className="h-4 w-4 text-white" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onImageClick(generation, i);
+                  }}
+                  className="rounded-lg bg-white/10 backdrop-blur-sm p-2.5 hover:bg-white/20 transition-colors"
+                  title="Ver en grande"
+                >
+                  <Eye className="h-4 w-4 text-white" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(url);
+                    toast.success('URL copiada al portapapeles');
+                  }}
+                  className="rounded-lg bg-white/10 backdrop-blur-sm p-2.5 hover:bg-white/20 transition-colors"
+                  title="Copiar URL"
+                >
+                  <Copy className="h-4 w-4 text-white" />
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
+
+      <GenerationDetails generation={generation} />
     </div>
   );
 }
 
-export function GenerationCanvas({ currentGeneration, onImageClick, onUseAsReference }: GenerationCanvasProps) {
+export function GenerationCanvas({ currentGeneration, onImageClick, onRetry }: GenerationCanvasProps) {
   if (!currentGeneration) {
     return <EmptyState />;
   }
@@ -123,11 +202,19 @@ export function GenerationCanvas({ currentGeneration, onImageClick, onUseAsRefer
     return <LoadingState count={currentGeneration.config.variations} />;
   }
 
+  if (currentGeneration.status === 'failed') {
+    return (
+      <ErrorState
+        message={currentGeneration.errorMessage ?? 'Ocurrió un error inesperado.'}
+        onRetry={onRetry}
+      />
+    );
+  }
+
   return (
     <ResultGrid
       generation={currentGeneration}
       onImageClick={onImageClick}
-      onUseAsReference={onUseAsReference}
     />
   );
 }
