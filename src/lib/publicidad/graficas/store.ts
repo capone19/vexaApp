@@ -47,7 +47,10 @@ export function useGenerationStore() {
       const completed: Generation = {
         ...pendingGen,
         status: 'completed',
+        mode: result.mode,
         resultUrls: result.resultUrls,
+        slides: result.slides,
+        slideErrors: result.slideErrors,
         promptUsed: result.promptUsed,
         requestId: result.requestId,
         finalPrompt: result.promptUsed,
@@ -57,9 +60,17 @@ export function useGenerationStore() {
       setGenerations(prev => [completed, ...prev]);
 
       const count = result.resultUrls.length;
-      toast.success(
-        count === 1 ? '✓ Gráfica generada' : `✓ ${count} gráficas generadas`,
-      );
+      if (result.mode === 'carousel') {
+        if (result.slideErrors?.length) {
+          toast.warning(`Carrusel generado con ${count} slides (${result.slideErrors.length} aviso(s))`);
+        } else {
+          toast.success(`✓ Carrusel generado (${count} slides)`);
+        }
+      } else {
+        toast.success(
+          count === 1 ? '✓ Gráfica generada' : `✓ ${count} gráficas generadas`,
+        );
+      }
     } catch (err) {
       const message = getGenerateErrorMessage(err);
       const failed: Generation = {

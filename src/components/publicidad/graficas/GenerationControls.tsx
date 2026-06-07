@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import {
   Package, Sun, Quote, ArrowLeftRight, ZoomIn, Tag, Smartphone,
+  GraduationCap, Film,
   Upload, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -16,14 +17,19 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import type {
-  GenerationConfig, GraphicType, StyleOption, CtaDestino,
+  GenerationConfig, GraphicType, CarouselType, StyleOption, CtaDestino,
 } from '@/lib/publicidad/graficas/types';
 import {
-  GRAPHIC_TYPES, FORMATS, STYLE_OPTIONS, MODEL_OPTIONS, MAX_REFERENCE_IMAGE_BYTES,
+  GRAPHIC_TYPES, CAROUSEL_TYPES, FORMATS, STYLE_OPTIONS, MODEL_OPTIONS,
+  MAX_REFERENCE_IMAGE_BYTES, getVariationsRange,
 } from '@/lib/publicidad/graficas/types';
 
 const TYPE_ICONS: Record<string, React.ElementType> = {
   Package, Sun, Quote, ArrowLeftRight, ZoomIn, Tag, Smartphone,
+};
+
+const CAROUSEL_TYPE_ICONS: Record<string, React.ElementType> = {
+  GraduationCap, Tag, Film,
 };
 
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
@@ -112,6 +118,18 @@ export function GenerationControls({
     onUpdate('styles', next);
   }, [config.styles, disabled, onUpdate]);
 
+  const handleCarouselModeChange = useCallback((enabled: boolean) => {
+    onUpdate('carouselMode', enabled);
+    const range = getVariationsRange(enabled);
+    const current = config.variations;
+    const outOfRange = current < range.min || current > range.max;
+    if (outOfRange) {
+      onUpdate('variations', range.default);
+    }
+  }, [config.variations, onUpdate]);
+
+  const variationsRange = getVariationsRange(config.carouselMode);
+
   const controlBtn = (active: boolean) => cn(
     'transition-all',
     disabled && 'opacity-50 pointer-events-none',
@@ -156,28 +174,54 @@ export function GenerationControls({
         )}
       </Section>
 
-      <Section label="Tipo de gráfica">
-        <div className="grid grid-cols-2 gap-2">
-          {GRAPHIC_TYPES.map(t => {
-            const Icon = TYPE_ICONS[t.icon] ?? Package;
-            return (
-              <button
-                key={t.value}
-                type="button"
-                disabled={disabled}
-                onClick={() => onUpdate('type', t.value as GraphicType)}
-                className={cn(
-                  'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border',
-                  controlBtn(config.type === t.value),
-                )}
-              >
-                <Icon className="h-3.5 w-3.5 shrink-0" />
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
-      </Section>
+      {config.carouselMode ? (
+        <Section label="Tipo de carrusel">
+          <div className="grid grid-cols-2 gap-2">
+            {CAROUSEL_TYPES.map(t => {
+              const Icon = CAROUSEL_TYPE_ICONS[t.icon] ?? GraduationCap;
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onUpdate('carouselType', t.value as CarouselType)}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border',
+                    controlBtn(config.carouselType === t.value),
+                    t.value === 'Storytelling' && 'col-span-2',
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </Section>
+      ) : (
+        <Section label="Tipo de gráfica">
+          <div className="grid grid-cols-2 gap-2">
+            {GRAPHIC_TYPES.map(t => {
+              const Icon = TYPE_ICONS[t.icon] ?? Package;
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onUpdate('type', t.value as GraphicType)}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border',
+                    controlBtn(config.type === t.value),
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </Section>
+      )}
 
       <Section label="Imagen de referencia">
         <input
@@ -299,13 +343,36 @@ export function GenerationControls({
         </div>
       </Section>
 
-      <Section label="Variaciones">
+      <div className="rounded-xl bg-white/[0.02] border border-violet-500/10 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-0.5">
+            <Label
+              htmlFor="carousel-mode"
+              className="text-sm text-foreground font-medium cursor-pointer"
+            >
+              Modo Carrusel
+            </Label>
+            <p className="text-[10px] text-muted-foreground leading-snug">
+              Genera varios slides distintos que forman un carrusel
+            </p>
+          </div>
+          <Switch
+            id="carousel-mode"
+            checked={config.carouselMode}
+            onCheckedChange={handleCarouselModeChange}
+            disabled={disabled}
+            className="data-[state=checked]:bg-violet-600 shrink-0 mt-0.5"
+          />
+        </div>
+      </div>
+
+      <Section label={variationsRange.label}>
         <div className="flex items-center gap-4">
           <Slider
             value={[config.variations]}
             onValueChange={([v]) => onUpdate('variations', v)}
-            min={1}
-            max={4}
+            min={variationsRange.min}
+            max={variationsRange.max}
             step={1}
             disabled={disabled}
             className="flex-1"

@@ -2,6 +2,8 @@ export type Brand = string;
 
 export type GraphicType = 'producto' | 'lifestyle' | 'testimonio' | 'antes-despues' | 'detalle' | 'promo' | 'ugc';
 
+export type CarouselType = 'Educativo' | 'Venta' | 'Storytelling';
+
 export type Format = '1:1' | '4:5' | '9:16' | '16:9';
 
 export type StyleOption = 'Minimalista' | 'Editorial' | 'Studio' | 'Outdoor' | 'Cinematográfico' | 'iPhone';
@@ -23,11 +25,23 @@ export interface GenerationConfig {
   referenceImage: File | null;
   referenceImagePreview: string | null;
   useProductColors: boolean;
+  carouselMode: boolean;
+  carouselType: CarouselType;
   format: Format;
   styles: StyleOption[];
   variations: number;
   advanced: AdvancedConfig;
   prompt: string;
+}
+
+export interface CarouselSlide {
+  slideIndex: number;
+  slideTotal: number;
+  imageUrl: string;
+  promptUsed?: string;
+  contentType?: string;
+  width?: number;
+  height?: number;
 }
 
 export interface Generation {
@@ -40,7 +54,18 @@ export interface Generation {
   errorMessage?: string;
   promptUsed?: string;
   requestId?: string;
+  mode?: 'normal' | 'carousel';
+  slides?: CarouselSlide[];
+  slideErrors?: string[];
 }
+
+export const CAROUSEL_TYPES: { value: CarouselType; label: string; icon: string }[] = [
+  { value: 'Educativo', label: 'Educativo', icon: 'GraduationCap' },
+  { value: 'Venta', label: 'Venta', icon: 'Tag' },
+  { value: 'Storytelling', label: 'Storytelling', icon: 'Film' },
+];
+
+export const DEFAULT_CAROUSEL_TYPE: CarouselType = 'Educativo';
 
 export const GRAPHIC_TYPES: { value: GraphicType; label: string; icon: string }[] = [
   { value: 'producto', label: 'Producto', icon: 'Package' },
@@ -91,12 +116,21 @@ export const DEFAULT_MODEL: ModelOption = 'nano-banana-pro-edit';
 
 export const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
 
+export const VARIATIONS_MIN = 1;
+export const VARIATIONS_MAX = 4;
+export const CAROUSEL_SLIDES_MIN = 2;
+export const CAROUSEL_SLIDES_MAX = 8;
+export const DEFAULT_VARIATIONS = 2;
+export const DEFAULT_CAROUSEL_SLIDES = 4;
+
 export const DEFAULT_CONFIG: GenerationConfig = {
   brand: '',
   type: 'producto',
   referenceImage: null,
   referenceImagePreview: null,
   useProductColors: false,
+  carouselMode: false,
+  carouselType: DEFAULT_CAROUSEL_TYPE,
   format: '1:1',
   styles: [],
   variations: 2,
@@ -114,4 +148,20 @@ export function getModelConfig(model: ModelOption | string): ModelConfig {
 
 export function getModelLabel(model: ModelOption | string): string {
   return getModelConfig(model).label;
+}
+
+export function getVariationsRange(carouselMode: boolean) {
+  return carouselMode
+    ? {
+        min: CAROUSEL_SLIDES_MIN,
+        max: CAROUSEL_SLIDES_MAX,
+        default: DEFAULT_CAROUSEL_SLIDES,
+        label: 'Slides',
+      }
+    : {
+        min: VARIATIONS_MIN,
+        max: VARIATIONS_MAX,
+        default: DEFAULT_VARIATIONS,
+        label: 'Variaciones',
+      };
 }

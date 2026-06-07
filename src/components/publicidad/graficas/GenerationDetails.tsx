@@ -6,6 +6,12 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { Generation } from '@/lib/publicidad/graficas/types';
@@ -18,6 +24,7 @@ interface GenerationDetailsProps {
 export function GenerationDetails({ generation }: GenerationDetailsProps) {
   const [open, setOpen] = useState(false);
   const cfg = generation.config;
+  const isCarousel = generation.mode === 'carousel' && generation.slides?.length;
 
   const copyRequestId = () => {
     if (!generation.requestId) return;
@@ -37,7 +44,31 @@ export function GenerationDetails({ generation }: GenerationDetailsProps) {
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-3 space-y-4 rounded-xl border border-violet-500/10 bg-white/[0.02] p-4">
-        {generation.promptUsed && (
+        {isCarousel ? (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Prompts por slide
+            </p>
+            <Accordion type="multiple" className="space-y-1">
+              {generation.slides!.map(slide => (
+                <AccordionItem
+                  key={slide.slideIndex}
+                  value={`slide-${slide.slideIndex}`}
+                  className="rounded-lg border border-violet-500/10 px-3"
+                >
+                  <AccordionTrigger className="text-xs py-2 hover:no-underline">
+                    Slide {slide.slideIndex} de {slide.slideTotal}
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <pre className="max-h-32 overflow-auto rounded-lg bg-zinc-900 p-3 text-xs font-mono text-zinc-300 whitespace-pre-wrap">
+                      {slide.promptUsed ?? '(sin prompt)'}
+                    </pre>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
+        ) : generation.promptUsed ? (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Prompt usado
@@ -46,7 +77,7 @@ export function GenerationDetails({ generation }: GenerationDetailsProps) {
               {generation.promptUsed}
             </pre>
           </div>
-        )}
+        ) : null}
 
         {generation.requestId && (
           <div className="space-y-2">
@@ -67,11 +98,15 @@ export function GenerationDetails({ generation }: GenerationDetailsProps) {
         <p className="text-xs text-muted-foreground">
           <span className="text-foreground">Marca:</span> {cfg.brand}
           {' · '}
-          <span className="text-foreground">Tipo:</span> {getGraphicTypeLabel(cfg.type)}
+          <span className="text-foreground">
+            {isCarousel ? 'Tipo de carrusel' : 'Tipo'}:
+          </span>{' '}
+          {isCarousel ? cfg.carouselType : getGraphicTypeLabel(cfg.type)}
           {' · '}
           <span className="text-foreground">Formato:</span> {cfg.format}
           {' · '}
-          <span className="text-foreground">Variaciones:</span> {generation.resultUrls.length}
+          <span className="text-foreground">{isCarousel ? 'Slides' : 'Variaciones'}:</span>{' '}
+          {generation.resultUrls.length}
         </p>
       </CollapsibleContent>
     </Collapsible>

@@ -1,7 +1,17 @@
 import { supabase } from '@/integrations/supabase/client';
 import { normalizeBrandIdentity } from '@/lib/publicidad/brand-identity/types';
-import type { GenerationConfig } from './types';
-import { getGraphicTypeLabel, GRAPHIC_TYPES, MAX_REFERENCE_IMAGE_BYTES, getModelConfig } from './types';
+import type { CarouselSlide, GenerationConfig } from './types';
+import {
+  getGraphicTypeLabel,
+  GRAPHIC_TYPES,
+  MAX_REFERENCE_IMAGE_BYTES,
+  getModelConfig,
+  VARIATIONS_MIN,
+  VARIATIONS_MAX,
+  CAROUSEL_SLIDES_MIN,
+  CAROUSEL_SLIDES_MAX,
+  CAROUSEL_TYPES,
+} from './types';
 
 const N8N_BASE_URL =
   import.meta.env.VITE_N8N_BASE_URL ?? 'https://n8ninnovatec-n8n.t0bgq1.easypanel.host';
@@ -9,7 +19,7 @@ const N8N_IMAGE_GENERATOR_PATH =
   import.meta.env.VITE_N8N_WEBHOOK_IMAGE_GENERATOR ?? '/webhook/vexa-image-generator';
 
 const WEBHOOK_URL = `${N8N_BASE_URL}${N8N_IMAGE_GENERATOR_PATH}`;
-const REQUEST_TIMEOUT_MS = 180_000;
+const DEFAULT_TIMEOUT_MS = 180_000;
 
 export type GenerateErrorCode =
   | 'UPLOAD_FAILED'
@@ -41,21 +51,43 @@ export interface WebhookImageResult {
   height?: number;
 }
 
+export interface WebhookCarouselSlide {
+  slide_index: number;
+  slide_total: number;
+  image_url: string;
+  content_type?: string;
+  width?: number;
+  height?: number;
+  prompt_used?: string;
+}
+
 export interface WebhookResponse {
   success: boolean;
+  mode?: string;
   images?: WebhookImageResult[];
+  slides?: WebhookCarouselSlide[];
   image_urls?: string[];
   count?: number;
+  total_requested?: number;
   prompt_used?: string;
   request_id?: string;
   error?: string;
+  errors?: string[];
 }
 
 export interface GenerationResult {
+  mode: 'normal' | 'carousel';
   resultUrls: string[];
   promptUsed: string;
   requestId?: string;
   referenceImageUrl: string;
+  slides?: CarouselSlide[];
+  slideErrors?: string[];
+}
+
+export function getRequestTimeoutMs(config: GenerationConfig): number {
+  if (!config.carouselMode) return DEFAULT_TIMEOUT_MS;
+  return Math.max(DEFAULT_TIMEOUT_MS, config.variations * 90_000 + 60_000);
 }
 
 export function validateGenerationConfig(
@@ -65,7 +97,11 @@ export function validateGenerationConfig(
   if (!config.brand || !brandNames.includes(config.brand)) {
     return { ok: false, message: 'Seleccioná una marca.' };
   }
-  if (!config.type || !GRAPHIC_TYPES.some(t => t.value === config.type)) {
+  if (config.carouselMode) {
+    if (!config.carouselType || !CAROUSEL_TYPES.some(t => t.value === config.carouselType)) {
+      return { ok: false, message: 'Seleccioná un tipo de carrusel.' };
+    }
+  } else if (!config.type || !GRAPHIC_TYPES.some(t => t.value === config.type)) {
     return { ok: false, message: 'Seleccioná un tipo de gráfica.' };
   }
   if (!config.referenceImage) {
@@ -77,8 +113,12 @@ export function validateGenerationConfig(
   if (!config.format) {
     return { ok: false, message: 'Seleccioná un formato.' };
   }
-  if (config.variations < 1) {
-    return { ok: false, message: 'Las variaciones deben ser al menos 1.' };
+  if (config.carouselMode) {
+    if (config.variations < CAROUSEL_SLIDES_MIN || config.variations > CAROUSEL_SLIDES_MAX) {
+      return { ok: false, message: 'Los slides del carrusel deben ser entre 2 y 8.' };
+    }
+  } else if (config.variations < VARIATIONS_MIN || config.variations > VARIATIONS_MAX) {
+    return { ok: false, message: 'Las variaciones deben ser entre 1 y 4.' };
   }
   if (!config.prompt.trim()) {
     return { ok: false, message: 'Escribí un prompt para generar la gráfica.' };
@@ -135,18 +175,18 @@ function buildPayload(
   brandIdentity: ReturnType<typeof normalizeBrandIdentity>,
 ) {
   const { advanced } = config;
-
   const modelConfig = getModelConfig(advanced.model);
 
   const payload: Record<string, unknown> = {
     marca: config.brand,
-    tipo_grafica: getGraphicTypeLabel(config.type),
+    tipo_grafica: config.carouselMode ? 'Carrusel' : getGraphicTypeLabel(config.type),
     imagen_referencia_url: publicUrl,
     formato: config.format,
     estilo: config.styles[0] ?? '',
     variaciones: config.variations,
     prompt: config.prompt.trim(),
     use_product_colors: config.useProductColors,
+    carousel_mode: config.carouselMode,
     modelo: modelConfig.label,
     model_id: modelConfig.falModelId,
     provider: 'fal.ai',
@@ -164,6 +204,11 @@ function buildPayload(
     },
   };
 
+  if (config.carouselMode) {
+    payload.carousel_slides = config.variations;
+    payload.carousel_type = config.carouselType;
+  }
+
   if (advanced.precioAhora?.trim()) {
     payload.precio_ahora = advanced.precioAhora.trim();
   }
@@ -179,9 +224,13 @@ function buildPayload(
   return payload;
 }
 
-async function callWebhook(payload: Record<string, unknown>): Promise<WebhookResponse> {
+async function callWebhook(
+  payload: Record<string, unknown>,
+  timeoutMs: number,
+  isCarousel: boolean,
+): Promise<WebhookResponse> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(WEBHOOK_URL, {
@@ -238,7 +287,9 @@ async function callWebhook(payload: Record<string, unknown>): Promise<WebhookRes
     if (err instanceof DOMException && err.name === 'AbortError') {
       throw new GenerateImageError(
         'TIMEOUT',
-        'La generación tardó demasiado. Reintenta o reduce el número de variaciones.',
+        isCarousel
+          ? 'La generación del carrusel tardó demasiado. Reintenta o reduce la cantidad de slides.'
+          : 'La generación tardó demasiado. Reintenta o reduce el número de variaciones.',
       );
     }
 
@@ -249,7 +300,7 @@ async function callWebhook(payload: Record<string, unknown>): Promise<WebhookRes
   }
 }
 
-function extractResultUrls(result: WebhookResponse): string[] {
+function extractNormalResultUrls(result: WebhookResponse): string[] {
   if (result.images?.length) {
     return result.images.map(img => img.url).filter(Boolean);
   }
@@ -257,6 +308,79 @@ function extractResultUrls(result: WebhookResponse): string[] {
     return result.image_urls.filter(Boolean);
   }
   return [];
+}
+
+function parseCarouselSlides(result: WebhookResponse): CarouselSlide[] {
+  if (result.slides?.length) {
+    return [...result.slides]
+      .sort((a, b) => a.slide_index - b.slide_index)
+      .map(s => ({
+        slideIndex: s.slide_index,
+        slideTotal: s.slide_total,
+        imageUrl: s.image_url,
+        promptUsed: s.prompt_used,
+        contentType: s.content_type,
+        width: s.width,
+        height: s.height,
+      }));
+  }
+  if (result.image_urls?.length) {
+    return result.image_urls.map((url, i) => ({
+      slideIndex: i + 1,
+      slideTotal: result.image_urls!.length,
+      imageUrl: url,
+    }));
+  }
+  return [];
+}
+
+function isCarouselResponse(result: WebhookResponse): boolean {
+  return result.mode === 'carousel' || (result.slides?.length ?? 0) > 0;
+}
+
+function parseGenerationResult(
+  config: GenerationConfig,
+  result: WebhookResponse,
+  referenceImageUrl: string,
+): GenerationResult {
+  if (isCarouselResponse(result)) {
+    const slides = parseCarouselSlides(result);
+    const resultUrls = slides.map(s => s.imageUrl).filter(Boolean);
+    const slideErrors = result.errors?.filter(Boolean);
+
+    if (resultUrls.length === 0) {
+      throw new GenerateImageError(
+        'WEBHOOK_ERROR',
+        slideErrors?.[0] ?? 'El servicio no devolvió slides del carrusel. Reintenta.',
+      );
+    }
+
+    return {
+      mode: 'carousel',
+      resultUrls,
+      promptUsed: slides[0]?.promptUsed ?? config.prompt.trim(),
+      requestId: result.request_id,
+      referenceImageUrl,
+      slides,
+      slideErrors,
+    };
+  }
+
+  const resultUrls = extractNormalResultUrls(result);
+  if (resultUrls.length === 0) {
+    throw new GenerateImageError(
+      'WEBHOOK_ERROR',
+      'El servicio no devolvió imágenes. Reintenta.',
+    );
+  }
+
+  return {
+    mode: 'normal',
+    resultUrls,
+    promptUsed: result.prompt_used ?? config.prompt.trim(),
+    requestId: result.request_id,
+    referenceImageUrl,
+  };
 }
 
 export async function generateAdImage(
@@ -272,22 +396,10 @@ export async function generateAdImage(
   const publicUrl = await uploadReferenceImage(file);
   const brandIdentity = await fetchBrandIdentity(config.brand);
   const payload = buildPayload(config, publicUrl, brandIdentity);
-  const result = await callWebhook(payload);
+  const timeoutMs = getRequestTimeoutMs(config);
+  const result = await callWebhook(payload, timeoutMs, config.carouselMode);
 
-  const resultUrls = extractResultUrls(result);
-  if (resultUrls.length === 0) {
-    throw new GenerateImageError(
-      'WEBHOOK_ERROR',
-      'El servicio no devolvió imágenes. Reintenta.',
-    );
-  }
-
-  return {
-    resultUrls,
-    promptUsed: result.prompt_used ?? config.prompt.trim(),
-    requestId: result.request_id,
-    referenceImageUrl: publicUrl,
-  };
+  return parseGenerationResult(config, result, publicUrl);
 }
 
 export function getGenerateErrorMessage(err: unknown): string {

@@ -4,7 +4,9 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import type { Generation } from '@/lib/publicidad/graficas/types';
 import { getGraphicTypeLabel } from '@/lib/publicidad/graficas/types';
+import { downloadImage } from '@/lib/publicidad/graficas/download-utils';
 import { GenerationDetails } from './GenerationDetails';
+import { CarouselResultView } from './CarouselResultView';
 
 interface GenerationCanvasProps {
   currentGeneration: Generation | null;
@@ -31,40 +33,41 @@ function EmptyState() {
   );
 }
 
-function LoadingState({ count }: { count: number }) {
+function LoadingState({ count, carouselMode }: { count: number; carouselMode: boolean }) {
   return (
     <div className="flex flex-col items-center py-12 px-4 space-y-8">
       <div className={cn(
-        'grid gap-4 w-full max-w-2xl',
-        count === 1 ? 'grid-cols-1' : 'grid-cols-2',
+        'gap-4 w-full max-w-3xl',
+        carouselMode
+          ? 'flex overflow-x-auto pb-2'
+          : cn('grid', count === 1 ? 'grid-cols-1' : 'grid-cols-2'),
       )}>
         {Array.from({ length: count }).map((_, i) => (
           <div
             key={i}
             className={cn(
-              'rounded-xl bg-violet-500/10 animate-pulse border border-violet-500/20',
-              count === 1 ? 'aspect-[4/5] max-h-[50vh]' : 'aspect-square',
+              'rounded-xl bg-violet-500/10 animate-pulse border border-violet-500/20 shrink-0',
+              carouselMode
+                ? 'w-40 h-52'
+                : count === 1 ? 'aspect-[4/5] max-h-[50vh]' : 'aspect-square',
             )}
           />
         ))}
       </div>
 
       <div className="text-center space-y-3 max-w-md">
-        <h3 className="text-lg font-semibold text-foreground">Generando tu gráfica...</h3>
+        <h3 className="text-lg font-semibold text-foreground">
+          {carouselMode
+            ? `Generando carrusel de ${count} slides...`
+            : 'Generando tu gráfica...'}
+        </h3>
         <p className="text-sm text-muted-foreground">
-          Esto puede tomar entre 30 segundos y 2 minutos. Estamos construyendo el prompt y renderizando la imagen.
+          {carouselMode
+            ? 'Esto puede tardar varios minutos. Cada slide se genera por separado.'
+            : 'Esto puede tomar entre 30 segundos y 2 minutos. Estamos construyendo el prompt y renderizando la imagen.'}
         </p>
         <div className="h-1.5 w-full max-w-xs mx-auto rounded-full bg-violet-500/20 overflow-hidden">
           <div className="h-full w-full rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 animate-pulse" />
-        </div>
-        <div className="flex justify-center gap-1.5 pt-1">
-          {[0, 1, 2].map(i => (
-            <span
-              key={i}
-              className="h-2 w-2 rounded-full bg-violet-500 animate-pulse"
-              style={{ animationDelay: `${i * 200}ms` }}
-            />
-          ))}
         </div>
       </div>
     </div>
@@ -88,21 +91,6 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
       </Button>
     </div>
   );
-}
-
-async function downloadImage(url: string, filename: string) {
-  try {
-    const response = await fetch(url);
-    const blob = await response.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(blobUrl);
-  } catch {
-    window.open(url, '_blank');
-  }
 }
 
 function ResultGrid({
@@ -138,6 +126,7 @@ function ResultGrid({
             <img
               src={url}
               alt={`Resultado ${i + 1}`}
+              referrerPolicy="no-referrer"
               className={cn(
                 'w-full cursor-pointer transition-transform group-hover:scale-[1.02]',
                 count === 1 ? 'max-h-[70vh] object-contain bg-black/20' : 'h-full object-cover',
@@ -199,7 +188,12 @@ export function GenerationCanvas({ currentGeneration, onImageClick, onRetry }: G
   }
 
   if (currentGeneration.status === 'pending') {
-    return <LoadingState count={currentGeneration.config.variations} />;
+    return (
+      <LoadingState
+        count={currentGeneration.config.variations}
+        carouselMode={currentGeneration.config.carouselMode}
+      />
+    );
   }
 
   if (currentGeneration.status === 'failed') {
@@ -207,6 +201,15 @@ export function GenerationCanvas({ currentGeneration, onImageClick, onRetry }: G
       <ErrorState
         message={currentGeneration.errorMessage ?? 'Ocurrió un error inesperado.'}
         onRetry={onRetry}
+      />
+    );
+  }
+
+  if (currentGeneration.mode === 'carousel' && currentGeneration.slides?.length) {
+    return (
+      <CarouselResultView
+        generation={currentGeneration}
+        onImageClick={onImageClick}
       />
     );
   }
