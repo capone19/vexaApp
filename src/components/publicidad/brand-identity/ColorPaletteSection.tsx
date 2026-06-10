@@ -129,7 +129,7 @@ export function ColorPaletteSection({ colors, onChange }: ColorPaletteSectionPro
         onUpdate={secondary => onChange({ ...colors, secondary })}
       />
 
-      <div className="space-y-4 pt-2 border-t border-violet-500/10">
+      <div className="space-y-4 pt-2 border-t border-primary/10">
         <div className="flex items-center justify-between">
           <Label className="text-xs uppercase tracking-wider text-muted-foreground">
             Distribución porcentual

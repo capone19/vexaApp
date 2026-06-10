@@ -29,12 +29,12 @@ export function PromptBar({ prompt, onPromptChange, onGenerate, isGenerating }: 
   }, [isGenerating, prompt, onGenerate]);
 
   return (
-    <div className="sticky bottom-0 z-10 bg-background/80 backdrop-blur-xl border-t border-violet-500/10 px-4 py-3">
+    <div className="sticky bottom-0 z-10 bg-background/80 backdrop-blur-xl border-t border-primary/10 px-4 py-3">
       <div className="flex items-end gap-3">
         <Button
           variant="ghost"
           size="sm"
-          className="shrink-0 text-violet-400 hover:text-violet-300 hover:bg-violet-500/10 gap-1.5 mb-0.5"
+          className="shrink-0 text-primary hover:text-primary hover:bg-primary/10 gap-1.5 mb-0.5"
           disabled={isGenerating}
         >
           <Sparkles className="h-3.5 w-3.5" />
@@ -49,14 +49,14 @@ export function PromptBar({ prompt, onPromptChange, onGenerate, isGenerating }: 
           disabled={isGenerating}
           placeholder="Describe la gráfica... ej: producto sobre fondo beige con luz natural, estilo editorial"
           rows={1}
-          className="flex-1 resize-none bg-secondary/50 border border-violet-500/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20 transition-all scrollbar-thin"
+          className="flex-1 resize-none bg-secondary/50 border border-primary/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all scrollbar-thin"
         />
 
         <div className="shrink-0 flex flex-col items-center gap-1 mb-0.5">
           <Button
             onClick={onGenerate}
             disabled={isGenerating || !prompt.trim()}
-            className="bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white border-0 gap-2 px-5 shadow-lg shadow-violet-500/20 disabled:opacity-50"
+            className="bg-primary hover:bg-primary/90 text-white border-0 gap-2 px-5 shadow-lg shadow-primary/20 disabled:opacity-50"
           >
             <Sparkles className="h-4 w-4" />
             Generar

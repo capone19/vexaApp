@@ -25,7 +25,7 @@ export function BrandIdentityForm({ identity, onChange, onUpload }: BrandIdentit
 
   return (
     <Accordion type="multiple" defaultValue={['general', 'logo', 'colors', 'typography', 'restrictions']} className="space-y-2">
-      <AccordionItem value="general" className="rounded-xl bg-white/[0.02] border border-violet-500/10 px-4">
+      <AccordionItem value="general" className="rounded-xl bg-white/[0.02] border border-primary/10 px-4">
         <AccordionTrigger className="text-sm font-semibold hover:no-underline">
           Información general
         </AccordionTrigger>
@@ -34,7 +34,7 @@ export function BrandIdentityForm({ identity, onChange, onUpload }: BrandIdentit
         </AccordionContent>
       </AccordionItem>
 
-      <AccordionItem value="logo" className="rounded-xl bg-white/[0.02] border border-violet-500/10 px-4">
+      <AccordionItem value="logo" className="rounded-xl bg-white/[0.02] border border-primary/10 px-4">
         <AccordionTrigger className="text-sm font-semibold hover:no-underline">
           Logo
         </AccordionTrigger>
@@ -43,7 +43,7 @@ export function BrandIdentityForm({ identity, onChange, onUpload }: BrandIdentit
         </AccordionContent>
       </AccordionItem>
 
-      <AccordionItem value="colors" className="rounded-xl bg-white/[0.02] border border-violet-500/10 px-4">
+      <AccordionItem value="colors" className="rounded-xl bg-white/[0.02] border border-primary/10 px-4">
         <AccordionTrigger className="text-sm font-semibold hover:no-underline">
           Paleta de colores
         </AccordionTrigger>
@@ -55,7 +55,7 @@ export function BrandIdentityForm({ identity, onChange, onUpload }: BrandIdentit
         </AccordionContent>
       </AccordionItem>
 
-      <AccordionItem value="typography" className="rounded-xl bg-white/[0.02] border border-violet-500/10 px-4">
+      <AccordionItem value="typography" className="rounded-xl bg-white/[0.02] border border-primary/10 px-4">
         <AccordionTrigger className="text-sm font-semibold hover:no-underline">
           Tipografía
         </AccordionTrigger>
@@ -67,7 +67,7 @@ export function BrandIdentityForm({ identity, onChange, onUpload }: BrandIdentit
         </AccordionContent>
       </AccordionItem>
 
-      <AccordionItem value="restrictions" className="rounded-xl bg-white/[0.02] border border-violet-500/10 px-4">
+      <AccordionItem value="restrictions" className="rounded-xl bg-white/[0.02] border border-primary/10 px-4">
         <AccordionTrigger className="text-sm font-semibold hover:no-underline">
           Restricciones
         </AccordionTrigger>

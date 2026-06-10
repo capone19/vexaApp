@@ -58,7 +58,7 @@ export function NewBrandDialog({ open, onOpenChange, onCreate, isCreating }: New
             <Button
               type="submit"
               disabled={!name.trim() || isCreating}
-              className="bg-gradient-to-r from-violet-600 to-fuchsia-600"
+              className="bg-primary"
             >
               {isCreating ? 'Creando...' : 'Crear marca'}
             </Button>

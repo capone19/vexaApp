@@ -183,6 +183,7 @@ function buildPayload(
     imagen_referencia_url: publicUrl,
     formato: config.format,
     estilo: config.styles[0] ?? '',
+    componente_visual: config.componenteVisual,
     variaciones: config.variations,
     prompt: config.prompt.trim(),
     use_product_colors: config.useProductColors,

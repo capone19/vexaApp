@@ -23,7 +23,7 @@ export function ImageModal({ open, onClose, generation, imageIndex }: ImageModal
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent className="flex h-[90vh] max-h-[90vh] w-[95vw] max-w-5xl flex-col overflow-hidden p-0 gap-0 bg-card border-violet-500/20 [&>button:last-child]:hidden">
+      <DialogContent className="flex h-[90vh] max-h-[90vh] w-[95vw] max-w-5xl flex-col overflow-hidden p-0 gap-0 bg-card border-primary/20 [&>button:last-child]:hidden">
         <DialogTitle className="sr-only">Vista ampliada de gráfica</DialogTitle>
 
         {generation && url && cfg ? (
@@ -70,7 +70,7 @@ export function ImageModal({ open, onClose, generation, imageIndex }: ImageModal
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {cfg.styles.map(s => (
-                      <span key={s} className="px-2 py-0.5 rounded-md bg-violet-500/15 text-violet-300 text-[11px]">
+                      <span key={s} className="px-2 py-0.5 rounded-md bg-primary/15 text-primary text-[11px]">
                         {s}
                       </span>
                     ))}
@@ -84,7 +84,7 @@ export function ImageModal({ open, onClose, generation, imageIndex }: ImageModal
               />
 
               <Button
-                className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white border-0 gap-2"
+                className="w-full bg-primary hover:bg-primary/90 text-white border-0 gap-2"
                 onClick={() => window.open(url, '_blank')}
               >
                 <Download className="h-4 w-4" />

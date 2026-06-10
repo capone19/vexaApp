@@ -376,46 +376,47 @@
 }
 
 /* ============================================
-   PUBLICIDAD - Dark Violet Theme (scoped)
+   PUBLICIDAD - Black + Blue-Gray Theme (scoped)
    Aplica solo dentro de [data-theme="publicidad"]
+   Accent ~ #7BA4C1
    ============================================ */
 [data-theme="publicidad"] {
-  --background: 240 10% 4%;
-  --foreground: 250 10% 92%;
+  --background: 0 0% 0%;
+  --foreground: 210 15% 92%;
 
-  --card: 240 10% 7%;
-  --card-foreground: 250 10% 92%;
+  --card: 210 12% 5%;
+  --card-foreground: 210 15% 92%;
 
-  --popover: 240 10% 7%;
-  --popover-foreground: 250 10% 92%;
+  --popover: 210 12% 5%;
+  --popover-foreground: 210 15% 92%;
 
-  --primary: 263 70% 58%;
+  --primary: 206 38% 62%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 260 20% 14%;
-  --secondary-foreground: 250 10% 85%;
+  --secondary: 210 12% 9%;
+  --secondary-foreground: 206 20% 78%;
 
-  --muted: 260 15% 12%;
-  --muted-foreground: 250 10% 55%;
+  --muted: 210 10% 10%;
+  --muted-foreground: 206 15% 52%;
 
-  --accent: 263 50% 20%;
-  --accent-foreground: 263 70% 80%;
+  --accent: 206 25% 14%;
+  --accent-foreground: 206 38% 72%;
 
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
 
-  --border: 260 15% 15%;
-  --input: 260 15% 15%;
-  --ring: 263 70% 58%;
+  --border: 206 18% 18%;
+  --input: 206 18% 18%;
+  --ring: 206 38% 62%;
 
   --radius: 0.5rem;
 
-  --sidebar-background: 240 10% 6%;
-  --sidebar-foreground: 250 10% 60%;
-  --sidebar-primary: 263 70% 58%;
+  --sidebar-background: 0 0% 2%;
+  --sidebar-foreground: 206 15% 55%;
+  --sidebar-primary: 206 38% 62%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 263 50% 15%;
-  --sidebar-accent-foreground: 263 70% 85%;
-  --sidebar-border: 260 15% 12%;
-  --sidebar-ring: 263 70% 58%;
+  --sidebar-accent: 206 22% 12%;
+  --sidebar-accent-foreground: 206 38% 75%;
+  --sidebar-border: 206 15% 14%;
+  --sidebar-ring: 206 38% 62%;
 }

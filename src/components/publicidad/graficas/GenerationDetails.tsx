@@ -37,13 +37,13 @@ export function GenerationDetails({ generation }: GenerationDetailsProps) {
       <CollapsibleTrigger asChild>
         <Button
           variant="ghost"
-          className="w-full justify-between text-muted-foreground hover:text-foreground border border-violet-500/10 rounded-xl px-4"
+          className="w-full justify-between text-muted-foreground hover:text-foreground border border-primary/10 rounded-xl px-4"
         >
           <span className="text-sm">Detalles de la generación</span>
           <ChevronDown className={cn('h-4 w-4 transition-transform', open && 'rotate-180')} />
         </Button>
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-3 space-y-4 rounded-xl border border-violet-500/10 bg-white/[0.02] p-4">
+      <CollapsibleContent className="mt-3 space-y-4 rounded-xl border border-primary/10 bg-white/[0.02] p-4">
         {isCarousel ? (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -54,7 +54,7 @@ export function GenerationDetails({ generation }: GenerationDetailsProps) {
                 <AccordionItem
                   key={slide.slideIndex}
                   value={`slide-${slide.slideIndex}`}
-                  className="rounded-lg border border-violet-500/10 px-3"
+                  className="rounded-lg border border-primary/10 px-3"
                 >
                   <AccordionTrigger className="text-xs py-2 hover:no-underline">
                     Slide {slide.slideIndex} de {slide.slideTotal}

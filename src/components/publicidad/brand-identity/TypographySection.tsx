@@ -190,7 +190,7 @@ export function TypographySection({ typography, onChange }: TypographySectionPro
           onUpdate={primary => onChange({ ...typography, primary })}
         />
       </div>
-      <div className="border-t border-violet-500/10 pt-6">
+      <div className="border-t border-primary/10 pt-6">
         <p className="text-sm font-medium mb-4">Tipografía secundaria</p>
         <SecondaryTypographyEditor
           spec={typography.secondary}

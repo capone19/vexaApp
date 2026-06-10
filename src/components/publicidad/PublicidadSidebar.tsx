@@ -1,6 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { Logo } from '@/components/shared/Logo';
 import {
   Image,
   Target,
@@ -28,13 +27,8 @@ export function PublicidadSidebar() {
 
   return (
     <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-border bg-sidebar">
-      {/* Logo + badge */}
-      <div className="flex h-16 items-center gap-3 border-b border-border px-6">
-        <Logo variant="full" color="light" className="h-7" />
-        <span className="rounded bg-violet-500/30 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-300">
-          Ads
-        </span>
-      </div>
+      {/* Logo placeholder — reservado para próximo logo */}
+      <div className="flex h-16 shrink-0 items-center border-b border-border px-6" />
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">

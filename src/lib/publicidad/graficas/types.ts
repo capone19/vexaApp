@@ -8,7 +8,15 @@ export type Format = '1:1' | '4:5' | '9:16' | '16:9';
 
 export type StyleOption = 'Minimalista' | 'Editorial' | 'Studio' | 'Outdoor' | 'Cinematográfico' | 'iPhone';
 
-export type CtaDestino = 'web' | 'whatsapp';
+export type VisualComponentOption =
+  | 'Iconografía wireframe'
+  | 'Editorial tipográfico'
+  | 'Foto producto'
+  | 'Esencia del producto'
+  | 'Datos / comparativa'
+  | 'Ilustración orgánica';
+
+export type CtaDestino = 'web' | 'whatsapp' | 'interaccion';
 
 export interface AdvancedConfig {
   model: ModelOption;
@@ -29,6 +37,7 @@ export interface GenerationConfig {
   carouselType: CarouselType;
   format: Format;
   styles: StyleOption[];
+  componenteVisual: VisualComponentOption;
   variations: number;
   advanced: AdvancedConfig;
   prompt: string;
@@ -88,6 +97,45 @@ export const STYLE_OPTIONS: StyleOption[] = [
   'Minimalista', 'Editorial', 'Studio', 'Outdoor', 'Cinematográfico', 'iPhone',
 ];
 
+export const DEFAULT_VISUAL_COMPONENT: VisualComponentOption = 'Iconografía wireframe';
+
+export const VISUAL_COMPONENT_OPTIONS: {
+  value: VisualComponentOption;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: 'Iconografía wireframe',
+    label: 'Iconografía wireframe',
+    description: 'Íconos y diagramas monoline geométricos, estética dark-tech.',
+  },
+  {
+    value: 'Editorial tipográfico',
+    label: 'Editorial tipográfico',
+    description: 'Solo tipografía y espacio negativo, sin imágenes.',
+  },
+  {
+    value: 'Foto producto',
+    label: 'Foto producto',
+    description: 'Fotografía real del producto en escena.',
+  },
+  {
+    value: 'Esencia del producto',
+    label: 'Esencia del producto',
+    description: 'Fotografía real de la materia prima o esencia del producto (planta, raíz, mineral, fruto). Puede incluir personas u objetos en escena, siempre ligados al ingrediente, nunca a la marca.',
+  },
+  {
+    value: 'Datos / comparativa',
+    label: 'Datos / comparativa',
+    description: 'Visualización limpia de un dato o comparación.',
+  },
+  {
+    value: 'Ilustración orgánica',
+    label: 'Ilustración orgánica',
+    description: 'Ilustración cálida de formas suaves, anti-wireframe.',
+  },
+];
+
 export type ModelOption =
   | 'nano-banana-pro-edit'
   | 'flux'
@@ -133,6 +181,7 @@ export const DEFAULT_CONFIG: GenerationConfig = {
   carouselType: DEFAULT_CAROUSEL_TYPE,
   format: '1:1',
   styles: [],
+  componenteVisual: DEFAULT_VISUAL_COMPONENT,
   variations: 2,
   advanced: { model: DEFAULT_MODEL, guidance: 7, ctaDestino: 'web' },
   prompt: '',

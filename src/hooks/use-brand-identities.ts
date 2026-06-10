@@ -21,13 +21,36 @@ export async function fetchBrandIdentities(): Promise<BrandIdentity[]> {
 
 export async function upsertBrandIdentity(identity: BrandIdentity): Promise<BrandIdentity> {
   const row = brandIdentityToRow(identity);
+
+  if (identity.id) {
+    const { data, error } = await supabase
+      .from('brand_identities')
+      .update(row)
+      .eq('id', identity.id)
+      .select('*')
+      .single();
+
+    if (error) {
+      if (error.code === '23505') {
+        throw new Error('Ya existe una marca con ese nombre (key).');
+      }
+      throw error;
+    }
+    return normalizeBrandIdentity(data);
+  }
+
   const { data, error } = await supabase
     .from('brand_identities')
     .upsert(row, { onConflict: 'name' })
     .select('*')
     .single();
 
-  if (error) throw error;
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error('Ya existe una marca con ese nombre (key).');
+    }
+    throw error;
+  }
   return normalizeBrandIdentity(data);
 }
 

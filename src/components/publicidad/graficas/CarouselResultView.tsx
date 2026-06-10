@@ -79,10 +79,10 @@ export function CarouselResultView({ generation, onImageClick }: CarouselResultV
             {slides.map((slide, i) => (
               <CarouselItem key={slide.slideIndex}>
                 <div className="flex flex-col items-center gap-3">
-                  <p className="text-sm font-medium text-violet-300">
+                  <p className="text-sm font-medium text-primary">
                     Slide {slide.slideIndex} de {slide.slideTotal}
                   </p>
-                  <div className="w-full max-h-[60vh] flex items-center justify-center rounded-xl overflow-hidden border border-violet-500/20 bg-black/20">
+                  <div className="w-full max-h-[60vh] flex items-center justify-center rounded-xl overflow-hidden border border-primary/20 bg-black/20">
                     <img
                       src={slide.imageUrl}
                       alt={`Slide ${slide.slideIndex}`}
@@ -95,8 +95,8 @@ export function CarouselResultView({ generation, onImageClick }: CarouselResultV
               </CarouselItem>
             ))}
           </CarouselContent>
-          <CarouselPrevious className="left-0 border-violet-500/30 bg-background/80 hover:bg-violet-500/20" />
-          <CarouselNext className="right-0 border-violet-500/30 bg-background/80 hover:bg-violet-500/20" />
+          <CarouselPrevious className="left-0 border-primary/30 bg-background/80 hover:bg-primary/20" />
+          <CarouselNext className="right-0 border-primary/30 bg-background/80 hover:bg-primary/20" />
         </Carousel>
       </div>
 
@@ -109,8 +109,8 @@ export function CarouselResultView({ generation, onImageClick }: CarouselResultV
             className={cn(
               'shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all',
               currentIndex === i
-                ? 'border-violet-500 ring-2 ring-violet-500/30'
-                : 'border-violet-500/20 opacity-70 hover:opacity-100',
+                ? 'border-primary ring-2 ring-primary/30'
+                : 'border-primary/20 opacity-70 hover:opacity-100',
             )}
           >
             <img
@@ -126,7 +126,7 @@ export function CarouselResultView({ generation, onImageClick }: CarouselResultV
         <Button
           variant="outline"
           size="sm"
-          className="border-violet-500/20 gap-2"
+          className="border-primary/20 gap-2"
           onClick={handleDownloadActive}
         >
           <Download className="h-4 w-4" />
@@ -135,7 +135,7 @@ export function CarouselResultView({ generation, onImageClick }: CarouselResultV
         <Button
           variant="outline"
           size="sm"
-          className="border-violet-500/20 gap-2"
+          className="border-primary/20 gap-2"
           onClick={() => onImageClick(generation, currentIndex)}
         >
           <Eye className="h-4 w-4" />
@@ -144,7 +144,7 @@ export function CarouselResultView({ generation, onImageClick }: CarouselResultV
         <Button
           variant="outline"
           size="sm"
-          className="border-violet-500/20 gap-2"
+          className="border-primary/20 gap-2"
           onClick={() => {
             if (activeUrl) {
               navigator.clipboard.writeText(activeUrl);
@@ -157,7 +157,7 @@ export function CarouselResultView({ generation, onImageClick }: CarouselResultV
         </Button>
         <Button
           size="sm"
-          className="bg-gradient-to-r from-violet-600 to-fuchsia-600 gap-2 ml-auto"
+          className="bg-primary gap-2 ml-auto"
           onClick={handleDownloadAll}
         >
           <Download className="h-4 w-4" />

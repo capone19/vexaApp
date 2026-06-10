@@ -6,7 +6,7 @@ interface PublicidadThemeProviderProps {
 
 export function PublicidadThemeProvider({ children }: PublicidadThemeProviderProps) {
   return (
-    <div data-theme="publicidad" className="min-h-screen bg-background text-foreground">
+    <div data-theme="publicidad" className="min-h-screen bg-black text-foreground">
       {children}
     </div>
   );

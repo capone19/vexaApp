@@ -76,7 +76,7 @@ function LogoUploadField({
             size="sm"
             disabled={uploading || !brandName}
             onClick={() => inputRef.current?.click()}
-            className="border-violet-500/20"
+            className="border-primary/20"
           >
             {uploading ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />

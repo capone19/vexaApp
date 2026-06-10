@@ -79,18 +79,34 @@ export default function PublicidadIdentidadMarca() {
   const handleSave = async () => {
     if (!formState) return;
 
-    if (formState.website_url && !isValidUrl(formState.website_url)) {
+    const normalizedName = formState.name.trim().toUpperCase();
+    if (!normalizedName) {
+      toast.error('El nombre (key) es obligatorio');
+      return;
+    }
+
+    const duplicate = brands.some(
+      b => b.name === normalizedName && b.id !== formState.id,
+    );
+    if (duplicate) {
+      toast.error('Ya existe una marca con ese nombre (key)');
+      return;
+    }
+
+    const toSave = { ...formState, name: normalizedName };
+
+    if (toSave.website_url && !isValidUrl(toSave.website_url)) {
       toast.error('La URL del sitio web no es válida');
       return;
     }
 
-    if (distributionSum(formState.colors.distribution) !== 100) {
+    if (distributionSum(toSave.colors.distribution) !== 100) {
       toast.error('La distribución de colores debe sumar 100%');
       return;
     }
 
     try {
-      const saved = await upsertBrand(formState);
+      const saved = await upsertBrand(toSave);
       setFormState(cloneIdentity(saved));
       setOriginalState(cloneIdentity(saved));
       setSelectedName(saved.name);
@@ -133,7 +149,7 @@ export default function PublicidadIdentidadMarca() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-violet-400" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -168,7 +184,7 @@ export default function PublicidadIdentidadMarca() {
                 <Button
                   onClick={handleSave}
                   disabled={!isDirty || isUpserting}
-                  className="bg-gradient-to-r from-violet-600 to-fuchsia-600 shadow-violet-500/20"
+                  className="bg-primary shadow-primary/20"
                 >
                   {isUpserting ? (
                     <>
@@ -208,11 +224,11 @@ export default function PublicidadIdentidadMarca() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-64 rounded-xl bg-white/[0.02] border border-violet-500/10">
+            <div className="flex flex-col items-center justify-center h-64 rounded-xl bg-white/[0.02] border border-primary/10">
               <p className="text-muted-foreground mb-4">Selecciona una marca o crea una nueva.</p>
               <Button
                 onClick={() => setNewBrandOpen(true)}
-                className="bg-gradient-to-r from-violet-600 to-fuchsia-600"
+                className="bg-primary"
               >
                 + Nueva marca
               </Button>

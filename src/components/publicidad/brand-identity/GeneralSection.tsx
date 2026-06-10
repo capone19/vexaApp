@@ -6,11 +6,10 @@ import { isValidUrl } from '@/lib/publicidad/brand-identity/types';
 
 interface GeneralSectionProps {
   identity: BrandIdentity;
-  isNew?: boolean;
   onChange: (updates: Partial<BrandIdentity>) => void;
 }
 
-export function GeneralSection({ identity, isNew, onChange }: GeneralSectionProps) {
+export function GeneralSection({ identity, onChange }: GeneralSectionProps) {
   const urlInvalid = identity.website_url ? !isValidUrl(identity.website_url) : false;
 
   return (
@@ -22,9 +21,11 @@ export function GeneralSection({ identity, isNew, onChange }: GeneralSectionProp
         <Input
           value={identity.name}
           onChange={e => onChange({ name: e.target.value.toUpperCase() })}
-          disabled={!isNew}
           placeholder="WELL-V"
         />
+        <p className="text-[10px] text-muted-foreground">
+          Identificador único usado en Gráficas y generación de imágenes.
+        </p>
       </div>
 
       <div className="space-y-2">

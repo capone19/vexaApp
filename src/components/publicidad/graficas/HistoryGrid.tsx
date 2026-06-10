@@ -58,8 +58,8 @@ export function HistoryGrid({ generations, brands, onImageClick }: HistoryGridPr
               className={cn(
                 'px-2.5 py-1 rounded-md text-[11px] font-medium border transition-all',
                 filter === f
-                  ? 'bg-violet-500/20 border-violet-500/50 text-violet-300'
-                  : 'bg-secondary border-transparent text-muted-foreground hover:bg-violet-500/10'
+                  ? 'bg-primary/20 border-primary/50 text-primary'
+                  : 'bg-secondary border-transparent text-muted-foreground hover:bg-primary/10'
               )}
             >
               {f}
@@ -86,7 +86,7 @@ export function HistoryGrid({ generations, brands, onImageClick }: HistoryGridPr
                     <button
                       key={`${gen.id}-${i}`}
                       onClick={() => onImageClick(gen, i)}
-                      className="group relative aspect-square rounded-lg overflow-hidden border border-violet-500/10 hover:border-violet-500/30 transition-all"
+                      className="group relative aspect-square rounded-lg overflow-hidden border border-primary/10 hover:border-primary/30 transition-all"
                     >
                       <img
                         src={url}

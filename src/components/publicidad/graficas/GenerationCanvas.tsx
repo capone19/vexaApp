@@ -18,11 +18,11 @@ function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-20 px-8">
       <div className="relative mb-6">
-        <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-violet-500/30 flex items-center justify-center bg-violet-500/5">
-          <ImageIcon className="h-10 w-10 text-violet-500/40" />
+        <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-primary/30 flex items-center justify-center bg-primary/5">
+          <ImageIcon className="h-10 w-10 text-primary/40" />
         </div>
-        <div className="absolute -top-2 -right-2 rounded-full bg-violet-500/20 p-1.5">
-          <Sparkles className="h-4 w-4 text-violet-400" />
+        <div className="absolute -top-2 -right-2 rounded-full bg-primary/20 p-1.5">
+          <Sparkles className="h-4 w-4 text-primary" />
         </div>
       </div>
       <h2 className="text-lg font-semibold text-foreground mb-1">Tu estudio creativo</h2>
@@ -46,7 +46,7 @@ function LoadingState({ count, carouselMode }: { count: number; carouselMode: bo
           <div
             key={i}
             className={cn(
-              'rounded-xl bg-violet-500/10 animate-pulse border border-violet-500/20 shrink-0',
+              'rounded-xl bg-primary/10 animate-pulse border border-primary/20 shrink-0',
               carouselMode
                 ? 'w-40 h-52'
                 : count === 1 ? 'aspect-[4/5] max-h-[50vh]' : 'aspect-square',
@@ -66,8 +66,8 @@ function LoadingState({ count, carouselMode }: { count: number; carouselMode: bo
             ? 'Esto puede tardar varios minutos. Cada slide se genera por separado.'
             : 'Esto puede tomar entre 30 segundos y 2 minutos. Estamos construyendo el prompt y renderizando la imagen.'}
         </p>
-        <div className="h-1.5 w-full max-w-xs mx-auto rounded-full bg-violet-500/20 overflow-hidden">
-          <div className="h-full w-full rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 animate-pulse" />
+        <div className="h-1.5 w-full max-w-xs mx-auto rounded-full bg-primary/20 overflow-hidden">
+          <div className="h-full w-full rounded-full bg-primary animate-pulse" />
         </div>
       </div>
     </div>
@@ -84,7 +84,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
       <p className="text-sm text-muted-foreground text-center max-w-md">{message}</p>
       <Button
         onClick={onRetry}
-        className="bg-gradient-to-r from-violet-600 to-fuchsia-600 gap-2"
+        className="bg-primary gap-2"
       >
         <RefreshCw className="h-4 w-4" />
         Reintentar
@@ -119,7 +119,7 @@ function ResultGrid({
           <div
             key={i}
             className={cn(
-              'group relative rounded-xl overflow-hidden border border-violet-500/10 hover:border-violet-500/30 transition-all shadow-lg shadow-black/20',
+              'group relative rounded-xl overflow-hidden border border-primary/10 hover:border-primary/30 transition-all shadow-lg shadow-black/20',
               count === 1 ? 'max-h-[70vh]' : 'aspect-square',
             )}
           >

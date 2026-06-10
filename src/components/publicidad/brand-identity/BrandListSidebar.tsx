@@ -22,7 +22,7 @@ export function BrandListSidebar({
     return (
       <div className="w-[280px] shrink-0 space-y-2">
         {[1, 2, 3].map(i => (
-          <div key={i} className="h-16 rounded-xl bg-white/[0.02] border border-violet-500/10 animate-pulse" />
+          <div key={i} className="h-16 rounded-xl bg-white/[0.02] border border-primary/10 animate-pulse" />
         ))}
       </div>
     );
@@ -46,8 +46,8 @@ export function BrandListSidebar({
               className={cn(
                 'w-full flex items-center gap-3 rounded-xl border p-3 text-left transition-all',
                 selectedName === brand.name
-                  ? 'bg-violet-500/20 border-violet-500 text-violet-300'
-                  : 'bg-white/[0.02] border-violet-500/10 text-foreground hover:bg-violet-500/10 hover:border-violet-500/20',
+                  ? 'bg-primary/20 border-primary text-primary'
+                  : 'bg-white/[0.02] border-primary/10 text-foreground hover:bg-primary/10 hover:border-primary/20',
               )}
             >
               <div className="h-10 w-10 shrink-0 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center overflow-hidden">
@@ -74,7 +74,7 @@ export function BrandListSidebar({
 
       <Button
         variant="outline"
-        className="w-full border-violet-500/20 hover:bg-violet-500/10 hover:border-violet-500/40"
+        className="w-full border-primary/20 hover:bg-primary/10 hover:border-primary/40"
         onClick={onNewBrand}
       >
         <Plus className="h-4 w-4 mr-2" />
