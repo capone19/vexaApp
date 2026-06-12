@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -150,6 +150,8 @@ export default function Support() {
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const selectedTicketRef = useRef(selectedTicket);
+  selectedTicketRef.current = selectedTicket;
   const [messages, setMessages] = useState<TicketMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -231,7 +233,7 @@ export default function Support() {
               t.id === payload.new.id ? { ...t, ...payload.new } as Ticket : t
             ));
             // Also update selected ticket if viewing
-            if (selectedTicket?.id === payload.new.id) {
+            if (selectedTicketRef.current?.id === payload.new.id) {
               setSelectedTicket(prev => prev ? { ...prev, ...payload.new } as Ticket : null);
             }
           } else if (payload.eventType === 'INSERT') {
@@ -246,7 +248,7 @@ export default function Support() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.tenantId, selectedTicket?.id]);
+  }, [user?.tenantId]);
 
   // Load messages when ticket is selected
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef, memo } from "react";
+import { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { useN8nChatHistory } from "@/hooks/use-n8n-chat-history";
+import { useN8nChatList, useN8nChatSession } from "@/hooks/use-n8n-chat-history";
 import { externalSupabase, type N8nChatMessage } from "@/integrations/supabase/external-client";
 import { supabase } from "@/integrations/supabase/client";
 import { WEBHOOKS } from "@/lib/constants";
@@ -246,43 +246,75 @@ const ChatComposer = memo(function ChatComposer({
   );
 });
 
-export default function Chats() {
+function ChatsPage() {
   const navigate = useNavigate();
   const isDev = import.meta.env.DEV;
   const BOT_STATE_RECONCILE_WINDOW_MS = 1500;
   const { user, isLoading: authLoading } = useAuth();
   const { tenantId: effectiveTenantId, isImpersonating } = useEffectiveTenant();
   
-  // Determinar si el usuario es admin (ve todos los chats) - pero NO cuando está impersonando
   const isAdmin = user?.role === 'admin' && !isImpersonating;
-  
-  // Ventana de retención: 1 mes completo de historial
-  const oneMonthAgo = useMemo(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 1);
-    return d.toISOString();
-  }, []);
 
   // Siempre acotar por tenant (nunca leer toda `n8n_chat_histories`). Admin sin impersonar usa su tenant.
   const n8nTenantId =
     effectiveTenantId ?? (isAdmin && !isImpersonating ? user?.tenantId : undefined) ?? undefined;
 
-  const { messages, isLoading, error, refetch } = useN8nChatHistory({
-    enableRealtime: true,
-    since: oneMonthAgo,
+  // Ventana de retención para la lista lateral: expandible por el usuario, default 7 días, máx 90
+  const MAX_HISTORY_DAYS = 90;
+  const [historyWindowDays, setHistoryWindowDays] = useState(7);
+  const listSinceDate = useMemo(
+    () => new Date(Date.now() - historyWindowDays * 86400000),
+    [historyWindowDays],
+  );
+
+  // selectedSessionId debe declararse antes del hook de sesión
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+
+  // Ventana de sesión para lazy loading: empieza en 7 días, expandible hasta 90
+  const [sessionWindowDays, setSessionWindowDays] = useState(7);
+  const sessionStartDate = useMemo(
+    () => new Date(Date.now() - sessionWindowDays * 86400000),
+    [sessionWindowDays],
+  );
+
+  // Resetear ventana al cambiar de conversación
+  useEffect(() => {
+    setSessionWindowDays(7);
+  }, [selectedSessionId]);
+
+  // List hook: últimas 2000 filas para previews en la barra lateral
+  const {
+    messages: listMessages,
+    isLoading: listLoading,
+    error: listError,
+  } = useN8nChatList({
     tenantId: n8nTenantId,
+    sinceList: listSinceDate,
+    enableRealtime: true,
   });
-  
-  // Log para debug
+
+  // Session hook: todos los mensajes de la conversación abierta
+  const {
+    messages: sessionMessages,
+    isLoading: sessionIsLoading,
+    isLoadingMore: sessionIsLoadingMore,
+    refetch: refetchSession,
+  } = useN8nChatSession({
+    tenantId: n8nTenantId,
+    sessionId: selectedSessionId,
+    sinceSession: sessionStartDate,
+    enableRealtime: true,
+  });
+
+  // Debug
   useEffect(() => {
     if (!isDev) return;
     console.log('[Chats] Effective tenantId:', effectiveTenantId, 'isAdmin:', isAdmin, 'isImpersonating:', isImpersonating);
-    console.log('[Chats] Total messages loaded:', messages.length);
-    const uniqueSessions = [...new Set(messages.map(m => m.session_id))];
+    console.log('[Chats] List messages loaded:', listMessages.length);
+    const uniqueSessions = [...new Set(listMessages.map(m => m.session_id))];
     console.log('[Chats] Unique sessions:', uniqueSessions.length, uniqueSessions);
-  }, [messages, effectiveTenantId, isAdmin, isImpersonating, isDev]);
-  
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  }, [listMessages, effectiveTenantId, isAdmin, isImpersonating, isDev]);
+
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 180);
   const [filterTab, setFilterTab] = useState<FilterTab>("todos");
@@ -294,12 +326,7 @@ export default function Chats() {
   const [remarketingMode, setRemarketingMode] = useState(false);
   const [selectedForRemarketing, setSelectedForRemarketing] = useState<Set<string>>(new Set());
   const [isSendingRemarketing, setIsSendingRemarketing] = useState(false);
-  /** Mensajes de la sesión activa para calcular ventana 24h (el buffer global puede no incluir chats antiguos) */
-  const [sessionRowsFor24h, setSessionRowsFor24h] = useState<N8nChatMessage[]>([]);
-  const [resolved24hForSessionId, setResolved24hForSessionId] = useState<string | null>(null);
-  // Ref de sesiones en vuelo: evita doble disparo antes de que el estado se actualice
   const botToggleInFlightRef = useRef<Set<string>>(new Set());
-  // Ventana post-toggle: durante estos ms ignoramos sync de mensajes para esa sesión
   const botSyncCooldownRef = useRef<Map<string, { until: number; expected: boolean }>>(new Map());
 
   // Chat labels hook
@@ -331,25 +358,9 @@ export default function Chats() {
   const messagesScrollAreaRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
-  // Calcular cantidad de mensajes de la sesión seleccionada (para dependencia del auto-scroll)
-  const messagesBySession = useMemo(() => {
-    const grouped = new Map<string, N8nChatMessage[]>();
-    for (const message of messages) {
-      if (!grouped.has(message.session_id)) {
-        grouped.set(message.session_id, []);
-      }
-      grouped.get(message.session_id)?.push(message);
-    }
-    for (const [, sessionMessages] of grouped) {
-      sessionMessages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-    }
-    return grouped;
-  }, [messages]);
-
-  const selectedMessagesCount = useMemo(() => {
-    if (!selectedSessionId) return 0;
-    return messagesBySession.get(selectedSessionId)?.length ?? 0;
-  }, [messagesBySession, selectedSessionId]);
+  // Refs para preservación de scroll al cargar más mensajes
+  const prevScrollHeightRef = useRef(0);
+  const shouldRestoreScrollRef = useRef(false);
 
   const shouldIgnoreIncomingBotState = useCallback((sessionId: string, incomingValue: boolean) => {
     if (botToggleInFlightRef.current.has(sessionId)) {
@@ -371,90 +382,40 @@ export default function Chats() {
 
 
   // Auto-scroll al último mensaje cuando cambia la selección o llegan nuevos mensajes
-  // IMPORTANTE: Usamos el viewport interno del ScrollArea para evitar afectar el scroll del body
   useEffect(() => {
     if (!selectedSessionId) return;
-    
-    // Micro-delay para asegurar que el DOM renderizó los mensajes
     const timeoutId = setTimeout(() => {
       const viewport = messagesScrollAreaRef.current?.querySelector(
         '[data-radix-scroll-area-viewport]'
       ) as HTMLElement | null;
-      
       if (viewport) {
-        // Auto-scroll solo si está cerca del final (threshold de 150px)
-        const isNearBottom = 
+        const isNearBottom =
           viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 150;
-        
-        // Si es la primera carga de la sesión o está cerca del final, scrollear
         if (isNearBottom || viewport.scrollTop === 0) {
-          viewport.scrollTo({ 
-            top: viewport.scrollHeight, 
-            behavior: "smooth" 
-          });
+          viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
         }
       }
     }, 50);
-    
     return () => clearTimeout(timeoutId);
-  }, [selectedSessionId, selectedMessagesCount]);
+  }, [selectedSessionId, sessionMessages.length]);
 
-  // Cargar historial de la sesión seleccionada para ventana 24h (últimos 500 de esa sesión)
-  useEffect(() => {
-    if (!selectedSessionId) {
-      setSessionRowsFor24h([]);
-      setResolved24hForSessionId(null);
-      return;
-    }
-    const sid = selectedSessionId;
-    setResolved24hForSessionId(null);
-    let cancelled = false;
-
-    const run = async () => {
-      try {
-        let q = externalSupabase
-          .from("n8n_chat_histories")
-          .select("id, session_id, tenant_id, message, created_at, media")
-          .eq("session_id", sid)
-          .order("created_at", { ascending: false })
-          .limit(500);
-
-        if (effectiveTenantId && !isAdmin) {
-          q = q.eq("tenant_id", effectiveTenantId);
-        }
-
-        const { data, error } = await q;
-        if (cancelled) return;
-        if (error) {
-          console.warn("[Chats] Error cargando sesión para ventana 24h:", error);
-          setSessionRowsFor24h([]);
-        } else {
-          setSessionRowsFor24h((data as N8nChatMessage[]) || []);
-        }
-        if (!cancelled) setResolved24hForSessionId(sid);
-      } catch (e) {
-        console.warn("[Chats] Ventana 24h:", e);
-        if (!cancelled) {
-          setSessionRowsFor24h([]);
-          setResolved24hForSessionId(sid);
-        }
-      }
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedSessionId, effectiveTenantId, isAdmin]);
+  // Preservar posición de scroll al cargar mensajes más antiguos (Load More)
+  useLayoutEffect(() => {
+    if (!shouldRestoreScrollRef.current || sessionIsLoadingMore) return;
+    const viewport = messagesScrollAreaRef.current?.querySelector(
+      '[data-radix-scroll-area-viewport]'
+    ) as HTMLElement | null;
+    if (!viewport) return;
+    shouldRestoreScrollRef.current = false;
+    const delta = viewport.scrollHeight - prevScrollHeightRef.current;
+    if (delta > 0) viewport.scrollTop = delta;
+  }, [sessionMessages, sessionIsLoadingMore]);
 
   // Obtener el tenant_id de los mensajes de la sesión seleccionada
   const selectedSessionTenantId = useMemo(() => {
     if (!selectedSessionId) return null;
-    const sessionMessages = messagesBySession.get(selectedSessionId) ?? [];
-    // Buscar el primer mensaje que tenga tenant_id
-    const messageWithTenant = sessionMessages.find(m => m.tenant_id);
-    return messageWithTenant?.tenant_id || null;
-  }, [messagesBySession, selectedSessionId]);
+    return sessionMessages.find(m => m.tenant_id)?.tenant_id ?? null;
+  }, [sessionMessages, selectedSessionId]);
 
   // Determinar tipo de media para el payload
   const getMediaType = (mimeType: string): "image" | "audio" | "video" | "document" => {
@@ -547,12 +508,12 @@ export default function Chats() {
         }, 2000);
       }
 
-      setTimeout(() => refetch?.(true), 1000);
+      setTimeout(() => void refetchSession(true), 1000);
     } catch (err) {
       console.error("[Chats] Error sending human message:", err);
       toast.error(err instanceof Error ? err.message : "Error al enviar el mensaje");
     }
-  }, [selectedSessionId, refetch, selectedSessionTenantId, botStates]);
+  }, [selectedSessionId, refetchSession, selectedSessionTenantId, botStates]);
 
   // Remarketing: toggle seleccion de una sesion
   const toggleRemarketingSelection = useCallback((sessionId: string) => {
@@ -616,13 +577,13 @@ export default function Chats() {
     if (!botStatesLoadedRef.current) return;
     
     // Obtener sesiones únicas de los mensajes actuales
-    const currentSessions = new Set(messages.map(m => m.session_id));
-    
+    const currentSessions = new Set(listMessages.map(m => m.session_id));
+
     // Encontrar sesiones que no tenemos en botStates
     const unknownSessions = Array.from(currentSessions).filter(
       sessionId => !(sessionId in botStates)
     );
-    
+
     if (unknownSessions.length === 0) return;
     
     // Solo cargar estados para las sesiones nuevas
@@ -670,16 +631,16 @@ export default function Chats() {
     };
     
     loadNewBotStates();
-  }, [messages, botStates, shouldIgnoreIncomingBotState]);
+  }, [listMessages, botStates, shouldIgnoreIncomingBotState]);
 
   // Sync botStates when messages update (e.g. realtime UPDATE with bot_activado change)
   useEffect(() => {
-    if (!botStatesLoadedRef.current || messages.length === 0) return;
+    if (!botStatesLoadedRef.current || listMessages.length === 0) return;
 
     const latestPerSession = new Map<string, boolean>();
     const latestTimePerSession = new Map<string, number>();
 
-    for (const msg of messages) {
+    for (const msg of listMessages) {
       const t = new Date(msg.created_at).getTime();
       const prev = latestTimePerSession.get(msg.session_id);
       if (prev === undefined || t > prev) {
@@ -702,7 +663,7 @@ export default function Chats() {
       }
       return changed ? next : prev;
     });
-  }, [messages, shouldIgnoreIncomingBotState]);
+  }, [listMessages, shouldIgnoreIncomingBotState]);
 
   // Toggle bot state for a session - actualiza en DB externa
   const setBotStateForSession = useCallback(async (sessionId: string, nextState: boolean) => {
@@ -755,11 +716,21 @@ export default function Chats() {
     }
   }, [BOT_STATE_RECONCILE_WINDOW_MS, botStates]);
 
+  // handleLoadMore: guarda scrollHeight y expande la ventana de la sesión
+  const handleLoadMore = useCallback(() => {
+    const viewport = messagesScrollAreaRef.current?.querySelector(
+      '[data-radix-scroll-area-viewport]'
+    ) as HTMLElement | null;
+    if (viewport) prevScrollHeightRef.current = viewport.scrollHeight;
+    shouldRestoreScrollRef.current = true;
+    setSessionWindowDays(prev => Math.min(prev + 14, 90));
+  }, []);
+
   // Process sessions from messages
   const processedSessions = useMemo(() => {
     const sessionMap = new Map<string, N8nSession>();
-    
-    messages.forEach(msg => {
+
+    listMessages.forEach(msg => {
       // Un mensaje es válido si tiene content O media
       const hasContent = msg.message?.content && typeof msg.message.content === 'string' && msg.message.content.trim() !== '';
       const hasMedia = msg.media !== null && msg.media !== undefined;
@@ -812,7 +783,7 @@ export default function Chats() {
     return Array.from(sessionMap.values()).sort(
       (a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime()
     );
-  }, [messages, botStates]);
+  }, [listMessages, botStates]);
 
   // Filter sessions by search, tab, and labels
   const filteredSessions = useMemo(() => {
@@ -861,7 +832,7 @@ export default function Chats() {
 
       for (const session of sessionsToSend) {
         const phone = session.phoneNumber.replace(/^\+/, "");
-        const tenantMsg = messages.find(m => m.session_id === session.sessionId && m.tenant_id);
+        const tenantMsg = listMessages.find(m => m.session_id === session.sessionId && m.tenant_id);
         const tenantId = tenantMsg?.tenant_id || effectiveTenantId || "";
 
         try {
@@ -888,13 +859,10 @@ export default function Chats() {
     } finally {
       setIsSendingRemarketing(false);
     }
-  }, [selectedForRemarketing, isSendingRemarketing, filteredSessions, messages, effectiveTenantId, cancelRemarketing]);
+  }, [selectedForRemarketing, isSendingRemarketing, filteredSessions, listMessages, effectiveTenantId, cancelRemarketing]);
 
-  // Get messages for selected session
-  const selectedMessages = useMemo(() => {
-    if (!selectedSessionId) return [];
-    return messagesBySession.get(selectedSessionId) ?? [];
-  }, [messagesBySession, selectedSessionId]);
+  // Messages for the active session come directly from the session hook
+  const selectedMessages = sessionMessages;
 
   // Get selected session info
   const selectedSession = useMemo(() => {
@@ -914,26 +882,17 @@ export default function Chats() {
     return String((msg as { type?: string }).type ?? "").toLowerCase();
   };
 
-  /** Último mensaje del cliente en la sesión (WhatsApp cuenta 24h desde aquí).
-   *  Prioriza selectedMessages (actualizado por realtime) sobre sessionRowsFor24h (estático). */
+  // sessionMessages está en orden ASC — iteramos desde el final para el último msg del cliente
   const lastClientMessageTime = useMemo(() => {
-    if (!selectedSessionId) return null;
-
-    const realtimePool = selectedMessages;
-    const pool = realtimePool.length > 0 ? realtimePool : sessionRowsFor24h;
-
-    const sorted = [...pool].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-
-    for (const row of sorted) {
-      const t = getInboundMessageType(row as N8nChatMessage);
+    if (!selectedSessionId || sessionMessages.length === 0) return null;
+    for (let i = sessionMessages.length - 1; i >= 0; i--) {
+      const t = getInboundMessageType(sessionMessages[i]);
       if (t === "human" || t === "user" || t === "customer") {
-        return new Date(row.created_at);
+        return new Date(sessionMessages[i].created_at);
       }
     }
     return null;
-  }, [selectedMessages, selectedSessionId, sessionRowsFor24h]);
+  }, [sessionMessages, selectedSessionId]);
 
   const TWENTY_FOUR_H_MS = 24 * 60 * 60 * 1000;
   const isWindowExpired = useMemo(() => {
@@ -941,7 +900,7 @@ export default function Chats() {
     return Date.now() - lastClientMessageTime.getTime() > TWENTY_FOUR_H_MS;
   }, [lastClientMessageTime]);
 
-  const is24hCheckReady = !selectedSessionId || resolved24hForSessionId === selectedSessionId;
+  const is24hCheckReady = !selectedSessionId || !sessionIsLoading;
   // Empty State Component
   const EmptyState = () => (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center">
@@ -1066,9 +1025,9 @@ export default function Chats() {
 
       {/* Chat List */}
       <ScrollArea className="flex-1">
-        {isLoading ? (
+        {listLoading && listMessages.length === 0 ? (
           <LoadingState />
-        ) : error ? (
+        ) : listError ? (
           <ErrorState />
         ) : filteredSessions.length === 0 ? (
           processedSessions.length === 0 ? (
@@ -1079,7 +1038,8 @@ export default function Chats() {
             </div>
           )
         ) : (
-          filteredSessions.map((session) => (
+          <>
+          {filteredSessions.map((session) => (
             <div
               key={session.sessionId}
               className={cn(
@@ -1188,15 +1148,40 @@ export default function Chats() {
                 />
               </div>
             </div>
-          ))
+          ))}
+          <div className="p-3 border-t border-border space-y-1.5">
+            {historyWindowDays >= MAX_HISTORY_DAYS ? (
+              <p className="text-xs text-center text-muted-foreground">
+                Mostrando últimos 90 días (máximo)
+              </p>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full text-xs h-8"
+                  disabled={listLoading}
+                  onClick={() => setHistoryWindowDays(prev => Math.min(prev + 14, MAX_HISTORY_DAYS))}
+                >
+                  {listLoading ? 'Cargando...' : 'Cargar más antiguos (+14 días)'}
+                </Button>
+                <p className="text-xs text-center text-muted-foreground">
+                  Mostrando últimos {historyWindowDays} días
+                </p>
+              </>
+            )}
+          </div>
+          </>
         )}
       </ScrollArea>
     </div>
   ), [
     isMobile,
     processedSessions.length,
-    isLoading,
-    error,
+    listLoading,
+    listMessages.length,
+    historyWindowDays,
+    listError,
     filteredSessions,
     selectedSessionId,
     remarketingMode,
@@ -1387,13 +1372,41 @@ export default function Chats() {
         )}
 
         {/* Messages */}
-        <ScrollArea 
+        <ScrollArea
           ref={messagesScrollAreaRef}
           className={cn(
             "flex-1 min-h-0 overflow-hidden bg-secondary/30",
             isMobile ? "p-2" : "p-4"
           )}
         >
+          {/* Botón cargar mensajes anteriores */}
+          <div className="flex flex-col items-center py-2 gap-1">
+            {sessionWindowDays < 90 ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLoadMore}
+                  disabled={sessionIsLoadingMore}
+                  className="h-7 text-xs text-muted-foreground gap-1.5"
+                >
+                  {sessionIsLoadingMore ? (
+                    <><Loader2 className="h-3 w-3 animate-spin" />Cargando...</>
+                  ) : (
+                    "Cargar mensajes anteriores (+14 días)"
+                  )}
+                </Button>
+                <span className="text-[10px] text-muted-foreground">
+                  Mostrando últimos {sessionWindowDays} días
+                </span>
+              </>
+            ) : (
+              <span className="text-[10px] text-muted-foreground">
+                Mostrando últimos 90 días (máximo)
+              </span>
+            )}
+          </div>
+
           {selectedMessages.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-muted-foreground">
               <p className="text-sm">Sin mensajes en esta conversación</p>
@@ -1522,7 +1535,7 @@ export default function Chats() {
         </ScrollArea>
       </>
     );
-  }, [selectedSessionId, selectedSession, selectedMessages, botStates, isMobile, botToggling, setBotStateForSession]);
+  }, [selectedSessionId, selectedSession, sessionMessages, sessionWindowDays, sessionIsLoadingMore, handleLoadMore, botStates, isMobile, botToggling, setBotStateForSession]);
 
   // El panel completo de chat (wrapper + input separado)
   const chatPanel = selectedSessionId && selectedSession ? (
@@ -1613,7 +1626,7 @@ export default function Chats() {
   ) : chatMessagesContent;
 
   return (
-    <MainLayout>
+    <>
       <div className={cn(
         "flex flex-col",
         isMobile ? "h-[calc(100dvh-3.5rem-5rem)] -m-4 md:m-0 overflow-hidden" : "h-[calc(100vh-8rem)]"
@@ -1705,6 +1718,14 @@ export default function Chats() {
           </div>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+export default function Chats() {
+  return (
+    <MainLayout>
+      <ChatsPage />
     </MainLayout>
   );
 }

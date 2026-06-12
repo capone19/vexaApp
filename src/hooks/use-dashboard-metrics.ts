@@ -422,13 +422,13 @@ export function useDashboardMetrics({
   ];
 
   // Usar React Query para cache automático
-  // La invalidación viene de useChatRealtimeSync en MainLayout
+  // conversation-count se refresca en tiempo real vía useChatRealtimeSync; métricas completas usan staleTime + focus
   const { data, isLoading, error, refetch } = useQuery({
     queryKey,
     queryFn: () => fetchDashboardMetrics(tenantId!, startDate, endDate, queryClient),
     enabled: !!tenantId,
     staleTime: DASH_COUNT_STALE_MS,
-    refetchOnWindowFocus: false, // El realtime global (useChatRealtimeSync) invalida el cache
+    refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
 

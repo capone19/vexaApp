@@ -29,7 +29,7 @@ import {
 // Costo por conversación extra en USD
 export const EXTRA_CONVERSATION_COST_USD = 0.30;
 
-const CONV_COUNT_STALE_MS = 1000 * 60 * 5;
+const CONV_COUNT_STALE_MS = 1000 * 60 * 10;
 
 export interface PeriodUsage {
   // Conversaciones - FUENTE DE VERDAD para facturación
