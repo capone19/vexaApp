@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { Generation } from '@/lib/publicidad/graficas/types';
-import { getGraphicTypeLabel, getModelLabel } from '@/lib/publicidad/graficas/types';
+import { getGraphicFormatDisplayName, getModelLabel } from '@/lib/publicidad/graficas/types';
 
 interface ImageModalProps {
   open: boolean;
@@ -58,7 +58,13 @@ export function ImageModal({ open, onClose, generation, imageIndex }: ImageModal
 
               <div className="grid grid-cols-2 gap-3">
                 <MetaItem label="Marca" value={cfg.brand} />
-                <MetaItem label="Tipo" value={getGraphicTypeLabel(cfg.type)} />
+                <MetaItem label="Tipo" value={getGraphicFormatDisplayName(cfg.type)} />
+                {cfg.objetivo && (
+                  <MetaItem
+                    label="Objetivo"
+                    value={cfg.objetivo === 'educativa' ? 'Educativa' : 'Venta'}
+                  />
+                )}
                 <MetaItem label="Formato" value={cfg.format} />
                 <MetaItem label="Modelo" value={getModelLabel(cfg.advanced.model)} />
               </div>

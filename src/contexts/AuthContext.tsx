@@ -5,7 +5,7 @@
 // re-verificaciones en cada navegación
 // ============================================
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { isAdminEmail } from '@/lib/admin-config';
 import type { User } from '@/lib/auth';
@@ -29,6 +29,7 @@ interface AuthContextValue {
   user: User | null;
   subscription: Subscription | null;
   isLoading: boolean;
+  isAuthReady: boolean;
   isAuthenticated: boolean;
   hasTenant: boolean;
   isAdmin: boolean;
@@ -45,9 +46,14 @@ interface AuthProviderProps {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
+  const userRef = useRef<User | null>(null);
+  useEffect(() => { userRef.current = user; }, [user]);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [hasTenant, setHasTenant] = useState(false);
+  const initialSessionHandled = useRef(false);
+  const pendingTenantRetry = useRef(false);
 
   // Resolver usuario desde sesión con timeout para evitar cuelgues
   const resolveUser = useCallback(async (session: { user: any } | null): Promise<User | null> => {
@@ -140,13 +146,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [user?.tenantId, fetchSubscription]);
 
+  const applyUser = useCallback((resolvedUser: User | null) => {
+    userRef.current = resolvedUser;
+    setUser(resolvedUser);
+    setHasTenant(!!resolvedUser?.tenantId);
+  }, []);
+
   // Efecto de inicialización y listener de auth
   useEffect(() => {
     const handleAuthChange = async (event: string, session: { user: any } | null) => {
       console.log('[AuthContext] Auth state changed:', event);
+
+      if (
+        event === 'SIGNED_IN' &&
+        initialSessionHandled.current &&
+        userRef.current?.tenantId
+      ) {
+        return;
+      }
       
       try {
         if (event === 'SIGNED_OUT') {
+          userRef.current = null;
           setUser(null);
           setSubscription(null);
           setHasTenant(false);
@@ -166,12 +187,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
             }
 
             if (resolvedUser) {
-              setUser(resolvedUser);
-              setHasTenant(!!resolvedUser.tenantId);
+              if (userRef.current?.tenantId && !resolvedUser.tenantId) {
+                return;
+              }
+              applyUser(resolvedUser);
               if (resolvedUser.tenantId) {
                 fetchSubscription(resolvedUser.tenantId);
               }
             } else {
+              if (userRef.current?.tenantId) {
+                return;
+              }
               const supaUser = session.user;
               const fallback: User = {
                 id: supaUser.id,
@@ -180,46 +206,46 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 role: 'viewer',
                 tenantId: null,
               };
-              setUser(fallback);
-              setHasTenant(false);
+              applyUser(fallback);
+              pendingTenantRetry.current = true;
               setTimeout(async () => {
                 try {
                   const { data: { session: fresh } } = await supabase.auth.getSession();
                   if (!fresh) return;
                   const freshUser = await resolveUser(fresh);
                   if (freshUser?.tenantId) {
-                    setUser(freshUser);
-                    setHasTenant(true);
+                    applyUser(freshUser);
                     fetchSubscription(freshUser.tenantId);
                   }
                 } catch { /* ignorar */ }
+                finally {
+                  pendingTenantRetry.current = false;
+                  setIsLoading(false);
+                  setIsAuthReady(true);
+                }
               }, 2500);
             }
           }
         } else if (event === 'TOKEN_REFRESHED') {
-          if (session?.user) {
+          // Supabase ya refresca el token internamente. Solo re-resolvemos
+          // el user si todavía no existe (cold start), para no resetear
+          // tenantId/roles ni vaciar el cache de React Query al volver al tab.
+          if (session?.user && !userRef.current) {
             try {
               const resolvedUser = await resolveUser(session);
               if (resolvedUser) {
-                setUser(resolvedUser);
-                setHasTenant(!!resolvedUser.tenantId);
+                applyUser(resolvedUser);
                 if (resolvedUser.tenantId) {
                   fetchSubscription(resolvedUser.tenantId);
                 }
               }
             } catch (resolveError) {
-              if (resolveError instanceof Error && resolveError.message === 'TIMEOUT_KEEP_STATE') {
-                console.warn('[AuthContext] TOKEN_REFRESHED timeout - manteniendo estado actual');
-              } else {
-                throw resolveError;
-              }
+              console.warn('[AuthContext] TOKEN_REFRESHED resolve error:', resolveError);
             }
           }
-          // Si session?.user no existe en TOKEN_REFRESHED, ignorar (no limpiar estado)
         } else if (event === 'INITIAL_SESSION') {
           const resolvedUser = await resolveUser(session);
-          setUser(resolvedUser);
-          setHasTenant(!!resolvedUser?.tenantId);
+          applyUser(resolvedUser);
           if (resolvedUser?.tenantId) {
             fetchSubscription(resolvedUser.tenantId);
           }
@@ -228,12 +254,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
         console.error('[AuthContext] Error handling auth change:', error);
         // Solo limpiar estado si NO es un error de timeout/red temporal
         if (!(error instanceof Error && (error.message === 'Timeout' || error.message === 'TIMEOUT_KEEP_STATE'))) {
+          userRef.current = null;
           setUser(null);
           setHasTenant(false);
         }
       } finally {
-        // Siempre marcar como no-loading después de cualquier evento de auth
-        setIsLoading(false);
+        if (event === 'INITIAL_SESSION') {
+          initialSessionHandled.current = true;
+          setIsAuthReady(true);
+        }
+        if (!pendingTenantRetry.current) {
+          setIsLoading(false);
+        }
       }
     };
 
@@ -246,7 +278,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return () => {
       authSubscription.unsubscribe();
     };
-  }, [resolveUser, fetchSubscription]);
+  }, [resolveUser, fetchSubscription, applyUser]);
 
   // Valores computados
   const isAuthenticated = !!user;
@@ -258,6 +290,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     user,
     subscription,
     isLoading,
+    isAuthReady,
     isAuthenticated,
     hasTenant,
     isAdmin,

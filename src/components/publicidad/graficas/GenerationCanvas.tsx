@@ -3,7 +3,7 @@ import { Sparkles, Download, Eye, Copy, Image as ImageIcon, RefreshCw, AlertCirc
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import type { Generation } from '@/lib/publicidad/graficas/types';
-import { getGraphicTypeLabel } from '@/lib/publicidad/graficas/types';
+import { getGraphicFormatDisplayName } from '@/lib/publicidad/graficas/types';
 import { downloadImage } from '@/lib/publicidad/graficas/download-utils';
 import { GenerationDetails } from './GenerationDetails';
 import { CarouselResultView } from './CarouselResultView';
@@ -102,7 +102,7 @@ function ResultGrid({
 }) {
   const count = generation.resultUrls.length;
   const cfg = generation.config;
-  const tipoSlug = getGraphicTypeLabel(cfg.type).toLowerCase().replace(/\s+/g, '-');
+  const tipoSlug = getGraphicFormatDisplayName(cfg.type).toLowerCase().replace(/\s+/g, '-');
   const timestamp = new Date(generation.createdAt).getTime();
 
   const gridClass = cn(

@@ -2,10 +2,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { normalizeBrandIdentity } from '@/lib/publicidad/brand-identity/types';
 import type { CarouselSlide, GenerationConfig } from './types';
 import {
-  getGraphicTypeLabel,
-  GRAPHIC_TYPES,
+  getGraphicFormatAgentLabel,
+  isValidGraphicFormatId,
+} from './graphic-formats';
+import {
   MAX_REFERENCE_IMAGE_BYTES,
   getModelConfig,
+  getStylePayloadValue,
   VARIATIONS_MIN,
   VARIATIONS_MAX,
   CAROUSEL_SLIDES_MIN,
@@ -101,8 +104,13 @@ export function validateGenerationConfig(
     if (!config.carouselType || !CAROUSEL_TYPES.some(t => t.value === config.carouselType)) {
       return { ok: false, message: 'Seleccioná un tipo de carrusel.' };
     }
-  } else if (!config.type || !GRAPHIC_TYPES.some(t => t.value === config.type)) {
-    return { ok: false, message: 'Seleccioná un tipo de gráfica.' };
+  } else {
+    if (!config.type || !isValidGraphicFormatId(config.type)) {
+      return { ok: false, message: 'Seleccioná un tipo de gráfica.' };
+    }
+    if (config.objetivo !== 'educativa' && config.objetivo !== 'venta') {
+      return { ok: false, message: 'Seleccioná un objetivo.' };
+    }
   }
   if (!config.referenceImage) {
     return { ok: false, message: 'Falta subir una imagen de referencia.' };
@@ -179,11 +187,12 @@ function buildPayload(
 
   const payload: Record<string, unknown> = {
     marca: config.brand,
-    tipo_grafica: config.carouselMode ? 'Carrusel' : getGraphicTypeLabel(config.type),
+    tipo_grafica: config.carouselMode
+      ? 'Carrusel'
+      : getGraphicFormatAgentLabel(config.type),
     imagen_referencia_url: publicUrl,
     formato: config.format,
-    estilo: config.styles[0] ?? '',
-    componente_visual: config.componenteVisual,
+    estilo: getStylePayloadValue(config.styles),
     variaciones: config.variations,
     prompt: config.prompt.trim(),
     use_product_colors: config.useProductColors,
@@ -208,12 +217,17 @@ function buildPayload(
   if (config.carouselMode) {
     payload.carousel_slides = config.variations;
     payload.carousel_type = config.carouselType;
+    payload.componente_visual = config.componenteVisual;
+  } else {
+    payload.objetivo = config.objetivo;
   }
 
-  if (advanced.precioAhora?.trim()) {
+  const skipPrecios = !config.carouselMode && config.objetivo === 'educativa';
+
+  if (!skipPrecios && advanced.precioAhora?.trim()) {
     payload.precio_ahora = advanced.precioAhora.trim();
   }
-  if (advanced.precioAntes?.trim()) {
+  if (!skipPrecios && advanced.precioAntes?.trim()) {
     payload.precio_antes = advanced.precioAntes.trim();
   }
   if (advanced.ctaDestino) {

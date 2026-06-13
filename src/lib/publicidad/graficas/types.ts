@@ -1,12 +1,34 @@
+import {
+  DEFAULT_GRAPHIC_FORMAT_ID,
+  type GraphicFormatId,
+} from './graphic-formats';
+
+export type { GraphicFormatId } from './graphic-formats';
+export {
+  GRAPHIC_FORMATS,
+  getGraphicFormatById,
+  getGraphicFormatAgentLabel,
+  getGraphicFormatDisplayName,
+  isValidGraphicFormatId,
+  DEFAULT_GRAPHIC_FORMAT_ID,
+} from './graphic-formats';
+
 export type Brand = string;
 
-export type GraphicType = 'producto' | 'lifestyle' | 'testimonio' | 'antes-despues' | 'detalle' | 'promo' | 'ugc';
+export type Objetivo = 'educativa' | 'venta';
 
 export type CarouselType = 'Educativo' | 'Venta' | 'Storytelling';
 
 export type Format = '1:1' | '4:5' | '9:16' | '16:9';
 
-export type StyleOption = 'Minimalista' | 'Editorial' | 'Studio' | 'Outdoor' | 'Cinematográfico' | 'iPhone';
+export type StyleOption =
+  | 'Editorial'
+  | 'Minimalista'
+  | 'Studio'
+  | 'Outdoor'
+  | 'Cinematográfico'
+  | 'iPhone (UGC)'
+  | 'Libre';
 
 export type VisualComponentOption =
   | 'Iconografía wireframe'
@@ -29,7 +51,8 @@ export interface AdvancedConfig {
 
 export interface GenerationConfig {
   brand: Brand;
-  type: GraphicType;
+  type: GraphicFormatId;
+  objetivo: Objetivo;
   referenceImage: File | null;
   referenceImagePreview: string | null;
   useProductColors: boolean;
@@ -76,15 +99,7 @@ export const CAROUSEL_TYPES: { value: CarouselType; label: string; icon: string 
 
 export const DEFAULT_CAROUSEL_TYPE: CarouselType = 'Educativo';
 
-export const GRAPHIC_TYPES: { value: GraphicType; label: string; icon: string }[] = [
-  { value: 'producto', label: 'Producto', icon: 'Package' },
-  { value: 'lifestyle', label: 'Lifestyle', icon: 'Sun' },
-  { value: 'testimonio', label: 'Testimonio', icon: 'Quote' },
-  { value: 'antes-despues', label: 'Antes/Después', icon: 'ArrowLeftRight' },
-  { value: 'detalle', label: 'Detalle', icon: 'ZoomIn' },
-  { value: 'promo', label: 'Promo', icon: 'Tag' },
-  { value: 'ugc', label: 'UGC', icon: 'Smartphone' },
-];
+export const DEFAULT_OBJETIVO: Objetivo = 'venta';
 
 export const FORMATS: { value: Format; w: number; h: number }[] = [
   { value: '1:1', w: 1, h: 1 },
@@ -94,7 +109,13 @@ export const FORMATS: { value: Format; w: number; h: number }[] = [
 ];
 
 export const STYLE_OPTIONS: StyleOption[] = [
-  'Minimalista', 'Editorial', 'Studio', 'Outdoor', 'Cinematográfico', 'iPhone',
+  'Editorial',
+  'Minimalista',
+  'Studio',
+  'Outdoor',
+  'Cinematográfico',
+  'iPhone (UGC)',
+  'Libre',
 ];
 
 export const DEFAULT_VISUAL_COMPONENT: VisualComponentOption = 'Iconografía wireframe';
@@ -122,7 +143,8 @@ export const VISUAL_COMPONENT_OPTIONS: {
   {
     value: 'Esencia del producto',
     label: 'Esencia del producto',
-    description: 'Fotografía real de la materia prima o esencia del producto (planta, raíz, mineral, fruto). Puede incluir personas u objetos en escena, siempre ligados al ingrediente, nunca a la marca.',
+    description:
+      'Fotografía real de la materia prima o esencia del producto (planta, raíz, mineral, fruto). Puede incluir personas u objetos en escena, siempre ligados al ingrediente, nunca a la marca.',
   },
   {
     value: 'Datos / comparativa',
@@ -173,7 +195,8 @@ export const DEFAULT_CAROUSEL_SLIDES = 4;
 
 export const DEFAULT_CONFIG: GenerationConfig = {
   brand: '',
-  type: 'producto',
+  type: DEFAULT_GRAPHIC_FORMAT_ID,
+  objetivo: DEFAULT_OBJETIVO,
   referenceImage: null,
   referenceImagePreview: null,
   useProductColors: false,
@@ -187,16 +210,18 @@ export const DEFAULT_CONFIG: GenerationConfig = {
   prompt: '',
 };
 
-export function getGraphicTypeLabel(type: GraphicType): string {
-  return GRAPHIC_TYPES.find(t => t.value === type)?.label ?? type;
-}
-
 export function getModelConfig(model: ModelOption | string): ModelConfig {
   return MODEL_OPTIONS.find(m => m.value === model) ?? MODEL_OPTIONS[0];
 }
 
 export function getModelLabel(model: ModelOption | string): string {
   return getModelConfig(model).label;
+}
+
+export function getStylePayloadValue(styles: StyleOption[]): string {
+  const selected = styles[0];
+  if (!selected || selected === 'Libre') return 'libre';
+  return selected;
 }
 
 export function getVariationsRange(carouselMode: boolean) {

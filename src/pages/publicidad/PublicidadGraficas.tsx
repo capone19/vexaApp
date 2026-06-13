@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useGenerationStore } from '@/lib/publicidad/graficas/store';
 import { useBrandIdentities } from '@/hooks/use-brand-identities';
+import { useAdReferencesCleanup } from '@/hooks/use-ad-references-cleanup';
 import { GenerationControls } from '@/components/publicidad/graficas/GenerationControls';
 import { GenerationCanvas } from '@/components/publicidad/graficas/GenerationCanvas';
 import { PromptBar } from '@/components/publicidad/graficas/PromptBar';
@@ -19,6 +20,11 @@ export default function PublicidadGraficas() {
   } = useGenerationStore();
 
   const { brandNames, isLoading: brandsLoading } = useBrandIdentities();
+
+  useAdReferencesCleanup({
+    isGenerating,
+    hasActiveReference: config.referenceImage !== null,
+  });
 
   useEffect(() => {
     if (brandNames.length === 0) return;

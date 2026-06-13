@@ -12,13 +12,13 @@ import { isAdminEmail } from "@/lib/admin-config";
  * El onboarding es manual (setup_new_client en admin). Evita bucle /auth ↔ /.
  */
 export default function PendingAccount() {
-  const { isLoading, isAuthenticated, hasTenant, user } = useAuthContext();
+  const { isLoading, isAuthReady, isAuthenticated, hasTenant, user } = useAuthContext();
 
   useEffect(() => {
     document.title = "Cuenta pendiente | VEXA";
   }, []);
 
-  if (isLoading) {
+  if (isLoading || !isAuthReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

@@ -1,8 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import {
-  Package, Sun, Quote, ArrowLeftRight, ZoomIn, Tag, Smartphone,
-  GraduationCap, Film,
+  GraduationCap, Film, Tag,
   Upload, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -22,16 +21,14 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import type {
-  GenerationConfig, GraphicType, CarouselType, StyleOption, CtaDestino,
+  GenerationConfig, CarouselType, StyleOption, CtaDestino, Objetivo,
 } from '@/lib/publicidad/graficas/types';
+import type { GraphicFormatId } from '@/lib/publicidad/graficas/graphic-formats';
 import {
-  GRAPHIC_TYPES, CAROUSEL_TYPES, FORMATS, STYLE_OPTIONS, MODEL_OPTIONS,
+  CAROUSEL_TYPES, FORMATS, STYLE_OPTIONS, MODEL_OPTIONS,
   MAX_REFERENCE_IMAGE_BYTES, getVariationsRange, VISUAL_COMPONENT_OPTIONS,
 } from '@/lib/publicidad/graficas/types';
-
-const TYPE_ICONS: Record<string, React.ElementType> = {
-  Package, Sun, Quote, ArrowLeftRight, ZoomIn, Tag, Smartphone,
-};
+import { GraphicFormatGrid } from './GraphicFormatGrid';
 
 const CAROUSEL_TYPE_ICONS: Record<string, React.ElementType> = {
   GraduationCap, Tag, Film,
@@ -43,6 +40,11 @@ const CTA_DESTINO_OPTIONS: { value: CtaDestino; label: string }[] = [
   { value: 'web', label: 'Web' },
   { value: 'whatsapp', label: 'WhatsApp' },
   { value: 'interaccion', label: 'Interacción' },
+];
+
+const OBJETIVO_OPTIONS: { value: Objetivo; label: string }[] = [
+  { value: 'educativa', label: 'Educativa' },
+  { value: 'venta', label: 'Venta' },
 ];
 
 interface GenerationControlsProps {
@@ -84,6 +86,7 @@ export function GenerationControls({
 }: GenerationControlsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const lastVentaCtaRef = useRef<CtaDestino>(config.advanced.ctaDestino ?? 'web');
 
   const applyFile = useCallback((file: File) => {
     if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
@@ -134,13 +137,17 @@ export function GenerationControls({
     if (file) applyFile(file);
   }, [disabled, applyFile]);
 
-  const toggleStyle = useCallback((s: StyleOption) => {
+  const selectStyle = useCallback((s: StyleOption) => {
     if (disabled) return;
-    const next = config.styles.includes(s)
-      ? config.styles.filter(x => x !== s)
-      : [...config.styles, s];
-    onUpdate('styles', next);
+    if (s === 'Libre') {
+      onUpdate('styles', []);
+      return;
+    }
+    const isActive = config.styles[0] === s;
+    onUpdate('styles', isActive ? [] : [s]);
   }, [config.styles, disabled, onUpdate]);
+
+  const isLibreSelected = config.styles.length === 0 || config.styles[0] === 'Libre';
 
   const handleCarouselModeChange = useCallback((enabled: boolean) => {
     onUpdate('carouselMode', enabled);
@@ -152,7 +159,32 @@ export function GenerationControls({
     }
   }, [config.variations, onUpdate]);
 
+  const handleObjetivoChange = useCallback((objetivo: Objetivo) => {
+    onUpdate('objetivo', objetivo);
+    if (objetivo === 'educativa') {
+      if (config.advanced.ctaDestino !== 'interaccion') {
+        lastVentaCtaRef.current = config.advanced.ctaDestino ?? 'web';
+      }
+      onUpdate('advanced', { ...config.advanced, ctaDestino: 'interaccion' });
+    } else {
+      onUpdate('advanced', {
+        ...config.advanced,
+        ctaDestino: lastVentaCtaRef.current ?? 'web',
+      });
+    }
+  }, [config.advanced, onUpdate]);
+
+  const handleCtaDestinoChange = useCallback((ctaDestino: CtaDestino) => {
+    if (config.objetivo === 'venta') {
+      lastVentaCtaRef.current = ctaDestino;
+    }
+    onUpdate('advanced', { ...config.advanced, ctaDestino });
+  }, [config.advanced, config.objetivo, onUpdate]);
+
   const variationsRange = getVariationsRange(config.carouselMode);
+  const isEducativa = !config.carouselMode && config.objetivo === 'educativa';
+  const showCtaWarning = isEducativa
+    && (config.advanced.ctaDestino === 'web' || config.advanced.ctaDestino === 'whatsapp');
 
   const controlBtn = (active: boolean) => cn(
     'transition-all',
@@ -167,6 +199,15 @@ export function GenerationControls({
       'w-80 shrink-0 overflow-y-auto border-r border-border p-4 space-y-4 scrollbar-thin hidden lg:block',
       disabled && 'opacity-60 pointer-events-none',
     )}>
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-muted-foreground">
+          Generador de gráficas publicitarias
+        </p>
+        <p className="text-[10px] text-muted-foreground leading-snug">
+          Una gráfica estática para Instagram/Meta. Puede ser educativa (contenido de feed para enseñar y ganar guardados) o de venta (anuncio para convertir). Para carruseles, activa Modo Carrusel.
+        </p>
+      </div>
+
       <Section label="Marca">
         {brandsLoading ? (
           <div className="flex gap-2">
@@ -198,6 +239,30 @@ export function GenerationControls({
         )}
       </Section>
 
+      {!config.carouselMode && (
+        <Section
+          label="Objetivo"
+          sublabel="Define si la gráfica enseña (feed) o vende (anuncio)."
+        >
+          <div className="flex flex-wrap gap-2">
+            {OBJETIVO_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                disabled={disabled}
+                onClick={() => handleObjetivoChange(opt.value)}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs font-semibold border',
+                  controlBtn(config.objetivo === opt.value),
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </Section>
+      )}
+
       {config.carouselMode ? (
         <Section label="Tipo de carrusel">
           <div className="grid grid-cols-2 gap-2">
@@ -224,26 +289,11 @@ export function GenerationControls({
         </Section>
       ) : (
         <Section label="Tipo de gráfica">
-          <div className="grid grid-cols-2 gap-2">
-            {GRAPHIC_TYPES.map(t => {
-              const Icon = TYPE_ICONS[t.icon] ?? Package;
-              return (
-                <button
-                  key={t.value}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => onUpdate('type', t.value as GraphicType)}
-                  className={cn(
-                    'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border',
-                    controlBtn(config.type === t.value),
-                  )}
-                >
-                  <Icon className="h-3.5 w-3.5 shrink-0" />
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
+          <GraphicFormatGrid
+            selectedId={config.type}
+            disabled={disabled}
+            onSelect={(id: GraphicFormatId) => onUpdate('type', id)}
+          />
         </Section>
       )}
 
@@ -292,7 +342,7 @@ export function GenerationControls({
           </button>
         )}
 
-        <div className="flex items-start justify-between gap-3 pt-1">
+        <div className={cn('flex items-start justify-between gap-3 pt-1', isEducativa && 'opacity-60')}>
           <div className="space-y-0.5">
             <Label
               htmlFor="use-product-colors"
@@ -301,7 +351,9 @@ export function GenerationControls({
               Usar colores del producto
             </Label>
             <p className="text-[10px] text-muted-foreground leading-snug">
-              El acento se deriva de la foto en vez de la paleta de marca
+              {isEducativa
+                ? 'En modo educativo se usa el color de marca.'
+                : 'El acento se deriva de la foto en vez de la paleta de marca'}
             </p>
           </div>
           <Switch
@@ -348,54 +400,59 @@ export function GenerationControls({
 
       <Section label="Estilo (opcional)">
         <div className="flex flex-wrap gap-2">
-          {STYLE_OPTIONS.map(s => (
-            <button
-              key={s}
-              type="button"
-              disabled={disabled}
-              onClick={() => toggleStyle(s)}
-              className={cn(
-                'px-2.5 py-1 rounded-md text-xs font-medium border',
-                config.styles.includes(s)
-                  ? 'bg-primary/15 border-primary/50 text-primary'
-                  : controlBtn(false),
-              )}
-            >
-              {s}
-            </button>
-          ))}
+          {STYLE_OPTIONS.map(s => {
+            const isActive = s === 'Libre' ? isLibreSelected : config.styles[0] === s;
+            return (
+              <button
+                key={s}
+                type="button"
+                disabled={disabled}
+                onClick={() => selectStyle(s)}
+                className={cn(
+                  'px-2.5 py-1 rounded-md text-xs font-medium border',
+                  isActive
+                    ? 'bg-primary/15 border-primary/50 text-primary'
+                    : controlBtn(false),
+                )}
+              >
+                {s}
+              </button>
+            );
+          })}
         </div>
       </Section>
 
-      <Section
-        label="Componente visual"
-        sublabel="Define el tipo de imágenes que acompañan la gráfica"
-      >
-        <div className="flex flex-wrap gap-2">
-          {VISUAL_COMPONENT_OPTIONS.map(opt => (
-            <Tooltip key={opt.value}>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => onUpdate('componenteVisual', opt.value)}
-                  className={cn(
-                    'px-2.5 py-1 rounded-md text-xs font-medium border',
-                    config.componenteVisual === opt.value
-                      ? 'bg-primary/15 border-primary/50 text-primary'
-                      : controlBtn(false),
-                  )}
-                >
-                  {opt.label}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-xs text-xs">
-                {opt.description}
-              </TooltipContent>
-            </Tooltip>
-          ))}
-        </div>
-      </Section>
+      {config.carouselMode && (
+        <Section
+          label="Componente visual"
+          sublabel="Define el tipo de imágenes que acompañan la gráfica"
+        >
+          <div className="flex flex-wrap gap-2">
+            {VISUAL_COMPONENT_OPTIONS.map(opt => (
+              <Tooltip key={opt.value}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => onUpdate('componenteVisual', opt.value)}
+                    className={cn(
+                      'px-2.5 py-1 rounded-md text-xs font-medium border',
+                      config.componenteVisual === opt.value
+                        ? 'bg-primary/15 border-primary/50 text-primary'
+                        : controlBtn(false),
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs text-xs">
+                  {opt.description}
+                </TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        </Section>
+      )}
 
       <div className="rounded-xl bg-white/[0.02] border border-primary/10 p-4">
         <div className="flex items-start justify-between gap-3">
@@ -443,7 +500,7 @@ export function GenerationControls({
             Avanzado
           </AccordionTrigger>
           <AccordionContent className="rounded-b-xl bg-white/[0.02] border border-t-0 border-primary/10 px-4 pb-4 pt-2 space-y-4">
-            <div className="space-y-1.5">
+            <div className={cn('space-y-1.5', isEducativa && 'opacity-50')}>
               <Label className="text-xs uppercase tracking-wider text-muted-foreground">
                 Precio actual (opcional)
               </Label>
@@ -454,15 +511,17 @@ export function GenerationControls({
                   precioAhora: e.target.value || undefined,
                 })}
                 placeholder="Ej: $29.990"
-                disabled={disabled}
+                disabled={disabled || isEducativa}
                 className="h-8 text-xs bg-secondary border-transparent focus:border-primary/50"
               />
               <p className="text-[10px] text-muted-foreground">
-                Se mostrará destacado en la gráfica si se usa el concepto Promo.
+                {isEducativa
+                  ? 'Las gráficas educativas no usan precio.'
+                  : 'Se mostrará destacado en la gráfica si se usa el concepto Promo.'}
               </p>
             </div>
 
-            <div className="space-y-1.5">
+            <div className={cn('space-y-1.5', isEducativa && 'opacity-50')}>
               <Label className="text-xs uppercase tracking-wider text-muted-foreground">
                 Precio anterior (opcional)
               </Label>
@@ -473,11 +532,13 @@ export function GenerationControls({
                   precioAntes: e.target.value || undefined,
                 })}
                 placeholder="Ej: $36.980"
-                disabled={disabled}
+                disabled={disabled || isEducativa}
                 className="h-8 text-xs bg-secondary border-transparent focus:border-primary/50"
               />
               <p className="text-[10px] text-muted-foreground">
-                Se mostrará tachado al lado del precio actual.
+                {isEducativa
+                  ? 'Las gráficas educativas no usan precio.'
+                  : 'Se mostrará tachado al lado del precio actual.'}
               </p>
             </div>
 
@@ -491,7 +552,7 @@ export function GenerationControls({
                     key={opt.value}
                     type="button"
                     disabled={disabled}
-                    onClick={() => onUpdate('advanced', { ...config.advanced, ctaDestino: opt.value })}
+                    onClick={() => handleCtaDestinoChange(opt.value)}
                     className={cn(
                       'flex-1 py-1.5 rounded-lg text-xs font-medium border',
                       controlBtn((config.advanced.ctaDestino ?? 'web') === opt.value),
@@ -501,7 +562,12 @@ export function GenerationControls({
                   </button>
                 ))}
               </div>
-              {config.advanced.ctaDestino === 'interaccion' && (
+              {showCtaWarning && (
+                <p className="text-[10px] text-amber-400/80 leading-snug">
+                  Las gráficas educativas suelen usar CTA de Interacción para engagement.
+                </p>
+              )}
+              {config.advanced.ctaDestino === 'interaccion' && !isEducativa && (
                 <p className="text-[10px] text-muted-foreground leading-snug">
                   El slide final pedirá guardar, comentar o compartir el post — sin CTA de compra. Ideal para carruseles educativos.
                 </p>

@@ -428,7 +428,7 @@ export function useDashboardMetrics({
     queryFn: () => fetchDashboardMetrics(tenantId!, startDate, endDate, queryClient),
     enabled: !!tenantId,
     staleTime: DASH_COUNT_STALE_MS,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
     refetchOnMount: true,
   });
 

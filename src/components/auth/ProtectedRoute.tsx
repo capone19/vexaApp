@@ -8,12 +8,12 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isLoading, isAuthenticated, hasTenant, isAdmin } = useAuthContext();
+  const { isLoading, isAuthReady, isAuthenticated, hasTenant, isAdmin } = useAuthContext();
   const { isImpersonating } = useImpersonation();
   const location = useLocation();
 
-  // Mostrar loader solo durante la carga inicial
-  if (isLoading) {
+  // Mostrar loader mientras auth/tenant aún se resuelve
+  if (isLoading || !isAuthReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -26,8 +26,8 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
-  // Sin tenant: no enviar a /auth (hay sesión → bucle con redirect de Auth). Página dedicada.
-  if (!hasTenant && (!isAdmin || !isImpersonating)) {
+  // Sin tenant: solo redirigir cuando la comprobación de auth terminó
+  if (isAuthReady && !hasTenant && (!isAdmin || !isImpersonating)) {
     return <Navigate to="/cuenta-pendiente" replace />;
   }
 

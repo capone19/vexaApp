@@ -15,7 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { Generation } from '@/lib/publicidad/graficas/types';
-import { getGraphicTypeLabel } from '@/lib/publicidad/graficas/types';
+import { getGraphicFormatDisplayName } from '@/lib/publicidad/graficas/types';
 
 interface GenerationDetailsProps {
   generation: Generation;
@@ -101,7 +101,14 @@ export function GenerationDetails({ generation }: GenerationDetailsProps) {
           <span className="text-foreground">
             {isCarousel ? 'Tipo de carrusel' : 'Tipo'}:
           </span>{' '}
-          {isCarousel ? cfg.carouselType : getGraphicTypeLabel(cfg.type)}
+          {isCarousel ? cfg.carouselType : getGraphicFormatDisplayName(cfg.type)}
+          {cfg.objetivo && !isCarousel && (
+            <>
+              {' · '}
+              <span className="text-foreground">Objetivo:</span>{' '}
+              {cfg.objetivo === 'educativa' ? 'Educativa' : 'Venta'}
+            </>
+          )}
           {' · '}
           <span className="text-foreground">Formato:</span> {cfg.format}
           {' · '}
