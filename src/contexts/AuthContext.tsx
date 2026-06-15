@@ -41,9 +41,6 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const TENANT_RESOLVE_ATTEMPTS = 3;
-const TENANT_RESOLVE_ATTEMPT_TIMEOUT_MS = 3000;
-const TENANT_RESOLVE_RETRY_DELAY_MS = 400;
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -69,23 +66,6 @@ function buildUserFromSession(
   };
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<null>(resolve => {
-        timeoutId = setTimeout(() => resolve(null), ms);
-      }),
-    ]);
-  } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
-  }
-}
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
@@ -98,97 +78,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const initialSessionHandled = useRef(false);
 
   const resolveUser = useCallback(async (session: { user: SupaUser } | null): Promise<User | null> => {
-    if (!session?.user) {
-      return null;
-    }
-
+    if (!session?.user) return null;
     const supaUser = session.user;
 
-    const { data: tenantIdFromRpc, error: tenantErr } = await supabase.rpc('get_user_tenant_id');
-    if (tenantErr) {
-      console.warn('[AuthContext] get_user_tenant_id error:', tenantErr, 'user_id:', supaUser.id);
-    } else if (import.meta.env.DEV) {
-      console.log('[AuthContext] get_user_tenant_id:', tenantIdFromRpc ?? null, 'user_id:', supaUser.id);
+    const { data: userRole, error } = await supabase
+      .from('user_roles')
+      .select('tenant_id, role')
+      .eq('user_id', supaUser.id)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') {
+      console.warn('[AuthContext] user_roles fetch error:', error);
     }
 
-    let tenantId = tenantIdFromRpc ?? null;
-    let role = 'viewer';
-
-    if (tenantId) {
-      const { data: userRole, error: roleErr } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', supaUser.id)
-        .eq('tenant_id', tenantId)
-        .maybeSingle();
-
-      if (roleErr) {
-        console.warn('[AuthContext] user_roles role fetch error:', roleErr);
-      }
-      if (userRole?.role) {
-        role = userRole.role;
-      }
-    } else {
-      const { data: userRole, error: roleErr } = await supabase
-        .from('user_roles')
-        .select('tenant_id, role')
-        .eq('user_id', supaUser.id)
-        .maybeSingle();
-
-      if (roleErr && roleErr.code !== 'PGRST116') {
-        console.warn('[AuthContext] user_roles fallback fetch error:', roleErr);
-      }
-      if (userRole?.tenant_id) {
-        tenantId = userRole.tenant_id;
-        role = userRole.role || 'viewer';
-      }
-    }
-
-    return buildUserFromSession(supaUser, tenantId, role);
+    return buildUserFromSession(supaUser, userRole?.tenant_id ?? null, userRole?.role ?? 'viewer');
   }, []);
-
-  const resolveUserWithRetry = useCallback(
-    async (session: { user: SupaUser } | null): Promise<User | null> => {
-      if (!session?.user) return null;
-
-      let lastResolved: User | null = null;
-
-      for (let attempt = 0; attempt < TENANT_RESOLVE_ATTEMPTS; attempt++) {
-        const resolved = await withTimeout(
-          resolveUser(session),
-          TENANT_RESOLVE_ATTEMPT_TIMEOUT_MS
-        );
-
-        if (resolved?.tenantId) {
-          return resolved;
-        }
-
-        if (resolved) {
-          lastResolved = resolved;
-        }
-
-        if (import.meta.env.DEV) {
-          console.warn(
-            '[AuthContext] tenant resolve attempt',
-            attempt + 1,
-            'sin tenantId, user_id:',
-            session.user.id
-          );
-        }
-
-        if (attempt < TENANT_RESOLVE_ATTEMPTS - 1) {
-          await delay(TENANT_RESOLVE_RETRY_DELAY_MS);
-        }
-      }
-
-      if (import.meta.env.DEV) {
-        console.warn('[AuthContext] tenant resolve agotó reintentos, user_id:', session.user.id);
-      }
-
-      return lastResolved ?? buildUserFromSession(session.user);
-    },
-    [resolveUser]
-  );
 
   const fetchSubscription = useCallback(async (tenantId: string | null) => {
     if (!tenantId) {
@@ -229,7 +133,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       void (async () => {
         setIsTenantResolving(true);
         try {
-          const resolved = await resolveUserWithRetry(session);
+          const resolved = await resolveUser(session);
           if (!resolved) return;
           applyUser(resolved);
           if (resolved.tenantId) {
@@ -240,7 +144,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
       })();
     },
-    [resolveUserWithRetry, applyUser, fetchSubscription]
+    [resolveUser, applyUser, fetchSubscription]
   );
 
   const refetchUser = useCallback(async (): Promise<boolean> => {
@@ -251,7 +155,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return false;
       }
       setIsTenantResolving(true);
-      const resolvedUser = await resolveUserWithRetry(session);
+      const resolvedUser = await resolveUser(session);
       applyUser(resolvedUser);
       if (resolvedUser?.tenantId) {
         void fetchSubscription(resolvedUser.tenantId);
@@ -264,7 +168,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } finally {
       setIsTenantResolving(false);
     }
-  }, [resolveUserWithRetry, applyUser, fetchSubscription]);
+  }, [resolveUser, applyUser, fetchSubscription]);
 
   const refetchSubscription = useCallback(async () => {
     if (user?.tenantId) {
@@ -293,6 +197,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
           setSubscription(null);
           setIsTenantResolving(false);
         } else if (event === 'SIGNED_IN') {
+          // Login fresco: mostrar usuario sin tenantId de inmediato para navegar rápido,
+          // resolver el tenant en background (no bloquea navegación)
           if (session?.user) {
             applyUser(buildUserFromSession(session.user));
             resolveTenantInBackground(session);
@@ -305,8 +211,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
           if (!session?.user) {
             applyUser(null);
           } else {
+            // Sesión guardada: resolver tenant ANTES de marcar ready para que
+            // el dashboard ya tenga tenantId al llegar y cargue de inmediato
             applyUser(buildUserFromSession(session.user));
-            resolveTenantInBackground(session);
+            const resolved = await resolveUser(session);
+            if (resolved) {
+              applyUser(resolved);
+              if (resolved.tenantId) void fetchSubscription(resolved.tenantId);
+            }
           }
         }
       } catch (error) {
@@ -339,7 +251,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return () => {
       authSubscription.unsubscribe();
     };
-  }, [applyUser, resolveTenantInBackground]);
+  }, [applyUser, resolveUser, fetchSubscription, resolveTenantInBackground]);
 
   const isAuthenticated = !!user;
   const hasTenant = !!user?.tenantId;

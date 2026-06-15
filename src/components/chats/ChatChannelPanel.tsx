@@ -299,7 +299,6 @@ export function ChatChannelPanel({
     setSessionWindowDays(7);
   }, [selectedSessionId]);
 
-  // List hook: últimas 2000 filas para previews en la barra lateral
   const {
     messages: listMessages,
     isLoading: listLoading,
@@ -309,6 +308,7 @@ export function ChatChannelPanel({
     tenantId: chatTenantId,
     sinceList: listSinceDate,
     skipDateFilter: channelConfig.skipListDateFilter,
+    limit: channelConfig.listFetchLimit,
     enableRealtime: true,
   });
 
@@ -786,29 +786,28 @@ export function ChatChannelPanel({
     const sessionMap = new Map<string, ChatSession>();
 
     listMessages.forEach(msg => {
-      if (!hasDisplayableContent(msg, channelConfig.supportsMedia)) return;
-
       const existing = sessionMap.get(msg.session_id);
       const msgDate = new Date(msg.created_at);
-      
+      const hasContent = hasDisplayableContent(msg, channelConfig.supportsMedia);
       const contactDisplay = channelConfig.getContactDisplay(msg, msg.session_id);
-      const phoneNumber = contactDisplay;
-      const displayContent = getDisplayContent(msg, channelConfig.supportsMedia);
-      
+      const displayContent = hasContent ? getDisplayContent(msg, channelConfig.supportsMedia) : '';
+
       if (!existing) {
         sessionMap.set(msg.session_id, {
           sessionId: msg.session_id,
-          phoneNumber,
+          phoneNumber: contactDisplay,
           lastMessage: displayContent,
           lastMessageAt: msgDate,
-          messageCount: 1,
+          messageCount: hasContent ? 1 : 0,
           contactName: contactDisplay,
-          intentLabel: getIntentLabel(1),
+          intentLabel: getIntentLabel(hasContent ? 1 : 0),
           botEnabled: botStates[msg.session_id] ?? true,
         });
       } else {
-        existing.messageCount++;
-        existing.intentLabel = getIntentLabel(existing.messageCount);
+        if (hasContent) {
+          existing.messageCount++;
+          existing.intentLabel = getIntentLabel(existing.messageCount);
+        }
         existing.botEnabled = botStates[msg.session_id] ?? true;
         if (channel === 'whatsapp' && 'phone_number' in msg && msg.phone_number && existing.phoneNumber === existing.sessionId) {
           existing.phoneNumber = contactDisplay;
@@ -821,7 +820,8 @@ export function ChatChannelPanel({
         }
         if (msgDate > existing.lastMessageAt) {
           existing.lastMessageAt = msgDate;
-          existing.lastMessage = displayContent;
+          // Solo actualizar el preview si el mensaje más reciente tiene texto
+          if (hasContent) existing.lastMessage = displayContent;
           if (channel === 'instagram' && 'username' in msg && msg.username) {
             const updated = channelConfig.getContactDisplay(msg, msg.session_id);
             existing.contactName = updated;
@@ -830,7 +830,7 @@ export function ChatChannelPanel({
         }
       }
     });
-    
+
     return Array.from(sessionMap.values()).sort(
       (a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime()
     );
@@ -1105,7 +1105,7 @@ export function ChatChannelPanel({
             <div
               key={session.sessionId}
               className={cn(
-                "flex items-start gap-2 w-full p-4 text-left border-b border-border transition-colors group",
+                "flex items-start gap-2 w-full p-4 text-left border-b border-border transition-colors group overflow-hidden",
                 "hover:bg-secondary/50",
                 selectedSessionId === session.sessionId && !remarketingMode && "bg-secondary",
                 remarketingMode && selectedForRemarketing.has(session.sessionId) && "bg-primary/10"
@@ -1119,7 +1119,7 @@ export function ChatChannelPanel({
                     setSelectedSessionId(session.sessionId);
                   }
                 }}
-                className="flex flex-1 min-w-0 items-start gap-3 text-left"
+                className="flex flex-1 min-w-0 items-start gap-3 text-left overflow-hidden"
               >
                 {remarketingMode ? (
                   <div className="w-10 h-10 rounded-md border-2 flex items-center justify-center shrink-0 cursor-pointer transition-colors"
@@ -1138,8 +1138,8 @@ export function ChatChannelPanel({
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1 gap-2">
-                    <span className="font-medium text-sm text-foreground truncate">
+                  <div className="flex items-center justify-between mb-1 gap-2 overflow-hidden">
+                    <span className="font-medium text-sm text-foreground truncate min-w-0">
                       {channelConfig.getListPrimaryLabel(session)}
                     </span>
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -1163,7 +1163,7 @@ export function ChatChannelPanel({
                       </span>
                     </div>
                   </div>
-                  <p className="text-xs text-muted-foreground line-clamp-1 mb-2">
+                  <p className="text-xs text-muted-foreground line-clamp-1 mb-2 break-all">
                     {session.lastMessage || "Sin mensajes"}
                   </p>
                   <div className="flex flex-wrap gap-1">
@@ -1214,7 +1214,7 @@ export function ChatChannelPanel({
           <div className="p-3 border-t border-border space-y-1.5">
             {channelConfig.skipListDateFilter ? (
               <p className="text-xs text-center text-muted-foreground">
-                Mostrando las últimas 2000 filas del tenant
+                Mostrando las últimas {channelConfig.listFetchLimit.toLocaleString()} filas del tenant
               </p>
             ) : historyWindowDays >= MAX_HISTORY_DAYS ? (
               <p className="text-xs text-center text-muted-foreground">

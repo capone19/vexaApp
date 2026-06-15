@@ -20,9 +20,11 @@ export function parseMessageField(raw: unknown): ParsedChatMessage | null {
 
   if (typeof parsed !== 'object' || parsed === null) return null;
 
-  const m = parsed as { type?: unknown; content?: unknown };
+  const m = parsed as { type?: unknown; content?: unknown; text?: unknown };
+  // Intentar 'content' primero, luego 'text' como fallback (algunos formatos de Instagram usan 'text')
+  const rawContent = m.content ?? m.text ?? null;
   const content =
-    m.content != null && String(m.content).trim() !== '' ? String(m.content) : null;
+    rawContent != null && String(rawContent).trim() !== '' ? String(rawContent) : null;
   const type = String(m.type ?? 'unknown').toLowerCase();
 
   return { type, content };

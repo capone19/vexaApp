@@ -13,8 +13,10 @@ export interface ChatChannelConfig {
   emptyStateHint: string;
   /** Días iniciales en la lista lateral */
   defaultListHistoryDays: number;
-  /** Si true, la lista no filtra por fecha (solo limit 2000 más recientes) */
+  /** Si true, la lista no filtra por fecha (usa listFetchLimit como único tope) */
   skipListDateFilter: boolean;
+  /** Máximo de filas a traer en la lista lateral */
+  listFetchLimit: number;
   getContactDisplay: (msg: ExternalChatMessage, sessionId: string) => string;
   getListPrimaryLabel: (session: { contactName: string; phoneNumber: string }) => string;
 }
@@ -39,6 +41,7 @@ export const CHAT_CHANNELS: Record<ChatChannelId, ChatChannelConfig> = {
     emptyStateHint: 'Cuando tus clientes envíen mensajes por WhatsApp, aparecerán aquí en tiempo real.',
     defaultListHistoryDays: 7,
     skipListDateFilter: false,
+    listFetchLimit: 2000,
     getContactDisplay: (msg, sessionId) => {
       if ('phone_number' in msg && msg.phone_number) {
         const phone = msg.phone_number;
@@ -58,8 +61,9 @@ export const CHAT_CHANNELS: Record<ChatChannelId, ChatChannelConfig> = {
     supportsRemarketing: false,
     supportsAttachments: false,
     emptyStateHint: 'Cuando tus clientes envíen mensajes por Instagram, aparecerán aquí en tiempo real.',
-    defaultListHistoryDays: 90,
-    skipListDateFilter: true,
+    defaultListHistoryDays: 7,
+    skipListDateFilter: false,
+    listFetchLimit: 2000,
     getContactDisplay: (msg, sessionId) => {
       if ('username' in msg) {
         return formatInstagramUsername(msg.username, sessionId);

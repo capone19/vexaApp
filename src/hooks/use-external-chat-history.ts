@@ -7,7 +7,6 @@ import {
 import { useChatRealtimeSync } from '@/hooks/use-chat-realtime-sync';
 import { parseMessageField } from '@/lib/chat-message-utils';
 
-const LIST_FETCH_LIMIT = 2000;
 const isDev = import.meta.env.DEV;
 
 function deduplicateMessages(messages: ExternalChatMessage[]): ExternalChatMessage[] {
@@ -53,13 +52,15 @@ export interface UseExternalChatListOptions {
   table: ExternalChatTable;
   tenantId?: string;
   sinceList?: Date;
-  /** Si true, ignora sinceList y trae las últimas LIST_FETCH_LIMIT filas del tenant */
+  /** Si true, ignora sinceList y trae las últimas `limit` filas del tenant */
   skipDateFilter?: boolean;
+  /** Máximo de filas a traer (default 2000) */
+  limit?: number;
   enableRealtime?: boolean;
 }
 
 export function useExternalChatList(options: UseExternalChatListOptions) {
-  const { table, tenantId, sinceList, skipDateFilter = false, enableRealtime = true } = options;
+  const { table, tenantId, sinceList, skipDateFilter = false, limit = 2000, enableRealtime = true } = options;
   const sinceListMs = sinceList?.getTime();
 
   const [messages, setMessages] = useState<ExternalChatMessage[]>([]);
@@ -90,7 +91,7 @@ export function useExternalChatList(options: UseExternalChatListOptions) {
         .select('*')
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false })
-        .limit(LIST_FETCH_LIMIT);
+        .limit(limit);
 
       if (!skipDateFilter && sinceListMs != null) {
         q = q.gte('created_at', new Date(sinceListMs).toISOString());

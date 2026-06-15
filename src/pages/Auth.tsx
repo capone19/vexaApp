@@ -39,14 +39,14 @@ function translateAuthError(error: string): string {
 function getReturnPathFromState(state: unknown): string | null {
   const from = (state as { from?: Location } | null)?.from;
   if (!from?.pathname) return null;
-  if (from.pathname === "/auth" || from.pathname === "/cuenta-pendiente") return null;
+  if (from.pathname === "/auth") return null;
   return `${from.pathname}${from.search ?? ""}${from.hash ?? ""}`;
 }
 
 export default function Auth() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, isLoading: authIsLoading, isAuthReady, isTenantResolving, user, refetchUser } = useAuthContext();
+  const { isAuthenticated, isLoading: authIsLoading, isAuthReady, user } = useAuthContext();
   const [mode, setMode] = useState<AuthMode>("login");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -85,7 +85,7 @@ export default function Auth() {
   // AuthContext terminara de resolver el usuario, causando que ProtectedRoute
   // redirigiera de vuelta a /auth por ver user=null con isLoading=false.
   useEffect(() => {
-    if (authIsLoading || !isAuthReady || isTenantResolving) return;
+    if (authIsLoading || !isAuthReady) return;
     if (!isAuthenticated || !user) return;
 
     clearLoginTimeout();
@@ -96,17 +96,12 @@ export default function Auth() {
       navigate("/admin", { replace: true });
       return;
     }
-    if (!user.tenantId) {
-      navigate("/cuenta-pendiente", { replace: true });
-      return;
-    }
-
     if (returnTo) {
       navigate(returnTo, { replace: true });
     } else {
       navigate("/", { replace: true });
     }
-  }, [authIsLoading, isAuthReady, isTenantResolving, isAuthenticated, user, navigate, location.state]);
+  }, [authIsLoading, isAuthReady, isAuthenticated, user, navigate, location.state]);
 
   useEffect(() => () => clearLoginTimeout(), []);
 
@@ -124,12 +119,7 @@ export default function Auth() {
 
         if (result.success) {
           toast.success("¡Bienvenido de vuelta!");
-          clearLoginTimeout();
-          loginTimeoutRef.current = setTimeout(() => {
-            setIsLoading(false);
-            toast.error("No se pudo verificar tu cuenta. Reintentá.");
-          }, 6000);
-          void refetchUser();
+          // onAuthStateChange dispara SIGNED_IN y maneja todo — no se necesita nada más aquí
         } else {
           toast.error(translateAuthError(result.error || "Error al iniciar sesión"));
           setIsLoading(false);
