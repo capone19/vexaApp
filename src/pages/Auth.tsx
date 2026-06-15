@@ -46,7 +46,7 @@ function getReturnPathFromState(state: unknown): string | null {
 export default function Auth() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, isLoading: authIsLoading, isAuthReady, user, refetchUser } = useAuthContext();
+  const { isAuthenticated, isLoading: authIsLoading, isAuthReady, isTenantResolving, user, refetchUser } = useAuthContext();
   const [mode, setMode] = useState<AuthMode>("login");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -85,7 +85,7 @@ export default function Auth() {
   // AuthContext terminara de resolver el usuario, causando que ProtectedRoute
   // redirigiera de vuelta a /auth por ver user=null con isLoading=false.
   useEffect(() => {
-    if (authIsLoading || !isAuthReady) return;
+    if (authIsLoading || !isAuthReady || isTenantResolving) return;
     if (!isAuthenticated || !user) return;
 
     clearLoginTimeout();
@@ -106,7 +106,7 @@ export default function Auth() {
     } else {
       navigate("/", { replace: true });
     }
-  }, [authIsLoading, isAuthReady, isAuthenticated, user, navigate, location.state]);
+  }, [authIsLoading, isAuthReady, isTenantResolving, isAuthenticated, user, navigate, location.state]);
 
   useEffect(() => () => clearLoginTimeout(), []);
 

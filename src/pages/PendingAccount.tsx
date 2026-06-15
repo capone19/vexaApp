@@ -8,15 +8,23 @@ import { Loader2, Mail, RefreshCw } from "lucide-react";
 import { isAdminEmail } from "@/lib/admin-config";
 import { cn } from "@/lib/utils";
 
-const MAX_AUTO_REFETCH_ATTEMPTS = 2;
-const REFETCH_DELAY_MS = 500;
+const MAX_AUTO_REFETCH_ATTEMPTS = 4;
+const REFETCH_DELAY_MS = 800;
 
 /**
  * Usuario autenticado en Supabase pero sin fila en user_roles / tenant.
  * El onboarding es manual (setup_new_client en admin). Evita bucle /auth ↔ /.
  */
 export default function PendingAccount() {
-  const { isLoading, isAuthReady, isAuthenticated, hasTenant, user, refetchUser } = useAuthContext();
+  const {
+    isLoading,
+    isAuthReady,
+    isTenantResolving,
+    isAuthenticated,
+    hasTenant,
+    user,
+    refetchUser,
+  } = useAuthContext();
   const [isRefetching, setIsRefetching] = useState(false);
   const autoRefetchDoneRef = useRef(false);
 
@@ -34,7 +42,13 @@ export default function PendingAccount() {
   }, [refetchUser]);
 
   useEffect(() => {
-    if (!isAuthReady || !isAuthenticated || user?.tenantId || autoRefetchDoneRef.current) {
+    if (
+      !isAuthReady ||
+      isTenantResolving ||
+      !isAuthenticated ||
+      user?.tenantId ||
+      autoRefetchDoneRef.current
+    ) {
       return;
     }
 
@@ -51,9 +65,9 @@ export default function PendingAccount() {
     };
 
     void runAutoRefetch();
-  }, [isAuthReady, isAuthenticated, user?.tenantId, runRefetch]);
+  }, [isAuthReady, isTenantResolving, isAuthenticated, user?.tenantId, runRefetch]);
 
-  if (isLoading || !isAuthReady || isRefetching) {
+  if (isLoading || !isAuthReady || isTenantResolving || isRefetching) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

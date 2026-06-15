@@ -97,11 +97,16 @@ serve(async (req) => {
       }
     }
 
+    const source = (payload.source as string) || "human_agent";
+    const isInstagram = source === "instagram";
+
     console.log(
       "[human-message-proxy] Forwarding message for session:",
       payload.session_id,
       "tenant:",
-      tenantId || "none"
+      tenantId || "none",
+      "channel:",
+      isInstagram ? "instagram" : "whatsapp"
     );
 
     // Determinar el webhook URL basado en el tenant
@@ -110,20 +115,35 @@ serve(async (req) => {
     if (tenantId && supabaseUrl && supabaseServiceKey) {
       const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-      // Buscar webhook específico para este tenant
-      const { data: webhookConfig, error: webhookError } = await supabase
+      const webhookType = isInstagram ? "instagram_human_message" : "human_message";
+
+      let { data: webhookConfig, error: webhookError } = await supabase
         .from("tenant_webhooks")
         .select("webhook_url")
         .eq("tenant_id", tenantId)
-        .eq("webhook_type", "human_message")
+        .eq("webhook_type", webhookType)
         .eq("is_active", true)
         .single();
 
       if (webhookError) {
         console.log(
-          "[human-message-proxy] No specific webhook found for tenant, using default:",
+          "[human-message-proxy] No specific webhook found for tenant, trying fallback:",
           webhookError.message
         );
+
+        if (isInstagram) {
+          const { data: fallbackConfig } = await supabase
+            .from("tenant_webhooks")
+            .select("webhook_url")
+            .eq("tenant_id", tenantId)
+            .eq("webhook_type", "human_message")
+            .eq("is_active", true)
+            .single();
+          if (fallbackConfig?.webhook_url) {
+            webhookConfig = fallbackConfig;
+            webhookError = null;
+          }
+        }
       }
 
       if (webhookConfig?.webhook_url) {
@@ -138,20 +158,23 @@ serve(async (req) => {
     const normalizedUrl = normalizeWebhookUrl(webhookUrl);
     console.log("[human-message-proxy] Final webhook URL:", normalizedUrl);
 
-    // Extraer phone_number del session_id (ej: "56954297315@s.whatsapp.net" -> "56954297315")
     const sessionId = (payload.session_id as string) || "";
     const phoneNumber = sessionId.split("@")[0] || sessionId;
+    const username =
+      typeof payload.username === "string" && payload.username.trim()
+        ? payload.username.trim().replace(/^@/, "")
+        : null;
 
-    // Construir payload para n8n - NO enviar type de media en top-level
-    // para que n8n lo procese como mensaje de agente (source: human_agent)
     const fullPayload: Record<string, unknown> = {
       message: payload.message,
       type: payload.type || "text",
       session_id: sessionId,
       sessionId: sessionId,
-      phone_number: phoneNumber,
+      phone_number: isInstagram ? null : phoneNumber,
+      username: isInstagram ? username : null,
       tenant_id: payload.tenant_id || null,
-      source: payload.source || "human_agent",
+      source,
+      channel: isInstagram ? "instagram" : "whatsapp",
       timestamp: payload.timestamp || new Date().toISOString(),
       webhookUrl: normalizedUrl,
       executionMode: "production",

@@ -30,6 +30,7 @@ interface AuthContextValue {
   subscription: Subscription | null;
   isLoading: boolean;
   isAuthReady: boolean;
+  isTenantResolving: boolean;
   isAuthenticated: boolean;
   hasTenant: boolean;
   isAdmin: boolean;
@@ -40,7 +41,9 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const TENANT_RESOLVE_TIMEOUT_MS = 4000;
+const TENANT_RESOLVE_ATTEMPTS = 3;
+const TENANT_RESOLVE_ATTEMPT_TIMEOUT_MS = 3000;
+const TENANT_RESOLVE_RETRY_DELAY_MS = 400;
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -66,6 +69,10 @@ function buildUserFromSession(
   };
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -87,6 +94,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isTenantResolving, setIsTenantResolving] = useState(false);
   const initialSessionHandled = useRef(false);
 
   const resolveUser = useCallback(async (session: { user: SupaUser } | null): Promise<User | null> => {
@@ -98,7 +106,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const { data: tenantIdFromRpc, error: tenantErr } = await supabase.rpc('get_user_tenant_id');
     if (tenantErr) {
-      console.warn('[AuthContext] get_user_tenant_id error:', tenantErr);
+      console.warn('[AuthContext] get_user_tenant_id error:', tenantErr, 'user_id:', supaUser.id);
+    } else if (import.meta.env.DEV) {
+      console.log('[AuthContext] get_user_tenant_id:', tenantIdFromRpc ?? null, 'user_id:', supaUser.id);
     }
 
     let tenantId = tenantIdFromRpc ?? null;
@@ -137,18 +147,45 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return buildUserFromSession(supaUser, tenantId, role);
   }, []);
 
-  const resolveUserWithTimeout = useCallback(
+  const resolveUserWithRetry = useCallback(
     async (session: { user: SupaUser } | null): Promise<User | null> => {
       if (!session?.user) return null;
-      const partial = buildUserFromSession(session.user);
-      const resolved = await withTimeout(resolveUser(session), TENANT_RESOLVE_TIMEOUT_MS);
-      if (!resolved) {
-        if (import.meta.env.DEV) {
-          console.warn('[AuthContext] tenant resolve timed out, using session-only user');
+
+      let lastResolved: User | null = null;
+
+      for (let attempt = 0; attempt < TENANT_RESOLVE_ATTEMPTS; attempt++) {
+        const resolved = await withTimeout(
+          resolveUser(session),
+          TENANT_RESOLVE_ATTEMPT_TIMEOUT_MS
+        );
+
+        if (resolved?.tenantId) {
+          return resolved;
         }
-        return partial;
+
+        if (resolved) {
+          lastResolved = resolved;
+        }
+
+        if (import.meta.env.DEV) {
+          console.warn(
+            '[AuthContext] tenant resolve attempt',
+            attempt + 1,
+            'sin tenantId, user_id:',
+            session.user.id
+          );
+        }
+
+        if (attempt < TENANT_RESOLVE_ATTEMPTS - 1) {
+          await delay(TENANT_RESOLVE_RETRY_DELAY_MS);
+        }
       }
-      return resolved;
+
+      if (import.meta.env.DEV) {
+        console.warn('[AuthContext] tenant resolve agotó reintentos, user_id:', session.user.id);
+      }
+
+      return lastResolved ?? buildUserFromSession(session.user);
     },
     [resolveUser]
   );
@@ -190,15 +227,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const resolveTenantInBackground = useCallback(
     (session: { user: SupaUser }) => {
       void (async () => {
-        const resolved = await resolveUserWithTimeout(session);
-        if (!resolved) return;
-        applyUser(resolved);
-        if (resolved.tenantId) {
-          void fetchSubscription(resolved.tenantId);
+        setIsTenantResolving(true);
+        try {
+          const resolved = await resolveUserWithRetry(session);
+          if (!resolved) return;
+          applyUser(resolved);
+          if (resolved.tenantId) {
+            void fetchSubscription(resolved.tenantId);
+          }
+        } finally {
+          setIsTenantResolving(false);
         }
       })();
     },
-    [resolveUserWithTimeout, applyUser, fetchSubscription]
+    [resolveUserWithRetry, applyUser, fetchSubscription]
   );
 
   const refetchUser = useCallback(async (): Promise<boolean> => {
@@ -208,7 +250,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         applyUser(null);
         return false;
       }
-      const resolvedUser = await resolveUserWithTimeout(session);
+      setIsTenantResolving(true);
+      const resolvedUser = await resolveUserWithRetry(session);
       applyUser(resolvedUser);
       if (resolvedUser?.tenantId) {
         void fetchSubscription(resolvedUser.tenantId);
@@ -218,8 +261,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (err) {
       console.error('[AuthContext] refetchUser error:', err);
       return false;
+    } finally {
+      setIsTenantResolving(false);
     }
-  }, [resolveUserWithTimeout, applyUser, fetchSubscription]);
+  }, [resolveUserWithRetry, applyUser, fetchSubscription]);
 
   const refetchSubscription = useCallback(async () => {
     if (user?.tenantId) {
@@ -246,6 +291,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           userRef.current = null;
           setUser(null);
           setSubscription(null);
+          setIsTenantResolving(false);
         } else if (event === 'SIGNED_IN') {
           if (session?.user) {
             applyUser(buildUserFromSession(session.user));
@@ -306,6 +352,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     subscription,
     isLoading,
     isAuthReady,
+    isTenantResolving,
     isAuthenticated,
     hasTenant,
     isAdmin,

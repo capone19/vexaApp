@@ -39,6 +39,30 @@ export interface N8nChatMessage {
   pedido_agendado: boolean; // Si hay una cita/pedido agendado
 }
 
+export interface InstagramChatMessage {
+  id: number;
+  session_id: string;
+  tenant_id: string;
+  username: string | null;
+  message: {
+    type: 'human' | 'ai';
+    content: string | null;
+    additional_kwargs?: Record<string, unknown>;
+    response_metadata?: Record<string, unknown>;
+    tool_calls?: unknown[];
+  };
+  created_at: string;
+  bot_activado: boolean;
+}
+
+export type ExternalChatTable = 'n8n_chat_histories' | 'instagram_chat_histories';
+
+export type ExternalChatMessage = N8nChatMessage | InstagramChatMessage;
+
+export function isN8nChatMessage(msg: ExternalChatMessage): msg is N8nChatMessage {
+  return 'phone_number' in msg || 'media' in msg;
+}
+
 // Interfaz para bookings externos
 export interface ExternalBooking {
   id: string;

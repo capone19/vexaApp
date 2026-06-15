@@ -8,12 +8,12 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isLoading, isAuthReady, isAuthenticated, user, isAdmin } = useAuthContext();
+  const { isLoading, isAuthReady, isTenantResolving, isAuthenticated, user, isAdmin } = useAuthContext();
   const { isImpersonating } = useImpersonation();
   const location = useLocation();
 
   // Mostrar loader mientras auth/tenant aún se resuelve
-  if (isLoading || !isAuthReady) {
+  if (isLoading || !isAuthReady || (isAuthenticated && isTenantResolving)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -26,8 +26,8 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
-  // Sin tenant: solo redirigir cuando la comprobación de auth terminó
-  if (isAuthReady && !user?.tenantId && (!isAdmin || !isImpersonating)) {
+  // Sin tenant: solo redirigir cuando la resolución de tenant terminó
+  if (isAuthReady && !isTenantResolving && !user?.tenantId && (!isAdmin || !isImpersonating)) {
     return <Navigate to="/cuenta-pendiente" replace />;
   }
 
