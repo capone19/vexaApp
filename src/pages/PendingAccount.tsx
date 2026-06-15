@@ -1,24 +1,59 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { logout } from "@/lib/auth";
 import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
-import { Loader2, Mail } from "lucide-react";
+import { Loader2, Mail, RefreshCw } from "lucide-react";
 import { isAdminEmail } from "@/lib/admin-config";
+import { cn } from "@/lib/utils";
+
+const MAX_AUTO_REFETCH_ATTEMPTS = 2;
+const REFETCH_DELAY_MS = 500;
 
 /**
  * Usuario autenticado en Supabase pero sin fila en user_roles / tenant.
  * El onboarding es manual (setup_new_client en admin). Evita bucle /auth ↔ /.
  */
 export default function PendingAccount() {
-  const { isLoading, isAuthReady, isAuthenticated, hasTenant, user } = useAuthContext();
+  const { isLoading, isAuthReady, isAuthenticated, hasTenant, user, refetchUser } = useAuthContext();
+  const [isRefetching, setIsRefetching] = useState(false);
+  const autoRefetchDoneRef = useRef(false);
 
   useEffect(() => {
     document.title = "Cuenta pendiente | VEXA";
   }, []);
 
-  if (isLoading || !isAuthReady) {
+  const runRefetch = useCallback(async (): Promise<boolean> => {
+    setIsRefetching(true);
+    try {
+      return await refetchUser();
+    } finally {
+      setIsRefetching(false);
+    }
+  }, [refetchUser]);
+
+  useEffect(() => {
+    if (!isAuthReady || !isAuthenticated || user?.tenantId || autoRefetchDoneRef.current) {
+      return;
+    }
+
+    autoRefetchDoneRef.current = true;
+
+    const runAutoRefetch = async () => {
+      for (let attempt = 0; attempt < MAX_AUTO_REFETCH_ATTEMPTS; attempt++) {
+        const foundTenant = await runRefetch();
+        if (foundTenant) return;
+        if (attempt < MAX_AUTO_REFETCH_ATTEMPTS - 1) {
+          await new Promise(resolve => setTimeout(resolve, REFETCH_DELAY_MS));
+        }
+      }
+    };
+
+    void runAutoRefetch();
+  }, [isAuthReady, isAuthenticated, user?.tenantId, runRefetch]);
+
+  if (isLoading || !isAuthReady || isRefetching) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -30,7 +65,7 @@ export default function PendingAccount() {
     return <Navigate to="/auth" replace />;
   }
 
-  if (hasTenant) {
+  if (hasTenant || user?.tenantId) {
     return <Navigate to="/" replace />;
   }
   if (user?.email && isAdminEmail(user.email)) {
@@ -50,6 +85,15 @@ export default function PendingAccount() {
           </p>
         </div>
         <div className="flex flex-col gap-3 pt-2">
+          <Button
+            variant="secondary"
+            className="w-full gap-2"
+            disabled={isRefetching}
+            onClick={() => void runRefetch()}
+          >
+            <RefreshCw className={cn("h-4 w-4", isRefetching && "animate-spin")} />
+            Reintentar
+          </Button>
           <a
             href="mailto:soporte@vexa.io"
             className="inline-flex items-center justify-center gap-2 text-sm text-primary hover:underline"

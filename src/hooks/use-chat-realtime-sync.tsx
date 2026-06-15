@@ -68,6 +68,9 @@ export function ChatRealtimeSyncProvider({
     }
   }, [queryClient, tenantId]);
 
+  const invalidateAllChatCachesRef = useRef(invalidateAllChatCaches);
+  invalidateAllChatCachesRef.current = invalidateAllChatCaches;
+
   const subscribeToN8nChanges = useCallback((listener: N8nChangeListener) => {
     listenersRef.current.add(listener);
     return () => {
@@ -93,20 +96,19 @@ export function ChatRealtimeSyncProvider({
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
           table: 'n8n_chat_histories',
-          filter: `tenant_id=eq.${tenantId}`,
         },
         (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const newData = payload.new as { session_id?: string };
-            console.log('[ChatRealtimeSync] NEW MESSAGE DETECTED!', {
-              session_id: newData?.session_id,
-              timestamp: new Date().toISOString(),
-            });
-            invalidateAllChatCaches();
-          }
+          const newData = payload.new as { tenant_id?: string; session_id?: string };
+          if (newData?.tenant_id && newData.tenant_id !== tenantId) return;
+
+          console.log('[ChatRealtimeSync] NEW MESSAGE DETECTED!', {
+            session_id: newData?.session_id,
+            timestamp: new Date().toISOString(),
+          });
+          invalidateAllChatCachesRef.current();
 
           listenersRef.current.forEach((listener) => listener(payload));
         }
@@ -131,7 +133,7 @@ export function ChatRealtimeSyncProvider({
         channelRef.current = null;
       }
     };
-  }, [tenantId, invalidateAllChatCaches]);
+  }, [tenantId]);
 
   useEffect(() => {
     if (!enablePollingFallback || !tenantId) {

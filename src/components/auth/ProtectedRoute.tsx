@@ -8,7 +8,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isLoading, isAuthReady, isAuthenticated, hasTenant, isAdmin } = useAuthContext();
+  const { isLoading, isAuthReady, isAuthenticated, user, isAdmin } = useAuthContext();
   const { isImpersonating } = useImpersonation();
   const location = useLocation();
 
@@ -27,7 +27,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   // Sin tenant: solo redirigir cuando la comprobación de auth terminó
-  if (isAuthReady && !hasTenant && (!isAdmin || !isImpersonating)) {
+  if (isAuthReady && !user?.tenantId && (!isAdmin || !isImpersonating)) {
     return <Navigate to="/cuenta-pendiente" replace />;
   }
 

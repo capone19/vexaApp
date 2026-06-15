@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useLocation, type Location } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,10 +46,18 @@ function getReturnPathFromState(state: unknown): string | null {
 export default function Auth() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, isLoading: authIsLoading, user } = useAuthContext();
+  const { isAuthenticated, isLoading: authIsLoading, isAuthReady, user, refetchUser } = useAuthContext();
   const [mode, setMode] = useState<AuthMode>("login");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const loginTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearLoginTimeout = () => {
+    if (loginTimeoutRef.current) {
+      clearTimeout(loginTimeoutRef.current);
+      loginTimeoutRef.current = null;
+    }
+  };
   
   // Form state
   const [formData, setFormData] = useState({
@@ -77,18 +85,30 @@ export default function Auth() {
   // AuthContext terminara de resolver el usuario, causando que ProtectedRoute
   // redirigiera de vuelta a /auth por ver user=null con isLoading=false.
   useEffect(() => {
-    if (authIsLoading) return;
+    if (authIsLoading || !isAuthReady) return;
     if (!isAuthenticated || !user) return;
+
+    clearLoginTimeout();
+    setIsLoading(false);
 
     const returnTo = getReturnPathFromState(location.state);
     if (isAdminEmail(user.email)) {
       navigate("/admin", { replace: true });
-    } else if (returnTo) {
+      return;
+    }
+    if (!user.tenantId) {
+      navigate("/cuenta-pendiente", { replace: true });
+      return;
+    }
+
+    if (returnTo) {
       navigate(returnTo, { replace: true });
     } else {
       navigate("/", { replace: true });
     }
-  }, [authIsLoading, isAuthenticated, user, navigate, location.state]);
+  }, [authIsLoading, isAuthReady, isAuthenticated, user, navigate, location.state]);
+
+  useEffect(() => () => clearLoginTimeout(), []);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -104,8 +124,12 @@ export default function Auth() {
 
         if (result.success) {
           toast.success("¡Bienvenido de vuelta!");
-          // Don't reset isLoading — keep spinner until the component unmounts on navigation.
-          // AuthContext processes SIGNED_IN async; resetting here causes a visible idle flicker.
+          clearLoginTimeout();
+          loginTimeoutRef.current = setTimeout(() => {
+            setIsLoading(false);
+            toast.error("No se pudo verificar tu cuenta. Reintentá.");
+          }, 6000);
+          void refetchUser();
         } else {
           toast.error(translateAuthError(result.error || "Error al iniciar sesión"));
           setIsLoading(false);

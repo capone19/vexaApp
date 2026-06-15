@@ -306,19 +306,26 @@ function ChatsPage() {
     enableRealtime: true,
   });
 
+  const listSessionIdsKey = useMemo(
+    () => [...new Set(listMessages.map(m => m.session_id))].sort().join('\0'),
+    [listMessages],
+  );
+
   // Debug
   useEffect(() => {
     if (!isDev) return;
     console.log('[Chats] Effective tenantId:', effectiveTenantId, 'isAdmin:', isAdmin, 'isImpersonating:', isImpersonating);
     console.log('[Chats] List messages loaded:', listMessages.length);
-    const uniqueSessions = [...new Set(listMessages.map(m => m.session_id))];
-    console.log('[Chats] Unique sessions:', uniqueSessions.length, uniqueSessions);
-  }, [listMessages, effectiveTenantId, isAdmin, isImpersonating, isDev]);
+    const uniqueSessionCount = listSessionIdsKey ? listSessionIdsKey.split('\0').length : 0;
+    console.log('[Chats] Unique sessions:', uniqueSessionCount, listSessionIdsKey.split('\0'));
+  }, [listMessages.length, listSessionIdsKey, effectiveTenantId, isAdmin, isImpersonating, isDev]);
 
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 180);
   const [filterTab, setFilterTab] = useState<FilterTab>("todos");
   const [botStates, setBotStates] = useState<Record<string, boolean>>({});
+  const botStatesRef = useRef(botStates);
+  botStatesRef.current = botStates;
   const [botToggling, setBotToggling] = useState<Set<string>>(new Set());
   const [labelFilterIds, setLabelFilterIds] = useState<string[]>([]);
   const [labelsManagerOpen, setLabelsManagerOpen] = useState(false);
@@ -577,11 +584,11 @@ function ChatsPage() {
     if (!botStatesLoadedRef.current) return;
     
     // Obtener sesiones únicas de los mensajes actuales
-    const currentSessions = new Set(listMessages.map(m => m.session_id));
+    const currentSessions = listSessionIdsKey ? listSessionIdsKey.split('\0') : [];
 
     // Encontrar sesiones que no tenemos en botStates
-    const unknownSessions = Array.from(currentSessions).filter(
-      sessionId => !(sessionId in botStates)
+    const unknownSessions = currentSessions.filter(
+      sessionId => !(sessionId in botStatesRef.current)
     );
 
     if (unknownSessions.length === 0) return;
@@ -631,7 +638,7 @@ function ChatsPage() {
     };
     
     loadNewBotStates();
-  }, [listMessages, botStates, shouldIgnoreIncomingBotState]);
+  }, [listSessionIdsKey, shouldIgnoreIncomingBotState]);
 
   // Sync botStates when messages update (e.g. realtime UPDATE with bot_activado change)
   useEffect(() => {

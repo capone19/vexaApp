@@ -58,6 +58,7 @@ export interface UseN8nChatListOptions {
 
 export function useN8nChatList(options: UseN8nChatListOptions = {}) {
   const { tenantId, sinceList, enableRealtime = true } = options;
+  const sinceListMs = sinceList?.getTime();
 
   const [messages, setMessages] = useState<N8nChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -89,7 +90,7 @@ export function useN8nChatList(options: UseN8nChatListOptions = {}) {
         .order('created_at', { ascending: false })
         .limit(LIST_FETCH_LIMIT);
 
-      if (sinceList) q = q.gte('created_at', sinceList.toISOString());
+      if (sinceListMs != null) q = q.gte('created_at', new Date(sinceListMs).toISOString());
 
       const { data, error: fetchError } = await q;
       if (fetchError) throw fetchError;
@@ -104,7 +105,7 @@ export function useN8nChatList(options: UseN8nChatListOptions = {}) {
     } finally {
       if (isMountedRef.current) setIsLoading(false);
     }
-  }, [tenantId, sinceList]);
+  }, [tenantId, sinceListMs]);
 
   useEffect(() => {
     fetchMessages();
@@ -116,7 +117,6 @@ export function useN8nChatList(options: UseN8nChatListOptions = {}) {
       if (!isMountedRef.current) return;
       if (payload.eventType === 'INSERT') {
         const newMsg = payload.new as N8nChatMessage;
-        if (newMsg.tenant_id !== tenantId) return;
         setMessages(prev => {
           if (prev.some(m => m.id === newMsg.id)) return prev;
           return [newMsg, ...prev];
