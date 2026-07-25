@@ -13,6 +13,7 @@ import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
 import { useChatLabels } from "@/hooks/use-chat-labels";
 import { getChannelConfig, type ChatChannelId } from "@/lib/chat-channels";
 import { ChatChannelTabs } from "@/components/chats/ChatChannelTabs";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { getDisplayContent, hasDisplayableContent, parseMessageField } from "@/lib/chat-message-utils";
 import {
   Dialog,
@@ -1687,48 +1688,71 @@ export function ChatChannelPanel({
     </div>
   ) : chatMessagesContent;
 
+  const remarketingControls = channelConfig.supportsRemarketing ? (
+    remarketingMode ? (
+      <>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={cancelRemarketing}
+          disabled={isSendingRemarketing}
+          className={cn(isMobile && "h-8 text-xs px-2")}
+        >
+          Cancelar
+        </Button>
+        <Button
+          size="sm"
+          onClick={sendRemarketing}
+          disabled={selectedForRemarketing.size === 0 || isSendingRemarketing}
+          className={cn(
+            "bg-primary hover:bg-primary/90",
+            isMobile ? "h-8 text-xs px-2" : "ml-2"
+          )}
+        >
+          {isSendingRemarketing ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+          ) : (
+            <Send className="h-4 w-4 mr-1" />
+          )}
+          Enviar ({selectedForRemarketing.size})
+        </Button>
+      </>
+    ) : (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setRemarketingMode(true)}
+        className={cn(isMobile && "h-8 text-xs px-2")}
+      >
+        <Megaphone className="h-4 w-4 mr-1" />
+        Remarketing
+      </Button>
+    )
+  ) : null;
+
   return (
     <>
       <div className={cn(
         "flex flex-col flex-1 min-h-0",
         isMobile && "h-[calc(100dvh-3.5rem-5rem)] -m-4 md:m-0 overflow-hidden"
       )}>
-        {!isMobile && channelConfig.supportsRemarketing && (
-          <div className="flex items-center justify-end mb-4">
-            {remarketingMode ? (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={cancelRemarketing}
-                  disabled={isSendingRemarketing}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={sendRemarketing}
-                  disabled={selectedForRemarketing.size === 0 || isSendingRemarketing}
-                  className="bg-primary hover:bg-primary/90 ml-2"
-                >
-                  {isSendingRemarketing ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                  ) : (
-                    <Send className="h-4 w-4 mr-1" />
-                  )}
-                  Enviar ({selectedForRemarketing.size})
-                </Button>
-              </>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setRemarketingMode(true)}
-              >
-                <Megaphone className="h-4 w-4 mr-1" />
-                Remarketing
-              </Button>
+        {isMobile && !selectedSessionId && (
+          <div className="px-4 pt-2 pb-3 -mx-4 md:mx-0 shrink-0">
+            <PageHeader
+              title="Chats"
+              subtitle="Conversaciones en tiempo real"
+              className="mb-3"
+              actions={remarketingControls ?? undefined}
+            />
+            {onChannelChange && (
+              <ChatChannelTabs value={channel} onChange={onChannelChange} />
             )}
+          </div>
+        )}
+
+        {!isMobile && remarketingControls && (
+          <div className="flex items-center justify-end mb-4 gap-2">
+            {remarketingControls}
           </div>
         )}
 
