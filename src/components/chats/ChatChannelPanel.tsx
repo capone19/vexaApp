@@ -285,6 +285,17 @@ export function ChatChannelPanel({
     [historyWindowDays],
   );
 
+  // El limit de filas debe escalar con la ventana de días: si no, al ampliar
+  // la ventana con "Cargar más antiguos" la query sigue devolviendo las mismas
+  // N filas más recientes (el LIMIT se aplica después del filtro de fecha),
+  // por lo que nunca aparecen los chats más antiguos en tenants con volumen alto.
+  const MAX_LIST_FETCH_LIMIT = 20000;
+  const listFetchLimit = useMemo(() => {
+    const scale = historyWindowDays / channelConfig.defaultListHistoryDays;
+    const scaled = Math.round(channelConfig.listFetchLimit * Math.max(scale, 1));
+    return Math.min(scaled, MAX_LIST_FETCH_LIMIT);
+  }, [historyWindowDays, channelConfig.defaultListHistoryDays, channelConfig.listFetchLimit]);
+
   // selectedSessionId debe declararse antes del hook de sesión
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
@@ -309,7 +320,7 @@ export function ChatChannelPanel({
     tenantId: chatTenantId,
     sinceList: listSinceDate,
     skipDateFilter: channelConfig.skipListDateFilter,
-    limit: channelConfig.listFetchLimit,
+    limit: listFetchLimit,
     enableRealtime: true,
   });
 

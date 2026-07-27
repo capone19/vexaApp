@@ -41,7 +41,7 @@ export const CHAT_CHANNELS: Record<ChatChannelId, ChatChannelConfig> = {
     emptyStateHint: 'Cuando tus clientes envíen mensajes por WhatsApp, aparecerán aquí en tiempo real.',
     defaultListHistoryDays: 7,
     skipListDateFilter: false,
-    listFetchLimit: 2000,
+    listFetchLimit: 5000,
     getContactDisplay: (msg, sessionId) => {
       if ('phone_number' in msg && msg.phone_number) {
         const phone = msg.phone_number;
@@ -63,7 +63,7 @@ export const CHAT_CHANNELS: Record<ChatChannelId, ChatChannelConfig> = {
     emptyStateHint: 'Cuando tus clientes envíen mensajes por Instagram, aparecerán aquí en tiempo real.',
     defaultListHistoryDays: 7,
     skipListDateFilter: false,
-    listFetchLimit: 2000,
+    listFetchLimit: 5000,
     getContactDisplay: (msg, sessionId) => {
       if ('username' in msg) {
         return formatInstagramUsername(msg.username, sessionId);

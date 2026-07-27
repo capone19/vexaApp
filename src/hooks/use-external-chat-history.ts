@@ -86,30 +86,47 @@ export function useExternalChatList(options: UseExternalChatListOptions) {
     setIsLoading(true);
     setError(null);
     try {
-      let q = externalSupabase
-        .from(table)
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .order('created_at', { ascending: false })
-        .limit(limit);
+      // El proyecto Supabase enforcea un "Max Rows" por request (PostgREST db-max-rows,
+      // vimos 1000 en producción) que ignora nuestro .limit(): pedir limit=5000 en una sola
+      // query igual devuelve solo las primeras ~1000 filas. Para poder traer más that eso
+      // (necesario al ampliar la ventana de días) paginamos con .range() pidiendo de a
+      // "remaining" filas y avanzando el offset según lo que realmente vino en cada página,
+      // hasta juntar `limit` filas o hasta que una página vuelva vacía (sin más datos).
+      const collected: ExternalChatMessage[] = [];
+      let offset = 0;
+      const MAX_PAGES = 50; // failsafe contra loops largos con tenants enormes
+      for (let page = 0; page < MAX_PAGES && collected.length < limit; page++) {
+        const remaining = limit - collected.length;
+        let q = externalSupabase
+          .from(table)
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .order('created_at', { ascending: false })
+          .range(offset, offset + remaining - 1);
 
-      if (!skipDateFilter && sinceListMs != null) {
-        q = q.gte('created_at', new Date(sinceListMs).toISOString());
+        if (!skipDateFilter && sinceListMs != null) {
+          q = q.gte('created_at', new Date(sinceListMs).toISOString());
+        }
+
+        const { data, error: fetchError } = await q;
+        if (fetchError) throw fetchError;
+        if (!isMountedRef.current) return;
+
+        const rows = (data || []) as ExternalChatMessage[];
+        collected.push(...rows);
+        if (rows.length === 0) break;
+        offset += rows.length;
       }
-
-      const { data, error: fetchError } = await q;
-      if (fetchError) throw fetchError;
-      if (!isMountedRef.current) return;
 
       if (isDev && table === 'instagram_chat_histories') {
         console.log('[useExternalChatList:instagram]', {
           tenantId,
-          rowCount: data?.length ?? 0,
+          rowCount: collected.length,
           skipDateFilter,
           sinceList: skipDateFilter ? null : sinceListMs != null ? new Date(sinceListMs).toISOString() : null,
         });
-        if (data && data.length > 0) {
-          const sample = data[0] as ExternalChatMessage;
+        if (collected.length > 0) {
+          const sample = collected[0] as ExternalChatMessage;
           console.log('[useExternalChatList:instagram] sample row:', {
             session_id: sample.session_id,
             tenant_id: sample.tenant_id,
@@ -119,7 +136,7 @@ export function useExternalChatList(options: UseExternalChatListOptions) {
         }
       }
 
-      setMessages((data || []) as ExternalChatMessage[]);
+      setMessages(collected);
     } catch (err) {
       if (!isMountedRef.current) return;
       if (isDev) console.error(`[useExternalChatList:${table}] Error:`, err);
@@ -127,7 +144,7 @@ export function useExternalChatList(options: UseExternalChatListOptions) {
     } finally {
       if (isMountedRef.current) setIsLoading(false);
     }
-  }, [table, tenantId, sinceListMs, skipDateFilter]);
+  }, [table, tenantId, sinceListMs, skipDateFilter, limit]);
 
   useEffect(() => {
     fetchMessages();
