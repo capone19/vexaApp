@@ -1,20 +1,22 @@
 import { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef, memo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { useExternalChatList, useExternalChatSession } from "@/hooks/use-external-chat-history";
-import { externalSupabase, type ExternalChatMessage } from "@/integrations/supabase/external-client";
+import { useConversationList, useExternalChatSession } from "@/hooks/use-external-chat-history";
+import { patchConversationBotState } from "@/hooks/use-chat-realtime-sync";
+import { externalSupabase } from "@/integrations/supabase/external-client";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
 import { useChatLabels } from "@/hooks/use-chat-labels";
-import { getChannelConfig, type ChatChannelId } from "@/lib/chat-channels";
+import { getChannelConfig, formatInstagramUsername, type ChatChannelId } from "@/lib/chat-channels";
 import { ChatChannelTabs } from "@/components/chats/ChatChannelTabs";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { getDisplayContent, hasDisplayableContent, parseMessageField } from "@/lib/chat-message-utils";
+import { parseMessageField } from "@/lib/chat-message-utils";
 import {
   Dialog,
   DialogContent,
@@ -67,6 +69,7 @@ interface ChatSession {
   phoneNumber: string;
   lastMessage: string;
   lastMessageAt: Date;
+  lastClientMessageAt: Date | null;
   messageCount: number;
   contactName: string;
   intentLabel: IntentLabel;
@@ -266,8 +269,8 @@ export function ChatChannelPanel({
 }: ChatChannelPanelProps) {
   const channelConfig = getChannelConfig(channel);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const isDev = import.meta.env.DEV;
-  const BOT_STATE_RECONCILE_WINDOW_MS = 1500;
   const { user, isLoading: authLoading } = useAuth();
   const { tenantId: effectiveTenantId, isImpersonating } = useEffectiveTenant();
   
@@ -277,87 +280,34 @@ export function ChatChannelPanel({
   const chatTenantId =
     effectiveTenantId ?? (isAdmin && !isImpersonating ? user?.tenantId : undefined) ?? undefined;
 
-  // Ventana de retención para la lista lateral: expandible por el usuario, default 7 días, máx 90
-  const MAX_HISTORY_DAYS = 90;
-  const [historyWindowDays, setHistoryWindowDays] = useState(channelConfig.defaultListHistoryDays);
-  const listSinceDate = useMemo(
-    () => new Date(Date.now() - historyWindowDays * 86400000),
-    [historyWindowDays],
-  );
-
-  // El limit de filas debe escalar con la ventana de días: si no, al ampliar
-  // la ventana con "Cargar más antiguos" la query sigue devolviendo las mismas
-  // N filas más recientes (el LIMIT se aplica después del filtro de fecha),
-  // por lo que nunca aparecen los chats más antiguos en tenants con volumen alto.
-  const MAX_LIST_FETCH_LIMIT = 20000;
-  const listFetchLimit = useMemo(() => {
-    const scale = historyWindowDays / channelConfig.defaultListHistoryDays;
-    const scaled = Math.round(channelConfig.listFetchLimit * Math.max(scale, 1));
-    return Math.min(scaled, MAX_LIST_FETCH_LIMIT);
-  }, [historyWindowDays, channelConfig.defaultListHistoryDays, channelConfig.listFetchLimit]);
-
-  // selectedSessionId debe declararse antes del hook de sesión
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
-  // Ventana de sesión para lazy loading: empieza en 7 días, expandible hasta 90
-  const [sessionWindowDays, setSessionWindowDays] = useState(7);
-  const sessionStartDate = useMemo(
-    () => new Date(Date.now() - sessionWindowDays * 86400000),
-    [sessionWindowDays],
-  );
-
-  // Resetear ventana al cambiar de conversación
-  useEffect(() => {
-    setSessionWindowDays(7);
-  }, [selectedSessionId]);
-
   const {
-    messages: listMessages,
+    conversations,
     isLoading: listLoading,
     error: listError,
-  } = useExternalChatList({
-    table: channelConfig.table,
-    tenantId: chatTenantId,
-    sinceList: listSinceDate,
-    skipDateFilter: channelConfig.skipListDateFilter,
-    limit: listFetchLimit,
-    enableRealtime: true,
-  });
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useConversationList(channel, chatTenantId);
 
   const {
     messages: sessionMessages,
     isLoading: sessionIsLoading,
     isLoadingMore: sessionIsLoadingMore,
+    hasMoreOlder: sessionHasMoreOlder,
+    loadOlderMessages,
     refetch: refetchSession,
   } = useExternalChatSession({
     table: channelConfig.table,
     tenantId: chatTenantId,
     sessionId: selectedSessionId,
-    sinceSession: sessionStartDate,
     enableRealtime: true,
   });
-
-
-  const listSessionIdsKey = useMemo(
-    () => [...new Set(listMessages.map(m => m.session_id))].sort().join('\0'),
-    [listMessages],
-  );
-
-  // Debug
-  useEffect(() => {
-    if (!isDev) return;
-    console.log('[Chats] Effective tenantId:', effectiveTenantId, 'isAdmin:', isAdmin, 'isImpersonating:', isImpersonating);
-    console.log('[Chats] List messages loaded:', listMessages.length);
-    const uniqueSessionCount = listSessionIdsKey ? listSessionIdsKey.split('\0').length : 0;
-    console.log('[Chats] Unique sessions:', uniqueSessionCount, listSessionIdsKey.split('\0'));
-  }, [listMessages.length, listSessionIdsKey, effectiveTenantId, isAdmin, isImpersonating, isDev]);
 
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 180);
   const [filterTab, setFilterTab] = useState<FilterTab>("todos");
-  const [botStates, setBotStates] = useState<Record<string, boolean>>({});
-  const botStatesRef = useRef(botStates);
-  botStatesRef.current = botStates;
   const [botToggling, setBotToggling] = useState<Set<string>>(new Set());
   const [labelFilterIds, setLabelFilterIds] = useState<string[]>([]);
   const [labelsManagerOpen, setLabelsManagerOpen] = useState(false);
@@ -366,7 +316,6 @@ export function ChatChannelPanel({
   const [selectedForRemarketing, setSelectedForRemarketing] = useState<Set<string>>(new Set());
   const [isSendingRemarketing, setIsSendingRemarketing] = useState(false);
   const botToggleInFlightRef = useRef<Set<string>>(new Set());
-  const botSyncCooldownRef = useRef<Map<string, { until: number; expected: boolean }>>(new Map());
 
   // Chat labels hook
   const {
@@ -400,25 +349,6 @@ export function ChatChannelPanel({
   // Refs para preservación de scroll al cargar más mensajes
   const prevScrollHeightRef = useRef(0);
   const shouldRestoreScrollRef = useRef(false);
-
-  const shouldIgnoreIncomingBotState = useCallback((sessionId: string, incomingValue: boolean) => {
-    if (botToggleInFlightRef.current.has(sessionId)) {
-      return true;
-    }
-
-    const cooldown = botSyncCooldownRef.current.get(sessionId);
-    if (!cooldown) return false;
-
-    const now = Date.now();
-    if (cooldown.until <= now) {
-      botSyncCooldownRef.current.delete(sessionId);
-      return false;
-    }
-
-    // Durante ventana de reconciliación, ignoramos valores que contradicen el esperado.
-    return incomingValue !== cooldown.expected;
-  }, []);
-
 
   // Auto-scroll al último mensaje cuando cambia la selección o llegan nuevos mensajes
   useEffect(() => {
@@ -473,11 +403,9 @@ export function ChatChannelPanel({
     const messageContent = messageText.trim();
     let instagramUsername: string | null = null;
     if (channel === 'instagram') {
-      const row = listMessages.find(
-        m => m.session_id === selectedSessionId && 'username' in m && m.username
-      );
-      if (row && 'username' in row && row.username) {
-        instagramUsername = row.username.replace(/^@/, '');
+      const row = conversations.find(c => c.session_id === selectedSessionId);
+      if (row?.contact_username) {
+        instagramUsername = row.contact_username.replace(/^@/, '');
       }
     }
 
@@ -548,7 +476,7 @@ export function ChatChannelPanel({
       toast.success("Mensaje enviado");
 
       // Mantener bot desactivado si estaba desactivado (n8n puede reactivarlo)
-      const currentBotState = botStates[selectedSessionId];
+      const currentBotState = conversations.find(c => c.session_id === selectedSessionId)?.bot_activado ?? true;
       if (currentBotState === false) {
         setTimeout(async () => {
           if (!selectedSessionTenantId) return;
@@ -565,7 +493,7 @@ export function ChatChannelPanel({
       console.error("[Chats] Error sending human message:", err);
       toast.error(err instanceof Error ? err.message : "Error al enviar el mensaje");
     }
-  }, [selectedSessionId, refetchSession, selectedSessionTenantId, botStates, channelConfig.table, channelConfig.humanMessageSource, channel, listMessages]);
+  }, [selectedSessionId, refetchSession, selectedSessionTenantId, channelConfig.table, channelConfig.humanMessageSource, channel, conversations]);
 
   // Remarketing: toggle seleccion de una sesion
   const toggleRemarketingSelection = useCallback((sessionId: string) => {
@@ -586,171 +514,24 @@ export function ChatChannelPanel({
     setSelectedForRemarketing(new Set());
   }, []);
 
-  // Flag para evitar múltiples cargas iniciales
-  const botStatesLoadedRef = useRef(false);
-
   useEffect(() => {
     setSelectedSessionId(null);
     setRemarketingMode(false);
     setSelectedForRemarketing(new Set());
-    botStatesLoadedRef.current = false;
-    setBotStates({});
-    setHistoryWindowDays(channelConfig.defaultListHistoryDays);
-    setSessionWindowDays(7);
-  }, [channel, channelConfig.defaultListHistoryDays]);
+  }, [channel]);
 
-  // Cargar estados iniciales de bot_activado desde la DB externa (solo una vez)
-  useEffect(() => {
-    if (botStatesLoadedRef.current) return;
-    
-    const loadBotStates = async () => {
-      if (!chatTenantId) return;
-      try {
-        const { data, error } = await externalSupabase
-          .from(channelConfig.table)
-          .select('session_id, bot_activado')
-          .eq('tenant_id', chatTenantId)
-          .order('created_at', { ascending: false });
-        
-        if (error) {
-          console.error('[Chats] Error loading bot states:', error);
-          return;
-        }
-        
-        // Crear mapa de estados (tomar el más reciente por session)
-        const statesMap: Record<string, boolean> = {};
-        data?.forEach(row => {
-          if (!(row.session_id in statesMap)) {
-            statesMap[row.session_id] = row.bot_activado ?? true;
-          }
-        });
-        
-        setBotStates(statesMap);
-        botStatesLoadedRef.current = true;
-      } catch (err) {
-        console.error('[Chats] Error loading bot states:', err);
-      }
-    };
-    
-    loadBotStates();
-  }, [channel, channelConfig.table, chatTenantId]);
-
-  // Actualizar estados de bot solo para sesiones nuevas que no conocemos
-  useEffect(() => {
-    if (!botStatesLoadedRef.current) return;
-    
-    // Obtener sesiones únicas de los mensajes actuales
-    const currentSessions = listSessionIdsKey ? listSessionIdsKey.split('\0') : [];
-
-    // Encontrar sesiones que no tenemos en botStates
-    const unknownSessions = currentSessions.filter(
-      sessionId => !(sessionId in botStatesRef.current)
-    );
-
-    if (unknownSessions.length === 0) return;
-    
-    // Solo cargar estados para las sesiones nuevas
-    const loadNewBotStates = async () => {
-      if (!chatTenantId) return;
-      try {
-        const { data, error } = await externalSupabase
-          .from(channelConfig.table)
-          .select('session_id, bot_activado')
-          .eq('tenant_id', chatTenantId)
-          .in('session_id', unknownSessions)
-          .order('created_at', { ascending: false });
-        
-        if (error) {
-          console.error('[Chats] Error loading new bot states:', error);
-          return;
-        }
-        
-        // Crear mapa solo para las sesiones nuevas
-        const newStatesMap: Record<string, boolean> = {};
-        data?.forEach(row => {
-          if (!(row.session_id in newStatesMap)) {
-            newStatesMap[row.session_id] = row.bot_activado ?? true;
-          }
-        });
-        
-        // Merge con estados existentes
-        if (Object.keys(newStatesMap).length > 0) {
-          setBotStates(prev => {
-            let changed = false;
-            const next = { ...prev };
-            Object.entries(newStatesMap).forEach(([sid, incomingValue]) => {
-              if (shouldIgnoreIncomingBotState(sid, incomingValue)) {
-                return;
-              }
-              if (next[sid] !== incomingValue) {
-                next[sid] = incomingValue;
-                changed = true;
-              }
-            });
-            return changed ? next : prev;
-          });
-        }
-      } catch (err) {
-        console.error('[Chats] Error loading new bot states:', err);
-      }
-    };
-    
-    loadNewBotStates();
-  }, [listSessionIdsKey, shouldIgnoreIncomingBotState, channelConfig.table, chatTenantId]);
-
-  // Sync botStates when messages update (e.g. realtime UPDATE with bot_activado change)
-  useEffect(() => {
-    if (!botStatesLoadedRef.current || listMessages.length === 0) return;
-
-    const latestPerSession = new Map<string, boolean>();
-    const latestTimePerSession = new Map<string, number>();
-
-    for (const msg of listMessages) {
-      const t = new Date(msg.created_at).getTime();
-      const prev = latestTimePerSession.get(msg.session_id);
-      if (prev === undefined || t > prev) {
-        latestTimePerSession.set(msg.session_id, t);
-        latestPerSession.set(msg.session_id, msg.bot_activado ?? true);
-      }
-    }
-
-    setBotStates(prev => {
-      let changed = false;
-      const next = { ...prev };
-      for (const [sid, val] of latestPerSession) {
-        if (shouldIgnoreIncomingBotState(sid, val)) {
-          continue;
-        }
-        if (next[sid] !== val) {
-          next[sid] = val;
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [listMessages, shouldIgnoreIncomingBotState]);
-
-  // Toggle bot state for a session - actualiza en DB externa
   const setBotStateForSession = useCallback(async (sessionId: string, nextState: boolean) => {
     if (botToggleInFlightRef.current.has(sessionId)) return;
 
-    const currentState = botStates[sessionId] ?? true;
+    const currentState = conversations.find(c => c.session_id === sessionId)?.bot_activado ?? true;
     if (currentState === nextState) return;
 
-    // Marcar en vuelo (ref para guard instantáneo + state para re-render del disabled)
     if (!chatTenantId) return;
 
     botToggleInFlightRef.current.add(sessionId);
     setBotToggling(prev => new Set(prev).add(sessionId));
 
-    // Iniciar ventana anti-sync para esta sesión
-    botSyncCooldownRef.current.set(sessionId, {
-      until: Date.now() + BOT_STATE_RECONCILE_WINDOW_MS,
-      expected: nextState,
-    });
-
-    // Optimistic update
-    setBotStates(prev => ({ ...prev, [sessionId]: nextState }));
+    patchConversationBotState(queryClient, channel, chatTenantId, sessionId, nextState);
 
     try {
       const { error } = await externalSupabase
@@ -760,8 +541,7 @@ export function ChatChannelPanel({
         .eq('tenant_id', chatTenantId);
 
       if (error) {
-        setBotStates(prev => ({ ...prev, [sessionId]: currentState }));
-        botSyncCooldownRef.current.delete(sessionId);
+        patchConversationBotState(queryClient, channel, chatTenantId, sessionId, currentState);
         console.error('[Chats] Error updating bot state:', error);
         toast.error('Error al actualizar el estado del bot');
         return;
@@ -769,12 +549,10 @@ export function ChatChannelPanel({
 
       toast.success(nextState ? 'Bot activado' : 'Bot desactivado');
     } catch (err) {
-      setBotStates(prev => ({ ...prev, [sessionId]: currentState }));
-      botSyncCooldownRef.current.delete(sessionId);
+      patchConversationBotState(queryClient, channel, chatTenantId, sessionId, currentState);
       console.error('[Chats] Error updating bot state:', err);
       toast.error('Error al actualizar el estado del bot');
     } finally {
-      // Liberar bloqueo en vuelo para que el switch se habilite de nuevo
       botToggleInFlightRef.current.delete(sessionId);
       setBotToggling(prev => {
         const next = new Set(prev);
@@ -782,82 +560,53 @@ export function ChatChannelPanel({
         return next;
       });
     }
-  }, [BOT_STATE_RECONCILE_WINDOW_MS, botStates, channelConfig.table, chatTenantId]);
+  }, [conversations, channelConfig.table, chatTenantId, channel, queryClient]);
 
-  // handleLoadMore: guarda scrollHeight y expande la ventana de la sesión
   const handleLoadMore = useCallback(() => {
     const viewport = messagesScrollAreaRef.current?.querySelector(
       '[data-radix-scroll-area-viewport]'
     ) as HTMLElement | null;
     if (viewport) prevScrollHeightRef.current = viewport.scrollHeight;
     shouldRestoreScrollRef.current = true;
-    setSessionWindowDays(prev => Math.min(prev + 14, 90));
-  }, []);
+    void loadOlderMessages();
+  }, [loadOlderMessages]);
 
   const processedSessions = useMemo(() => {
-    const sessionMap = new Map<string, ChatSession>();
+    return conversations.map((row): ChatSession => {
+      const phoneNumber = channel === 'whatsapp'
+        ? (row.contact_phone
+          ? (row.contact_phone.startsWith('+') ? row.contact_phone : `+${row.contact_phone}`)
+          : (() => {
+              const fromSession = row.session_id.split('@')[0] || row.session_id;
+              return fromSession.startsWith('+') ? fromSession : `+${fromSession}`;
+            })())
+        : formatInstagramUsername(row.contact_username, row.session_id);
 
-    listMessages.forEach(msg => {
-      const existing = sessionMap.get(msg.session_id);
-      const msgDate = new Date(msg.created_at);
-      const hasContent = hasDisplayableContent(msg, channelConfig.supportsMedia);
-      const contactDisplay = channelConfig.getContactDisplay(msg, msg.session_id);
-      const displayContent = hasContent ? getDisplayContent(msg, channelConfig.supportsMedia) : '';
+      const contactName = channel === 'instagram'
+        ? formatInstagramUsername(row.contact_username, row.session_id)
+        : phoneNumber;
 
-      if (!existing) {
-        sessionMap.set(msg.session_id, {
-          sessionId: msg.session_id,
-          phoneNumber: contactDisplay,
-          lastMessage: displayContent,
-          lastMessageAt: msgDate,
-          messageCount: hasContent ? 1 : 0,
-          contactName: contactDisplay,
-          intentLabel: getIntentLabel(hasContent ? 1 : 0),
-          botEnabled: botStates[msg.session_id] ?? true,
-        });
-      } else {
-        if (hasContent) {
-          existing.messageCount++;
-          existing.intentLabel = getIntentLabel(existing.messageCount);
-        }
-        existing.botEnabled = botStates[msg.session_id] ?? true;
-        if (channel === 'whatsapp' && 'phone_number' in msg && msg.phone_number && existing.phoneNumber === existing.sessionId) {
-          existing.phoneNumber = contactDisplay;
-          existing.contactName = contactDisplay;
-        }
-        if (channel === 'instagram' && 'username' in msg && msg.username) {
-          const updated = channelConfig.getContactDisplay(msg, msg.session_id);
-          existing.contactName = updated;
-          existing.phoneNumber = updated;
-        }
-        if (msgDate > existing.lastMessageAt) {
-          existing.lastMessageAt = msgDate;
-          // Solo actualizar el preview si el mensaje más reciente tiene texto
-          if (hasContent) existing.lastMessage = displayContent;
-          if (channel === 'instagram' && 'username' in msg && msg.username) {
-            const updated = channelConfig.getContactDisplay(msg, msg.session_id);
-            existing.contactName = updated;
-            existing.phoneNumber = updated;
-          }
-        }
-      }
+      return {
+        sessionId: row.session_id,
+        phoneNumber,
+        contactName,
+        lastMessage: row.last_message_preview ?? '',
+        lastMessageAt: new Date(row.last_message_at),
+        lastClientMessageAt: row.last_client_message_at
+          ? new Date(row.last_client_message_at)
+          : null,
+        messageCount: row.message_count,
+        intentLabel: getIntentLabel(row.message_count),
+        botEnabled: row.bot_activado,
+      };
     });
-
-    return Array.from(sessionMap.values()).sort(
-      (a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime()
-    );
-  }, [listMessages, botStates, channel, channelConfig]);
+  }, [conversations, channel]);
 
   useEffect(() => {
     if (!isDev || channel !== 'instagram') return;
-    if (listLoading || listMessages.length === 0 || processedSessions.length > 0) return;
-    console.warn(
-      '[Chats:instagram] Hay',
-      listMessages.length,
-      'filas pero 0 sesiones — revisar formato de message o filtros'
-    );
-    toast.warning('Hay mensajes en la base pero no se pudieron agrupar. Revisá la consola (dev).');
-  }, [channel, listLoading, listMessages.length, processedSessions.length, isDev]);
+    if (listLoading || conversations.length === 0 || processedSessions.length > 0) return;
+    console.warn('[Chats:instagram] Hay conversaciones en caché pero 0 sesiones mapeadas');
+  }, [channel, listLoading, conversations.length, processedSessions.length, isDev]);
   const filteredSessions = useMemo(() => {
     let filtered = processedSessions;
     
@@ -905,8 +654,7 @@ export function ChatChannelPanel({
 
       for (const session of sessionsToSend) {
         const phone = session.phoneNumber.replace(/^\+/, "");
-        const tenantMsg = listMessages.find(m => m.session_id === session.sessionId && m.tenant_id);
-        const tenantId = tenantMsg?.tenant_id || effectiveTenantId || "";
+        const tenantId = chatTenantId || effectiveTenantId || "";
 
         try {
           await fetch("https://n8ninnovatec-n8n.t0bgq1.easypanel.host/webhook/rmkt", {
@@ -932,35 +680,21 @@ export function ChatChannelPanel({
     } finally {
       setIsSendingRemarketing(false);
     }
-  }, [selectedForRemarketing, isSendingRemarketing, filteredSessions, listMessages, effectiveTenantId, cancelRemarketing, channelConfig.supportsRemarketing]);
-
-  const getInboundMessageType = (m: ExternalChatMessage): string => {
-    return parseMessageField(m.message)?.type ?? '';
-  };
-
-  // sessionMessages está en orden ASC — iteramos desde el final para el último msg del cliente
-  const lastClientMessageTime = useMemo(() => {
-    if (!selectedSessionId || sessionMessages.length === 0) return null;
-    for (let i = sessionMessages.length - 1; i >= 0; i--) {
-      const t = getInboundMessageType(sessionMessages[i]);
-      if (t === "human" || t === "user" || t === "customer") {
-        return new Date(sessionMessages[i].created_at);
-      }
-    }
-    return null;
-  }, [sessionMessages, selectedSessionId]);
-
-  const TWENTY_FOUR_H_MS = 24 * 60 * 60 * 1000;
-  const isWindowExpired = useMemo(() => {
-    if (!lastClientMessageTime) return true;
-    return Date.now() - lastClientMessageTime.getTime() > TWENTY_FOUR_H_MS;
-  }, [lastClientMessageTime]);
-
-  const selectedMessages = sessionMessages;
+  }, [selectedForRemarketing, isSendingRemarketing, filteredSessions, chatTenantId, effectiveTenantId, cancelRemarketing, channelConfig.supportsRemarketing]);
 
   const selectedSession = useMemo(() => {
     return processedSessions.find(s => s.sessionId === selectedSessionId);
   }, [processedSessions, selectedSessionId]);
+
+  const TWENTY_FOUR_H_MS = 24 * 60 * 60 * 1000;
+  const isWindowExpired = useMemo(() => {
+    if (!selectedSessionId) return true;
+    const lastClientAt = selectedSession?.lastClientMessageAt;
+    if (!lastClientAt) return true;
+    return Date.now() - lastClientAt.getTime() > TWENTY_FOUR_H_MS;
+  }, [selectedSessionId, selectedSession?.lastClientMessageAt]);
+
+  const selectedMessages = sessionMessages;
 
   const is24hCheckReady = !selectedSessionId || !sessionIsLoading;
   // Empty State Component
@@ -973,7 +707,7 @@ export function ChatChannelPanel({
       <p className="text-sm text-muted-foreground max-w-sm">
         {channelConfig.emptyStateHint}
       </p>
-      {channel === 'instagram' && !listLoading && listMessages.length === 0 && (
+      {channel === 'instagram' && !listLoading && conversations.length === 0 && (
         <p className="text-xs text-muted-foreground max-w-sm mt-3">
           Si en SQL ves filas pero acá dice 0 filas, ejecutá la policy RLS en el Supabase externo
           (archivo <code className="text-[10px]">supabase/EXTERNAL_SUPABASE_INSTAGRAM.sql</code>)
@@ -1023,9 +757,7 @@ export function ChatChannelPanel({
               Realtime
             </Badge>
             <span className="text-xs text-muted-foreground">
-              {isDev
-                ? `${listMessages.length} filas / ${processedSessions.length} chats`
-                : `${processedSessions.length} chats`}
+              {processedSessions.length} chats
             </span>
           </div>
           <Button
@@ -1099,7 +831,7 @@ export function ChatChannelPanel({
 
       {/* Chat List */}
       <ScrollArea className="flex-1">
-        {listLoading && listMessages.length === 0 ? (
+        {listLoading && conversations.length === 0 ? (
           <LoadingState />
         ) : listError ? (
           <ErrorState />
@@ -1223,30 +955,21 @@ export function ChatChannelPanel({
               </div>
             </div>
           ))}
-          <div className="p-3 border-t border-border space-y-1.5">
-            {channelConfig.skipListDateFilter ? (
-              <p className="text-xs text-center text-muted-foreground">
-                Mostrando las últimas {channelConfig.listFetchLimit.toLocaleString()} filas del tenant
-              </p>
-            ) : historyWindowDays >= MAX_HISTORY_DAYS ? (
-              <p className="text-xs text-center text-muted-foreground">
-                Mostrando últimos 90 días (máximo)
-              </p>
+          <div className="p-3 border-t border-border">
+            {hasNextPage ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full text-xs h-8"
+                disabled={isFetchingNextPage}
+                onClick={() => void fetchNextPage()}
+              >
+                {isFetchingNextPage ? 'Cargando...' : 'Cargar más antiguos'}
+              </Button>
             ) : (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full text-xs h-8"
-                  disabled={listLoading}
-                  onClick={() => setHistoryWindowDays(prev => Math.min(prev + 14, MAX_HISTORY_DAYS))}
-                >
-                  {listLoading ? 'Cargando...' : 'Cargar más antiguos (+14 días)'}
-                </Button>
-                <p className="text-xs text-center text-muted-foreground">
-                  Mostrando últimos {historyWindowDays} días
-                </p>
-              </>
+              <p className="text-xs text-center text-muted-foreground">
+                No hay más conversaciones
+              </p>
             )}
           </div>
           </>
@@ -1256,9 +979,8 @@ export function ChatChannelPanel({
   ), [
     isMobile,
     processedSessions.length,
+    conversations.length,
     listLoading,
-    listMessages.length,
-    historyWindowDays,
     listError,
     filteredSessions,
     selectedSessionId,
@@ -1273,6 +995,12 @@ export function ChatChannelPanel({
     assignLabel,
     removeLabel,
     toggleRemarketingSelection,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    channel,
+    onChannelChange,
+    showChannelTabs,
   ]);
 
   // Contenido del panel de mensajes (SIN el input para evitar re-renders)
@@ -1288,7 +1016,7 @@ export function ChatChannelPanel({
       );
     }
 
-    const isBotEnabled = botStates[selectedSessionId] ?? true;
+    const isBotEnabled = selectedSession.botEnabled;
 
     return (
       <>
@@ -1459,28 +1187,23 @@ export function ChatChannelPanel({
         >
           {/* Botón cargar mensajes anteriores */}
           <div className="flex flex-col items-center py-2 gap-1">
-            {sessionWindowDays < 90 ? (
-              <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleLoadMore}
-                  disabled={sessionIsLoadingMore}
-                  className="h-7 text-xs text-muted-foreground gap-1.5"
-                >
-                  {sessionIsLoadingMore ? (
-                    <><Loader2 className="h-3 w-3 animate-spin" />Cargando...</>
-                  ) : (
-                    "Cargar mensajes anteriores (+14 días)"
-                  )}
-                </Button>
-                <span className="text-[10px] text-muted-foreground">
-                  Mostrando últimos {sessionWindowDays} días
-                </span>
-              </>
+            {sessionHasMoreOlder ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLoadMore}
+                disabled={sessionIsLoadingMore}
+                className="h-7 text-xs text-muted-foreground gap-1.5"
+              >
+                {sessionIsLoadingMore ? (
+                  <><Loader2 className="h-3 w-3 animate-spin" />Cargando...</>
+                ) : (
+                  "Cargar mensajes anteriores"
+                )}
+              </Button>
             ) : (
               <span className="text-[10px] text-muted-foreground">
-                Mostrando últimos 90 días (máximo)
+                No hay más mensajes anteriores
               </span>
             )}
           </div>
@@ -1608,7 +1331,7 @@ export function ChatChannelPanel({
         </ScrollArea>
       </>
     );
-  }, [selectedSessionId, selectedSession, sessionMessages, sessionWindowDays, sessionIsLoadingMore, handleLoadMore, botStates, isMobile, botToggling, setBotStateForSession]);
+  }, [selectedSessionId, selectedSession, sessionMessages, sessionHasMoreOlder, sessionIsLoadingMore, handleLoadMore, isMobile, botToggling, setBotStateForSession, channelConfig.supportsMedia, labels, sessionLabels, assignLabel, removeLabel]);
 
   // El panel completo de chat (wrapper + input separado)
   const chatPanel = selectedSessionId && selectedSession ? (
@@ -1621,7 +1344,7 @@ export function ChatChannelPanel({
       {/* Input para agente humano - FUERA del useMemo para estabilidad */}
       {/* Se bloquea cuando el bot está activo o cuando la ventana de 24h expiró */}
       {(() => {
-        const isBotActive = botStates[selectedSessionId] ?? true;
+        const isBotActive = selectedSession?.botEnabled ?? true;
 
         if (!is24hCheckReady) {
           return (

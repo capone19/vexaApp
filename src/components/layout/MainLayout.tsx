@@ -27,11 +27,7 @@ export function MainLayout({ children }: MainLayoutProps) {
 
   return (
     <NotificationsProvider>
-      <ChatRealtimeSyncProvider
-        tenantId={tenantId}
-        enablePollingFallback
-        pollingIntervalMs={30000}
-      >
+      <ChatRealtimeSyncProvider tenantId={tenantId}>
         <div className={cn("min-h-screen bg-background", showImpersonationPadding && "pt-12")}>
           {/* Desktop Sidebar */}
           {!isMobile && (

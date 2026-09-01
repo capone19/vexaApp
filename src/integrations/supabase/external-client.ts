@@ -59,6 +59,20 @@ export type ExternalChatTable = 'n8n_chat_histories' | 'instagram_chat_histories
 
 export type ExternalChatMessage = N8nChatMessage | InstagramChatMessage;
 
+export interface Conversation {
+  session_id: string;
+  tenant_id: string;
+  channel: 'whatsapp' | 'instagram';
+  contact_phone: string | null;
+  contact_username: string | null;
+  last_message_preview: string | null;
+  last_message_at: string;
+  last_client_message_at: string | null;
+  message_count: number;
+  bot_activado: boolean;
+  updated_at: string;
+}
+
 export function isN8nChatMessage(msg: ExternalChatMessage): msg is N8nChatMessage {
   return 'phone_number' in msg || 'media' in msg;
 }
