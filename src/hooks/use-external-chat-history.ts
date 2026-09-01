@@ -1,31 +1,13 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   externalSupabase,
-  type Conversation,
   type ExternalChatMessage,
   type ExternalChatTable,
 } from '@/integrations/supabase/external-client';
-import type { ChatChannelId } from '@/lib/chat-channels';
+import { useChatRealtimeSync } from '@/hooks/use-chat-realtime-sync';
 import { parseMessageField } from '@/lib/chat-message-utils';
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 const isDev = import.meta.env.DEV;
-const CONVERSATIONS_PAGE_SIZE = 30;
-const MESSAGES_PAGE_SIZE = 40;
-
-const CONVERSATION_COLUMNS =
-  'session_id, tenant_id, channel, contact_phone, contact_username, last_message_preview, last_message_at, last_client_message_at, message_count, bot_activado, updated_at';
-
-const N8N_MESSAGE_COLUMNS =
-  'id, session_id, tenant_id, phone_number, message, media, created_at, bot_activado';
-
-const INSTAGRAM_MESSAGE_COLUMNS =
-  'id, session_id, tenant_id, username, message, created_at, bot_activado';
-
-function getMessageColumns(table: ExternalChatTable): string {
-  return table === 'n8n_chat_histories' ? N8N_MESSAGE_COLUMNS : INSTAGRAM_MESSAGE_COLUMNS;
-}
 
 function deduplicateMessages(messages: ExternalChatMessage[]): ExternalChatMessage[] {
   const seen = new Map<string, ExternalChatMessage>();
@@ -66,110 +48,26 @@ function deduplicateMessages(messages: ExternalChatMessage[]): ExternalChatMessa
   );
 }
 
-function mergeMessagesAsc(
-  existing: ExternalChatMessage[],
-  incoming: ExternalChatMessage[]
-): ExternalChatMessage[] {
-  if (incoming.length === 0) return existing;
-  const dedupedIncoming = deduplicateMessages(incoming);
-  const seenIds = new Set(existing.map(m => m.id));
-  const merged = [...existing];
-  for (const msg of dedupedIncoming) {
-    if (!seenIds.has(msg.id)) {
-      seenIds.add(msg.id);
-      merged.push(msg);
-    }
-  }
-  return merged.sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  );
-}
-
-function prependMessagesAsc(
-  existing: ExternalChatMessage[],
-  incoming: ExternalChatMessage[]
-): ExternalChatMessage[] {
-  if (incoming.length === 0) return existing;
-  const dedupedIncoming = deduplicateMessages(incoming);
-  const seenIds = new Set(existing.map(m => m.id));
-  const prepended: ExternalChatMessage[] = [];
-  for (const msg of dedupedIncoming) {
-    if (!seenIds.has(msg.id)) {
-      seenIds.add(msg.id);
-      prepended.push(msg);
-    }
-  }
-  if (prepended.length === 0) return existing;
-  return [...prepended, ...existing].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  );
-}
-
-export function useConversationList(channel: ChatChannelId, tenantId?: string) {
-  const query = useInfiniteQuery({
-    queryKey: ['conversations', channel, tenantId],
-    enabled: !!tenantId,
-    initialPageParam: undefined as string | undefined,
-    queryFn: async ({ pageParam }) => {
-      if (!tenantId) return [] as Conversation[];
-
-      // Keyset simple por last_message_at. Si en el futuro hay colisiones de timestamp
-      // exacto, migrar a una RPC con keyset compuesto (last_message_at, session_id).
-      let q = externalSupabase
-        .from('conversations')
-        .select(CONVERSATION_COLUMNS)
-        .eq('tenant_id', tenantId)
-        .eq('channel', channel)
-        .order('last_message_at', { ascending: false })
-        .order('session_id', { ascending: false })
-        .limit(CONVERSATIONS_PAGE_SIZE);
-
-      if (pageParam) {
-        q = q.lt('last_message_at', pageParam);
-      }
-
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data || []) as Conversation[];
-    },
-    getNextPageParam: (lastPage) => {
-      if (lastPage.length < CONVERSATIONS_PAGE_SIZE) return undefined;
-      return lastPage[lastPage.length - 1]?.last_message_at;
-    },
-  });
-
-  const conversations = useMemo(
-    () => query.data?.pages.flat() ?? [],
-    [query.data?.pages]
-  );
-
-  return {
-    conversations,
-    isLoading: query.isLoading,
-    error: query.error instanceof Error ? query.error.message : query.error ? String(query.error) : null,
-    fetchNextPage: query.fetchNextPage,
-    hasNextPage: query.hasNextPage ?? false,
-    isFetchingNextPage: query.isFetchingNextPage,
-  };
-}
-
 export interface UseExternalChatListOptions {
   table: ExternalChatTable;
   tenantId?: string;
   sinceList?: Date;
+  /** Si true, ignora sinceList y trae las últimas `limit` filas del tenant */
   skipDateFilter?: boolean;
+  /** Máximo de filas a traer (default 2000) */
   limit?: number;
   enableRealtime?: boolean;
 }
 
-/** @deprecated Use useConversationList for the sidebar list */
 export function useExternalChatList(options: UseExternalChatListOptions) {
-  const { table, tenantId, sinceList, skipDateFilter = false, limit = 2000 } = options;
+  const { table, tenantId, sinceList, skipDateFilter = false, limit = 2000, enableRealtime = true } = options;
   const sinceListMs = sinceList?.getTime();
 
   const [messages, setMessages] = useState<ExternalChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const { subscribeToChatChanges } = useChatRealtimeSync();
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -188,14 +86,20 @@ export function useExternalChatList(options: UseExternalChatListOptions) {
     setIsLoading(true);
     setError(null);
     try {
+      // El proyecto Supabase enforcea un "Max Rows" por request (PostgREST db-max-rows,
+      // vimos 1000 en producción) que ignora nuestro .limit(): pedir limit=5000 en una sola
+      // query igual devuelve solo las primeras ~1000 filas. Para poder traer más that eso
+      // (necesario al ampliar la ventana de días) paginamos con .range() pidiendo de a
+      // "remaining" filas y avanzando el offset según lo que realmente vino en cada página,
+      // hasta juntar `limit` filas o hasta que una página vuelva vacía (sin más datos).
       const collected: ExternalChatMessage[] = [];
       let offset = 0;
-      const MAX_PAGES = 50;
+      const MAX_PAGES = 50; // failsafe contra loops largos con tenants enormes
       for (let page = 0; page < MAX_PAGES && collected.length < limit; page++) {
         const remaining = limit - collected.length;
         let q = externalSupabase
           .from(table)
-          .select(getMessageColumns(table))
+          .select('*')
           .eq('tenant_id', tenantId)
           .order('created_at', { ascending: false })
           .range(offset, offset + remaining - 1);
@@ -218,7 +122,18 @@ export function useExternalChatList(options: UseExternalChatListOptions) {
         console.log('[useExternalChatList:instagram]', {
           tenantId,
           rowCount: collected.length,
+          skipDateFilter,
+          sinceList: skipDateFilter ? null : sinceListMs != null ? new Date(sinceListMs).toISOString() : null,
         });
+        if (collected.length > 0) {
+          const sample = collected[0] as ExternalChatMessage;
+          console.log('[useExternalChatList:instagram] sample row:', {
+            session_id: sample.session_id,
+            tenant_id: sample.tenant_id,
+            messageType: typeof sample.message,
+            username: 'username' in sample ? sample.username : undefined,
+          });
+        }
       }
 
       setMessages(collected);
@@ -235,6 +150,26 @@ export function useExternalChatList(options: UseExternalChatListOptions) {
     fetchMessages();
   }, [fetchMessages]);
 
+  useEffect(() => {
+    if (!enableRealtime || !tenantId) return;
+    return subscribeToChatChanges(table, payload => {
+      if (!isMountedRef.current) return;
+      if (payload.eventType === 'INSERT') {
+        const newMsg = payload.new as ExternalChatMessage;
+        setMessages(prev => {
+          if (prev.some(m => m.id === newMsg.id)) return prev;
+          return [newMsg, ...prev];
+        });
+      } else if (payload.eventType === 'UPDATE') {
+        const updated = payload.new as ExternalChatMessage;
+        setMessages(prev => prev.map(m => m.id === updated.id ? updated : m));
+      } else if (payload.eventType === 'DELETE') {
+        const deletedId = (payload.old as { id: number }).id;
+        setMessages(prev => prev.filter(m => m.id !== deletedId));
+      }
+    });
+  }, [table, tenantId, enableRealtime, subscribeToChatChanges]);
+
   return { messages, isLoading, error, refetch: fetchMessages };
 }
 
@@ -242,21 +177,21 @@ export interface UseExternalChatSessionOptions {
   table: ExternalChatTable;
   tenantId?: string;
   sessionId?: string | null;
+  sinceSession?: Date;
   enableRealtime?: boolean;
 }
 
 export function useExternalChatSession(options: UseExternalChatSessionOptions) {
-  const { table, tenantId, sessionId, enableRealtime = true } = options;
+  const { table, tenantId, sessionId, sinceSession, enableRealtime = true } = options;
 
   const [messages, setMessages] = useState<ExternalChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const { subscribeToChatChanges } = useChatRealtimeSync();
   const isMountedRef = useRef(true);
   const prevSessionIdRef = useRef<string | null | undefined>(undefined);
-  const channelRef = useRef<ReturnType<typeof externalSupabase.channel> | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -265,151 +200,83 @@ export function useExternalChatSession(options: UseExternalChatSessionOptions) {
     };
   }, []);
 
-  const fetchInitialMessages = useCallback(async () => {
-    if (!sessionId || !tenantId) {
-      setMessages([]);
-      setIsLoading(false);
-      setHasMoreOlder(false);
-      return;
-    }
-
-    const isNewSession = sessionId !== prevSessionIdRef.current;
-    prevSessionIdRef.current = sessionId;
-
-    if (isNewSession) {
-      setMessages([]);
-      setIsLoading(true);
-    }
-    setError(null);
-
-    try {
-      const { data, error: fetchError } = await externalSupabase
-        .from(table)
-        .select(getMessageColumns(table))
-        .eq('session_id', sessionId)
-        .eq('tenant_id', tenantId)
-        .order('created_at', { ascending: false })
-        .limit(MESSAGES_PAGE_SIZE);
-
-      if (fetchError) throw fetchError;
-      if (!isMountedRef.current) return;
-
-      const rows = (data || []) as ExternalChatMessage[];
-      const asc = [...rows].reverse();
-      setMessages(deduplicateMessages(asc));
-      setHasMoreOlder(rows.length === MESSAGES_PAGE_SIZE);
-    } catch (err) {
-      if (isMountedRef.current) {
-        setError(err instanceof Error ? err.message : 'Error fetching session messages');
+  const fetchMessages = useCallback(
+    async (silent = false) => {
+      if (!sessionId || !tenantId) {
+        setMessages([]);
+        setIsLoading(false);
+        return;
       }
-    } finally {
-      if (isMountedRef.current) setIsLoading(false);
-    }
-  }, [table, sessionId, tenantId]);
 
-  const loadOlderMessages = useCallback(async () => {
-    if (!sessionId || !tenantId || isLoadingMore || !hasMoreOlder) return;
+      const isNewSession = sessionId !== prevSessionIdRef.current;
+      prevSessionIdRef.current = sessionId;
 
-    const oldest = messages[0];
-    if (!oldest) return;
-
-    setIsLoadingMore(true);
-    setError(null);
-
-    try {
-      const { data, error: fetchError } = await externalSupabase
-        .from(table)
-        .select(getMessageColumns(table))
-        .eq('session_id', sessionId)
-        .eq('tenant_id', tenantId)
-        .lt('created_at', oldest.created_at)
-        .order('created_at', { ascending: false })
-        .limit(MESSAGES_PAGE_SIZE);
-
-      if (fetchError) throw fetchError;
-      if (!isMountedRef.current) return;
-
-      const rows = (data || []) as ExternalChatMessage[];
-      const asc = [...rows].reverse();
-      setMessages(prev => prependMessagesAsc(prev, asc));
-      setHasMoreOlder(rows.length === MESSAGES_PAGE_SIZE);
-    } catch (err) {
-      if (isMountedRef.current) {
-        setError(err instanceof Error ? err.message : 'Error fetching older messages');
+      if (!silent) {
+        if (isNewSession) {
+          setMessages([]);
+          setIsLoading(true);
+        } else {
+          setIsLoadingMore(true);
+        }
       }
-    } finally {
-      if (isMountedRef.current) setIsLoadingMore(false);
-    }
-  }, [table, sessionId, tenantId, isLoadingMore, hasMoreOlder, messages]);
+      setError(null);
+
+      try {
+        let q = externalSupabase
+          .from(table)
+          .select('*')
+          .eq('session_id', sessionId)
+          .eq('tenant_id', tenantId)
+          .order('created_at', { ascending: true });
+
+        if (sinceSession) q = q.gte('created_at', sinceSession.toISOString());
+
+        const { data, error: fetchError } = await q;
+        if (fetchError) throw fetchError;
+        if (!isMountedRef.current) return;
+
+        setMessages(deduplicateMessages((data || []) as ExternalChatMessage[]));
+      } catch (err) {
+        if (isMountedRef.current) {
+          setError(err instanceof Error ? err.message : 'Error fetching session messages');
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setIsLoading(false);
+          setIsLoadingMore(false);
+        }
+      }
+    },
+    [table, sessionId, tenantId, sinceSession]
+  );
 
   useEffect(() => {
-    fetchInitialMessages();
-  }, [fetchInitialMessages]);
+    fetchMessages();
+  }, [fetchMessages]);
 
   useEffect(() => {
     if (!enableRealtime || !sessionId || !tenantId) return;
-
-    if (channelRef.current) {
-      externalSupabase.removeChannel(channelRef.current);
-      channelRef.current = null;
-    }
-
-    const channel = externalSupabase
-      .channel(`session-${table}-${sessionId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table,
-          filter: `session_id=eq.${sessionId}`,
-        },
-        (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
-          if (!isMountedRef.current) return;
-
-          if (payload.eventType === 'INSERT') {
-            const newMsg = payload.new as ExternalChatMessage;
-            if (newMsg.tenant_id !== tenantId) return;
-            setMessages(prev => mergeMessagesAsc(prev, [newMsg]));
-          } else if (payload.eventType === 'UPDATE') {
-            const updated = payload.new as ExternalChatMessage;
-            if (updated.tenant_id !== tenantId) return;
-            setMessages(prev => prev.map(m => (m.id === updated.id ? updated : m)));
-          } else if (payload.eventType === 'DELETE') {
-            const deletedId = (payload.old as { id: number }).id;
-            setMessages(prev => prev.filter(m => m.id !== deletedId));
-          }
-        }
-      )
-      .subscribe();
-
-    channelRef.current = channel;
-
-    return () => {
-      if (channelRef.current) {
-        externalSupabase.removeChannel(channelRef.current);
-        channelRef.current = null;
+    return subscribeToChatChanges(table, payload => {
+      if (!isMountedRef.current) return;
+      if (payload.eventType === 'INSERT') {
+        const newMsg = payload.new as ExternalChatMessage;
+        if (newMsg.session_id !== sessionId) return;
+        setMessages(prev => {
+          if (prev.some(m => m.id === newMsg.id)) return prev;
+          return deduplicateMessages([...prev, newMsg]);
+        });
+      } else if (payload.eventType === 'UPDATE') {
+        const updated = payload.new as ExternalChatMessage;
+        if (updated.session_id !== sessionId) return;
+        setMessages(prev => prev.map(m => m.id === updated.id ? updated : m));
+      } else if (payload.eventType === 'DELETE') {
+        const deletedId = (payload.old as { id: number }).id;
+        setMessages(prev => prev.filter(m => m.id !== deletedId));
       }
-    };
-  }, [table, sessionId, tenantId, enableRealtime]);
+    });
+  }, [table, sessionId, tenantId, enableRealtime, subscribeToChatChanges]);
 
-  const refetch = useCallback(
-    async (silent = false) => {
-      if (!silent) setIsLoading(true);
-      await fetchInitialMessages();
-    },
-    [fetchInitialMessages]
-  );
-
-  return {
-    messages,
-    isLoading,
-    isLoadingMore,
-    hasMoreOlder,
-    loadOlderMessages,
-    error,
-    refetch,
-  };
+  return { messages, isLoading, isLoadingMore, error, refetch: fetchMessages };
 }
 
 export { deduplicateMessages };
