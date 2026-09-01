@@ -1,8 +1,9 @@
 // ============================================
 // VEXA - Sincronización Global de Chats (Realtime)
 // ============================================
-// Provider montado en MainLayout: escucha public.conversations
-// con filtro por tenant y parchea la caché de useConversationList.
+// Provider montado en MainLayout:
+// - conversations (instagram vía trigger + ambos canales si hay fila)
+// - n8n_chat_histories INSERT/UPDATE solo con tenant_id (sin triggers en esa tabla)
 // ============================================
 
 import {
@@ -77,6 +78,62 @@ function patchConversationCache(
     pages[0] = [row, ...pages[0]];
     return { ...old, pages };
   });
+}
+
+interface N8nHistoryRow {
+  session_id: string;
+  tenant_id: string;
+  phone_number?: string | null;
+  message?: { type?: string; content?: string | null };
+  created_at: string;
+  bot_activado?: boolean;
+}
+
+function findWhatsappConversationInCache(
+  queryClient: ReturnType<typeof useQueryClient>,
+  tenantId: string,
+  sessionId: string
+): Conversation | undefined {
+  const data = queryClient.getQueryData<InfiniteData<Conversation[]>>([
+    'conversations',
+    'whatsapp',
+    tenantId,
+  ]);
+  if (!data) return undefined;
+  for (const page of data.pages) {
+    const found = page.find(item => item.session_id === sessionId);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function conversationFromN8nRow(row: N8nHistoryRow, existing?: Conversation): Conversation {
+  const isHuman = row.message?.type === 'human';
+  const preview = (row.message?.content ?? '').slice(0, 140);
+  const isNewer =
+    !existing?.last_message_at ||
+    new Date(row.created_at).getTime() >= new Date(existing.last_message_at).getTime();
+
+  let lastClientMessageAt = existing?.last_client_message_at ?? null;
+  if (isHuman) {
+    if (!lastClientMessageAt || new Date(row.created_at) > new Date(lastClientMessageAt)) {
+      lastClientMessageAt = row.created_at;
+    }
+  }
+
+  return {
+    session_id: row.session_id,
+    tenant_id: row.tenant_id,
+    channel: 'whatsapp',
+    contact_phone: row.phone_number ?? existing?.contact_phone ?? null,
+    contact_username: null,
+    last_message_preview: isNewer ? preview : (existing?.last_message_preview ?? preview),
+    last_message_at: isNewer ? row.created_at : existing!.last_message_at,
+    last_client_message_at: lastClientMessageAt,
+    message_count: (existing?.message_count ?? 0) + 1,
+    bot_activado: row.bot_activado ?? existing?.bot_activado ?? true,
+    updated_at: new Date().toISOString(),
+  };
 }
 
 interface ChatRealtimeSyncProviderProps {
@@ -165,6 +222,45 @@ export function ChatRealtimeSyncProvider({
           }
 
           invalidateAllChatCachesRef.current();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'n8n_chat_histories',
+          filter: `tenant_id=eq.${tenantId}`,
+        },
+        (payload) => {
+          const row = payload.new as N8nHistoryRow;
+          if (!row?.session_id || !row?.tenant_id) return;
+          const existing = findWhatsappConversationInCache(queryClient, tenantId, row.session_id);
+          const conv = conversationFromN8nRow(row, existing);
+          patchConversationCache(queryClient, tenantId, conv, existing ? 'UPDATE' : 'INSERT');
+          invalidateAllChatCachesRef.current();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'n8n_chat_histories',
+          filter: `tenant_id=eq.${tenantId}`,
+        },
+        (payload) => {
+          const row = payload.new as N8nHistoryRow;
+          if (!row?.session_id) return;
+          if (typeof row.bot_activado === 'boolean') {
+            patchConversationBotState(
+              queryClient,
+              'whatsapp',
+              tenantId,
+              row.session_id,
+              row.bot_activado
+            );
+          }
         }
       )
       .subscribe((status) => {

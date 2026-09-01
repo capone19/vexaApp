@@ -1,6 +1,10 @@
 -- =============================================================================
 -- conversations — Supabase EXTERNO (VITE_EXTERNAL_SUPABASE_*)
--- Tabla de proyección: 1 fila por chat, mantenida por triggers en tablas fuente.
+-- Tabla de proyección: 1 fila por chat.
+-- IMPORTANTE: NO crear triggers en n8n_chat_histories — n8n Postgres Chat Memory
+-- inserta filas sin tenant_id y un trigger que escriba en conversations rompe n8n.
+-- Solo instagram_chat_histories lleva triggers; WhatsApp se sincroniza vía backfill
+-- + realtime en la app (filas con tenant_id).
 -- Ejecutar manualmente en el SQL Editor del proyecto externo.
 -- =============================================================================
 
@@ -39,15 +43,16 @@ DECLARE
   v_is_human         boolean;
   v_preview          text;
 BEGIN
-  IF TG_TABLE_NAME = 'n8n_chat_histories' THEN
-    v_channel          := 'whatsapp';
-    v_contact_phone    := NEW.phone_number;
-    v_contact_username := NULL;
-  ELSIF TG_TABLE_NAME = 'instagram_chat_histories' THEN
+  -- Solo instagram: n8n_chat_histories NO debe tener este trigger (ver nota arriba).
+  IF TG_TABLE_NAME = 'instagram_chat_histories' THEN
     v_channel          := 'instagram';
     v_contact_phone    := NULL;
     v_contact_username := NEW.username;
   ELSE
+    RETURN NEW;
+  END IF;
+
+  IF NEW.tenant_id IS NULL THEN
     RETURN NEW;
   END IF;
 
@@ -113,11 +118,14 @@ AS $$
 DECLARE
   v_channel text;
 BEGIN
-  IF TG_TABLE_NAME = 'n8n_chat_histories' THEN
-    v_channel := 'whatsapp';
-  ELSIF TG_TABLE_NAME = 'instagram_chat_histories' THEN
+  -- Solo instagram: n8n_chat_histories NO debe tener este trigger.
+  IF TG_TABLE_NAME = 'instagram_chat_histories' THEN
     v_channel := 'instagram';
   ELSE
+    RETURN NEW;
+  END IF;
+
+  IF NEW.tenant_id IS NULL THEN
     RETURN NEW;
   END IF;
 
@@ -133,19 +141,10 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- Triggers on n8n_chat_histories
+-- Triggers SOLO en instagram_chat_histories (n8n_chat_histories: sin triggers)
 -- -----------------------------------------------------------------------------
 DROP TRIGGER IF EXISTS trg_n8n_sync_conversation_insert ON public.n8n_chat_histories;
-CREATE TRIGGER trg_n8n_sync_conversation_insert
-  AFTER INSERT ON public.n8n_chat_histories
-  FOR EACH ROW
-  EXECUTE FUNCTION public.sync_conversation_on_insert();
-
 DROP TRIGGER IF EXISTS trg_n8n_sync_conversation_bot_state ON public.n8n_chat_histories;
-CREATE TRIGGER trg_n8n_sync_conversation_bot_state
-  AFTER UPDATE OF bot_activado ON public.n8n_chat_histories
-  FOR EACH ROW
-  EXECUTE FUNCTION public.sync_conversation_bot_state();
 
 -- -----------------------------------------------------------------------------
 -- Triggers on instagram_chat_histories
