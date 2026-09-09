@@ -83,10 +83,8 @@ export function AgentSettingsHeader({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {/* Botón Playground */}
           <PlaygroundChat tenantId={tenantId} />
           
-          {/* Botón Guardar */}
           <Button 
             size={isMobile ? "sm" : "sm"} 
             className={cn("gap-2", isMobile && "px-3")} 

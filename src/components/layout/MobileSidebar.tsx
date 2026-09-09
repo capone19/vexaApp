@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/shared/Logo";
@@ -15,13 +14,11 @@ import {
   LayoutDashboard,
   MessageSquare,
   Calendar,
-  TrendingUp,
   FileText,
   Megaphone,
   CreditCard,
   Bot,
-  Bell,
-  HelpCircle,
+  Brain,
   Cog,
   Lock,
   LogOut,
@@ -33,28 +30,39 @@ import { mockUser } from "@/lib/mock/data";
 import { useSubscription } from "@/hooks/use-subscription";
 import type { PlanId } from "@/lib/plan";
 
+interface NavChild {
+  title: string;
+  href: string;
+  icon?: React.ElementType;
+}
+
 interface NavItem {
   title: string;
   href: string;
   icon: React.ElementType;
   isUpgrade?: boolean;
-  children?: { title: string; href: string }[];
+  /** Si true, el padre solo se marca activo en coincidencia exacta */
+  exactActive?: boolean;
+  children?: NavChild[];
 }
 
 const mainNavItems: NavItem[] = [
-  { title: "Dashboard", href: "/", icon: LayoutDashboard },
-  { title: "Ajustes del Agente", href: "/ajustes-agente", icon: Bot },
-  { title: "Chats", href: "/chats", icon: MessageSquare },
-  { title: "Calendario", href: "/calendario", icon: Calendar },
+  { title: "Dashboard", href: "/", icon: LayoutDashboard, exactActive: true },
   {
-    title: "Resultados",
-    href: "/resultados",
-    icon: TrendingUp,
+    title: "Ajustes del Agente",
+    href: "/ajustes-agente",
+    icon: Bot,
+    exactActive: true,
     children: [
-      { title: "Métricas", href: "/resultados/metricas" },
-      { title: "Ventas", href: "/resultados/ventas" },
+      {
+        title: "Análisis del agente",
+        href: "/ajustes-agente/analisis",
+        icon: Brain,
+      },
     ],
   },
+  { title: "Chats", href: "/chats", icon: MessageSquare },
+  { title: "Calendario", href: "/calendario", icon: Calendar },
   { title: "Facturación", href: "/facturacion", icon: CreditCard },
   { title: "Reportes", href: "/reportes", icon: FileText, isUpgrade: true },
   {
@@ -70,8 +78,6 @@ const mainNavItems: NavItem[] = [
 ];
 
 const bottomNavItems: NavItem[] = [
-  { title: "Notificaciones", href: "/notificaciones", icon: Bell },
-  { title: "Soporte", href: "/soporte", icon: HelpCircle },
   { title: "Configuración", href: "/configuracion", icon: Cog },
 ];
 
@@ -80,7 +86,6 @@ interface MobileSidebarProps {
   onOpenChange: (open: boolean) => void;
 }
 
-// Función para obtener el perfil del usuario desde localStorage
 const getUserProfile = () => {
   try {
     const stored = localStorage.getItem('company_profile');
@@ -99,7 +104,6 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
   const userProfile = getUserProfile();
   const { user: authUser } = useAuth();
   
-  // Obtener plan real de la suscripción
   const { subscription } = useSubscription();
   const currentPlan: PlanId = (subscription?.plan as PlanId) || 'basic';
   const hasPremium = currentPlan === 'pro' || currentPlan === 'enterprise';
@@ -115,8 +119,8 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
     .toUpperCase()
     .slice(0, 2);
 
-  const isActive = (href: string) => {
-    if (href === "/") return location.pathname === "/";
+  const isActive = (href: string, exact = false) => {
+    if (href === "/" || exact) return location.pathname === href;
     return location.pathname.startsWith(href);
   };
 
@@ -141,7 +145,6 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
         </SheetHeader>
 
         <ScrollArea className="flex-1">
-          {/* User Profile */}
           <div className="p-4 border-b border-border">
             <div className="flex items-center gap-3">
               <Avatar className="h-12 w-12 border-2 border-primary/20">
@@ -157,64 +160,56 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
             </div>
           </div>
 
-          {/* Main Navigation */}
           <nav className="p-3">
             <div className="space-y-1">
               {mainNavItems.map((item) => (
                 <div key={item.title}>
-                  {item.children ? (
-                    <div className="space-y-1">
-                      <div className={cn(
-                        "flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium",
-                        isActive(item.href)
-                          ? "bg-primary/10 text-primary"
-                          : "text-muted-foreground"
-                      )}>
-                        <item.icon className="h-5 w-5 shrink-0" />
-                        <span className="flex-1">{item.title}</span>
-                        {item.isUpgrade && !hasPremium && <Lock className="h-4 w-4 text-warning" />}
-                      </div>
-                      <div className="ml-8 space-y-1">
-                        {item.children.map((child) => (
+                  <button
+                    onClick={() => handleNavigation(item.href)}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors text-left",
+                      isActive(item.href, item.exactActive)
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground active:bg-secondary"
+                    )}
+                  >
+                    <item.icon className="h-5 w-5 shrink-0" />
+                    <span className="flex-1">{item.title}</span>
+                    {item.isUpgrade && !hasPremium && <Lock className="h-4 w-4 text-warning" />}
+                  </button>
+
+                  {item.children && item.children.length > 0 && (
+                    <div className="ml-4 mt-1 space-y-1 border-l border-border pl-3">
+                      {item.children.map((child) => {
+                        const ChildIcon = child.icon;
+                        return (
                           <button
                             key={child.href}
                             onClick={() => handleNavigation(child.href)}
                             className={cn(
-                              "w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm transition-colors text-left",
+                              "w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs transition-colors text-left",
                               location.pathname === child.href
                                 ? "bg-primary/10 text-primary font-medium"
                                 : "text-muted-foreground active:bg-secondary"
                             )}
                           >
-                            <ChevronRight className="h-3 w-3" />
+                            {ChildIcon ? (
+                              <ChildIcon className="h-3.5 w-3.5 shrink-0" />
+                            ) : (
+                              <ChevronRight className="h-3 w-3 shrink-0" />
+                            )}
                             {child.title}
                           </button>
-                        ))}
-                      </div>
+                        );
+                      })}
                     </div>
-                  ) : (
-                    <button
-                      onClick={() => handleNavigation(item.href)}
-                      className={cn(
-                        "w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors text-left",
-                        isActive(item.href)
-                          ? "bg-primary/10 text-primary"
-                          : "text-muted-foreground active:bg-secondary"
-                      )}
-                    >
-                      <item.icon className="h-5 w-5 shrink-0" />
-                      <span className="flex-1">{item.title}</span>
-                      {item.isUpgrade && !hasPremium && <Lock className="h-4 w-4 text-warning" />}
-                    </button>
                   )}
                 </div>
               ))}
             </div>
 
-            {/* Divider */}
             <div className="my-4 border-t border-border" />
 
-            {/* Bottom Navigation */}
             <div className="space-y-1">
               {bottomNavItems.map((item) => (
                 <button
@@ -235,7 +230,6 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
           </nav>
         </ScrollArea>
 
-        {/* Logout */}
         <div className="p-4 border-t border-border">
           <Button
             variant="ghost"

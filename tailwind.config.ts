@@ -85,26 +85,6 @@ export default {
           DEFAULT: "hsl(var(--hot))",
           foreground: "hsl(var(--hot-foreground))",
         },
-        tofu: {
-          DEFAULT: "hsl(var(--tofu))",
-          soft: "hsl(var(--tofu-soft))",
-          "soft-foreground": "hsl(var(--tofu-soft-foreground))",
-        },
-        mofu: {
-          DEFAULT: "hsl(var(--mofu))",
-          soft: "hsl(var(--mofu-soft))",
-          "soft-foreground": "hsl(var(--mofu-soft-foreground))",
-        },
-        hotlead: {
-          DEFAULT: "hsl(var(--hotlead))",
-          soft: "hsl(var(--hotlead-soft))",
-          "soft-foreground": "hsl(var(--hotlead-soft-foreground))",
-        },
-        bofu: {
-          DEFAULT: "hsl(var(--bofu))",
-          soft: "hsl(var(--bofu-soft))",
-          "soft-foreground": "hsl(var(--bofu-soft-foreground))",
-        },
       },
       borderRadius: {
         lg: "var(--radius)",

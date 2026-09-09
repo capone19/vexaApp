@@ -9,16 +9,14 @@ import { ImpersonationProvider } from "@/contexts/ImpersonationContext";
 import { ImpersonationBanner } from "@/components/admin/ImpersonationBanner";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AdminRoute } from "@/components/auth/AdminRoute";
-import { PremiumRoute } from "@/components/auth/PremiumRoute";
 import { Loader2 } from "lucide-react";
 
 // Lazy load de páginas para code splitting
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Chats = lazy(() => import("./pages/Chats"));
 const AgentSettings = lazy(() => import("./pages/AgentSettings"));
+const AnalisisAgente = lazy(() => import("./pages/AnalisisAgente"));
 const Calendar = lazy(() => import("./pages/Calendar"));
-const Metrics = lazy(() => import("./pages/Metrics"));
-const Results = lazy(() => import("./pages/Results"));
 const Marketing = lazy(() => import("./pages/Marketing"));
 const MarketingTemplates = lazy(() => import("./pages/MarketingTemplates"));
 const MarketingPerformance = lazy(() => import("./pages/MarketingPerformance"));
@@ -28,8 +26,6 @@ const Reports = lazy(() => import("./pages/Reports"));
 const ReportDetail = lazy(() => import("./pages/ReportDetail"));
 const ReportCheckout = lazy(() => import("./pages/ReportCheckout"));
 const Billing = lazy(() => import("./pages/Billing"));
-const Notifications = lazy(() => import("./pages/Notifications"));
-const Support = lazy(() => import("./pages/Support"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Auth = lazy(() => import("./pages/Auth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -41,13 +37,6 @@ const AdminTicketDetail = lazy(() => import("./pages/admin/AdminTicketDetail"));
 const AdminHealthCheck = lazy(() => import("./pages/admin/AdminHealthCheck"));
 const AdminEntregas = lazy(() => import("./pages/admin/AdminEntregas"));
 const Entregas = lazy(() => import("./pages/Entregas"));
-
-// Publicidad - módulo con tema dark-violeta propio
-const PublicidadLayout = lazy(() => import("./pages/publicidad/PublicidadLayout"));
-const PublicidadGraficas = lazy(() => import("./pages/publicidad/PublicidadGraficas"));
-const PublicidadCampanas = lazy(() => import("./pages/publicidad/PublicidadCampanas"));
-const PublicidadAjustes = lazy(() => import("./pages/publicidad/PublicidadAjustes"));
-const PublicidadIdentidadMarca = lazy(() => import("./pages/publicidad/PublicidadIdentidadMarca"));
 
 // Componente de loading para Suspense
 const PageLoader = () => (
@@ -84,13 +73,10 @@ const App = () => (
               {/* Rutas protegidas */}
               <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/ajustes-agente" element={<ProtectedRoute><AgentSettings /></ProtectedRoute>} />
+              <Route path="/ajustes-agente/analisis" element={<ProtectedRoute><AnalisisAgente /></ProtectedRoute>} />
               <Route path="/chats" element={<ProtectedRoute><Chats /></ProtectedRoute>} />
               <Route path="/calendario" element={<ProtectedRoute><Calendar /></ProtectedRoute>} />
               <Route path="/entregas" element={<ProtectedRoute><Entregas /></ProtectedRoute>} />
-              {/* Resultados routes */}
-              <Route path="/resultados" element={<ProtectedRoute><Metrics /></ProtectedRoute>} />
-              <Route path="/resultados/metricas" element={<ProtectedRoute><Metrics /></ProtectedRoute>} />
-              <Route path="/resultados/ventas" element={<ProtectedRoute><Results /></ProtectedRoute>} />
               {/* Marketing habilitado para todos los planes */}
               <Route path="/marketing" element={<ProtectedRoute><Marketing /></ProtectedRoute>} />
               <Route path="/marketing/plantillas" element={<ProtectedRoute><MarketingTemplates /></ProtectedRoute>} />
@@ -101,8 +87,6 @@ const App = () => (
               <Route path="/reportes/:reportId" element={<ProtectedRoute><ReportDetail /></ProtectedRoute>} />
               <Route path="/reportes/checkout/:reportId" element={<ProtectedRoute><ReportCheckout /></ProtectedRoute>} />
               <Route path="/facturacion" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
-              <Route path="/notificaciones" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
-              <Route path="/soporte" element={<ProtectedRoute><Support /></ProtectedRoute>} />
               <Route path="/configuracion" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
               
               {/* Admin routes */}
@@ -114,15 +98,6 @@ const App = () => (
 <Route path="/admin/tickets/:ticketId" element={<AdminRoute><AdminTicketDetail /></AdminRoute>} />
               <Route path="/admin/entregas" element={<AdminRoute><AdminEntregas /></AdminRoute>} />
               <Route path="/admin/health" element={<AdminRoute><AdminHealthCheck /></AdminRoute>} />
-              
-              {/* Publicidad - layout propio con tema dark-violeta */}
-              <Route path="/publicidad" element={<ProtectedRoute><PublicidadLayout /></ProtectedRoute>}>
-                <Route index element={<PublicidadGraficas />} />
-                <Route path="graficas" element={<PublicidadGraficas />} />
-                <Route path="identidad-de-marca" element={<PublicidadIdentidadMarca />} />
-                <Route path="campanas" element={<PublicidadCampanas />} />
-                <Route path="ajustes" element={<PublicidadAjustes />} />
-              </Route>
 
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />

@@ -1488,7 +1488,6 @@ export type Database = {
           slug: string
           timezone: string | null
           updated_at: string | null
-          vexa_ads_enabled: boolean | null
           whatsapp_business_id: string | null
           whatsapp_integration: string | null
           whatsapp_phone_id: string | null
@@ -1503,7 +1502,6 @@ export type Database = {
           slug: string
           timezone?: string | null
           updated_at?: string | null
-          vexa_ads_enabled?: boolean | null
           whatsapp_business_id?: string | null
           whatsapp_integration?: string | null
           whatsapp_phone_id?: string | null
@@ -1518,7 +1516,6 @@ export type Database = {
           slug?: string
           timezone?: string | null
           updated_at?: string | null
-          vexa_ads_enabled?: boolean | null
           whatsapp_business_id?: string | null
           whatsapp_integration?: string | null
           whatsapp_phone_id?: string | null

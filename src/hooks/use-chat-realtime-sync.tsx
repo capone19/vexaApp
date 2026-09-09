@@ -42,6 +42,9 @@ const ChatRealtimeSyncContext = createContext<ChatRealtimeSyncContextValue | nul
 
 const REALTIME_TABLES: ExternalChatTable[] = ['n8n_chat_histories', 'instagram_chat_histories'];
 
+const POLL_MS_DESCONECTADO = 30_000;   // realtime caído: ritmo actual
+const POLL_MS_CONECTADO    = 300_000;  // realtime OK: red de seguridad cada 5 min
+
 interface ChatRealtimeSyncProviderProps {
   tenantId: string | null | undefined;
   enablePollingFallback?: boolean;
@@ -169,20 +172,53 @@ export function ChatRealtimeSyncProvider({
       clearInterval(pollingRef.current);
     }
 
-    console.log('[ChatRealtimeSync] Setting up polling fallback every', pollingIntervalMs / 1000, 'seconds');
+    const intervalo = isN8nRealtimeConnected
+      ? Math.max(pollingIntervalMs, POLL_MS_CONECTADO)
+      : POLL_MS_DESCONECTADO;
+
+    console.log(
+      '[ChatRealtimeSync] Setting up polling fallback every',
+      intervalo / 1000,
+      'seconds',
+      `(realtime ${isN8nRealtimeConnected ? 'connected' : 'disconnected'})`
+    );
 
     pollingRef.current = setInterval(() => {
-      console.log('[ChatRealtimeSync] Polling fallback - invalidating caches');
+      if (document.visibilityState !== 'visible') {
+        console.log('[ChatRealtimeSync] Polling tick skipped — pestaña oculta');
+        return;
+      }
+
+      console.log(
+        '[ChatRealtimeSync] Polling fallback - invalidating caches',
+        `(realtime ${isN8nRealtimeConnected ? 'connected' : 'disconnected'})`
+      );
       invalidateAllChatCaches();
-    }, pollingIntervalMs);
+    }, intervalo);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[ChatRealtimeSync] Tab visible again — invalidating caches once');
+        invalidateAllChatCaches();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
     };
-  }, [enablePollingFallback, pollingIntervalMs, tenantId, invalidateAllChatCaches]);
+  }, [
+    enablePollingFallback,
+    pollingIntervalMs,
+    tenantId,
+    invalidateAllChatCaches,
+    isN8nRealtimeConnected,
+  ]);
 
   const value: ChatRealtimeSyncContextValue = {
     invalidateAllChatCaches,

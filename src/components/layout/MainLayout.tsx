@@ -9,7 +9,6 @@ import { useImpersonation } from "@/contexts/ImpersonationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
 import { ChatRealtimeSyncProvider } from "@/hooks/use-chat-realtime-sync";
-import { NotificationsProvider } from "@/contexts/NotificationsContext";
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -26,7 +25,6 @@ export function MainLayout({ children }: MainLayoutProps) {
   const showImpersonationPadding = isAdmin && isImpersonating;
 
   return (
-    <NotificationsProvider>
       <ChatRealtimeSyncProvider
         tenantId={tenantId}
         enablePollingFallback
@@ -68,6 +66,5 @@ export function MainLayout({ children }: MainLayoutProps) {
           )}
         </div>
       </ChatRealtimeSyncProvider>
-    </NotificationsProvider>
   );
 }

@@ -330,7 +330,13 @@ export default function MarketingBuyCredits() {
                   </div>
 
                   <div className="flex gap-3">
-                    <Button variant="outline" className="flex-1 gap-2" onClick={() => navigate('/soporte')}>
+                    <Button
+                      variant="outline"
+                      className="flex-1 gap-2"
+                      onClick={() => {
+                        window.location.href = 'mailto:soporte@vexa.io';
+                      }}
+                    >
                       <Mail className="h-4 w-4" />
                       Contactar Soporte
                     </Button>

@@ -2,7 +2,7 @@
 // VEXA - Format Currency Utility
 // ============================================
 // Función centralizada para formatear monedas según el tenant
-// Usado en Dashboard, Results, Calendar, Notifications
+// Usado en Dashboard, Calendar, etc.
 // EXCEPCIÓN: Billing siempre usa USD
 // ============================================
 

@@ -40,6 +40,17 @@ function getReturnPathFromState(state: unknown): string | null {
   const from = (state as { from?: Location } | null)?.from;
   if (!from?.pathname) return null;
   if (from.pathname === "/auth") return null;
+  // Rutas eliminadas: no redirigir de vuelta tras login
+  if (
+    from.pathname === "/resultados" ||
+    from.pathname.startsWith("/resultados/") ||
+    from.pathname === "/publicidad" ||
+    from.pathname.startsWith("/publicidad/") ||
+    from.pathname === "/notificaciones" ||
+    from.pathname === "/soporte"
+  ) {
+    return null;
+  }
   return `${from.pathname}${from.search ?? ""}${from.hash ?? ""}`;
 }
 

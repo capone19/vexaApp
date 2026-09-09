@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { AgentSettingsSidebar } from "@/components/agent-settings/AgentSettingsSidebar";
 import { AgentSettingsHeader } from "@/components/agent-settings/AgentSettingsHeader";
@@ -54,7 +54,12 @@ const sectionsList: Omit<AgentSettingsSectionInfo, "lastModified">[] = [
 
 export default function AgentSettings() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeSection = (searchParams.get("section") as AgentSettingsSectionId) || "personality";
+  const sectionParam = searchParams.get("section");
+  const activeSection = (
+    sectionParam && sectionParam !== "analisis"
+      ? sectionParam
+      : "personality"
+  ) as AgentSettingsSectionId;
   const [settings, setSettings] = useState<AgentSettingsType>(getEmptyAgentSettings());
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -349,6 +354,11 @@ export default function AgentSettings() {
         return null;
     }
   };
+
+  // URL antigua: /ajustes-agente?section=analisis → ruta nueva
+  if (sectionParam === "analisis") {
+    return <Navigate to="/ajustes-agente/analisis" replace />;
+  }
 
   return (
     <MainLayout>

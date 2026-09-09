@@ -59,28 +59,24 @@ export function hasCampaignsEnabled(plan: PlanId): boolean {
 export const planFeatures: Record<PlanId, {
   hasReports: boolean;
   hasMarketing: boolean;
-  hasAdvancedMetrics: boolean;
   hasScheduledReports: boolean;
   hasDataExport: boolean;
 }> = {
   basic: {
     hasReports: false,
     hasMarketing: true,  // Habilitado para todos los planes
-    hasAdvancedMetrics: false,
     hasScheduledReports: false,
     hasDataExport: false,
   },
   pro: {
     hasReports: true,
     hasMarketing: true,
-    hasAdvancedMetrics: true,
     hasScheduledReports: true,
     hasDataExport: true,
   },
   enterprise: {
     hasReports: true,
     hasMarketing: true,
-    hasAdvancedMetrics: true,
     hasScheduledReports: true,
     hasDataExport: true,
   },

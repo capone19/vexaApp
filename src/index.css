@@ -84,23 +84,6 @@
     --error-soft: 0 86% 97%;
     --error-soft-foreground: 0 74% 42%;
 
-    /* Funnel stages - Soft versions */
-    --tofu: 199 89% 48%;
-    --tofu-soft: 204 94% 94%;
-    --tofu-soft-foreground: 201 90% 27%;
-    
-    --mofu: 142 71% 45%;
-    --mofu-soft: 142 76% 95%;
-    --mofu-soft-foreground: 142 71% 29%;
-    
-    --hotlead: 38 92% 50%;
-    --hotlead-soft: 45 93% 94%;
-    --hotlead-soft-foreground: 32 81% 29%;
-    
-    --bofu: 17 88% 55%;
-    --bofu-soft: 17 100% 96%;
-    --bofu-soft-foreground: 17 78% 35%;
-
     /* Hot color for specific use */
     --hot: 17 88% 55%;
     --hot-foreground: 0 0% 100%;
@@ -373,50 +356,4 @@
     opacity: 1;
     transform: scale(1);
   }
-}
-
-/* ============================================
-   PUBLICIDAD - Black + Blue-Gray Theme (scoped)
-   Aplica solo dentro de [data-theme="publicidad"]
-   Accent ~ #7BA4C1
-   ============================================ */
-[data-theme="publicidad"] {
-  --background: 0 0% 0%;
-  --foreground: 210 15% 92%;
-
-  --card: 210 12% 5%;
-  --card-foreground: 210 15% 92%;
-
-  --popover: 210 12% 5%;
-  --popover-foreground: 210 15% 92%;
-
-  --primary: 206 38% 62%;
-  --primary-foreground: 0 0% 100%;
-
-  --secondary: 210 12% 9%;
-  --secondary-foreground: 206 20% 78%;
-
-  --muted: 210 10% 10%;
-  --muted-foreground: 206 15% 52%;
-
-  --accent: 206 25% 14%;
-  --accent-foreground: 206 38% 72%;
-
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 0 0% 100%;
-
-  --border: 206 18% 18%;
-  --input: 206 18% 18%;
-  --ring: 206 38% 62%;
-
-  --radius: 0.5rem;
-
-  --sidebar-background: 0 0% 2%;
-  --sidebar-foreground: 206 15% 55%;
-  --sidebar-primary: 206 38% 62%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 206 22% 12%;
-  --sidebar-accent-foreground: 206 38% 75%;
-  --sidebar-border: 206 15% 14%;
-  --sidebar-ring: 206 38% 62%;
 }

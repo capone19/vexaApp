@@ -1,16 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { 
-  Bell, 
   ChevronDown, 
   LogOut, 
   Settings,
-  CalendarCheck,
-  MessageSquare,
-  AlertTriangle,
-  CheckCircle,
-  Info,
-  ChevronRight,
   ArrowLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,20 +14,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { mockUser } from "@/lib/mock/data";
 import { cn } from "@/lib/utils";
-import { formatDistanceToNow } from "date-fns";
-import { es } from "date-fns/locale";
 import { logout } from "@/lib/auth";
 import { useAuth } from "@/hooks/use-auth";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useNotifications, type AppNotification } from "@/hooks/use-notifications";
 
 // Función para obtener el perfil del usuario desde localStorage
 const getUserProfile = () => {
@@ -53,71 +38,21 @@ const getUserProfile = () => {
 const pageTitles: Record<string, string> = {
   "/": "Dashboard",
   "/ajustes-agente": "Agente",
+  "/ajustes-agente/analisis": "Análisis",
   "/chats": "Chats",
   "/calendario": "Calendario",
-  "/resultados": "Resultados",
-  "/resultados/metricas": "Métricas",
-  "/resultados/ventas": "Ventas",
   "/facturacion": "Facturación",
   "/reportes": "Reportes",
   "/marketing": "Marketing",
   "/marketing/plantillas": "Plantillas",
   "/marketing/performance": "Performance",
-  "/notificaciones": "Notificaciones",
-  "/soporte": "Soporte",
   "/configuracion": "Configuración",
-};
-
-type DbNotificationType = AppNotification['type'];
-
-const getNotificationIcon = (type: DbNotificationType) => {
-  switch (type) {
-    case 'booking':
-      return CalendarCheck;
-    case 'handoff':
-      return MessageSquare;
-    case 'alert':
-      return AlertTriangle;
-    case 'campaign':
-      return CheckCircle;
-    case 'system':
-      return Info;
-    default:
-      return Bell;
-  }
-};
-
-const getNotificationColor = (type: DbNotificationType) => {
-  switch (type) {
-    case 'booking':
-      return 'text-primary bg-primary/10';
-    case 'handoff':
-      return 'text-sky-500 bg-sky-500/10';
-    case 'alert':
-      return 'text-amber-500 bg-amber-500/10';
-    case 'campaign':
-      return 'text-emerald-500 bg-emerald-500/10';
-    case 'system':
-      return 'text-muted-foreground bg-muted';
-    default:
-      return 'text-muted-foreground bg-muted';
-  }
-};
-
-const notificationRoutes: Record<DbNotificationType, string> = {
-  booking: '/calendario',
-  alert: '/calendario',
-  campaign: '/calendario',
-  handoff: '/chats',
-  system: '/configuracion',
 };
 
 export function TopBar() {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
-  const { notifications, unreadCount, markAsRead } = useNotifications();
-  const [isOpen, setIsOpen] = useState(false);
   const [userProfile, setUserProfile] = useState(getUserProfile());
   
   // Get current page title
@@ -159,19 +94,6 @@ export function TopBar() {
         .slice(0, 2)
     : '?';
 
-  const getRouteForNotification = (notification: AppNotification): string => {
-    const title = notification.title.toLowerCase();
-    if (title.includes('factura')) return '/facturacion';
-    return notificationRoutes[notification.type] || '/';
-  };
-
-  const handleNotificationClick = (notification: AppNotification) => {
-    markAsRead(notification.id);
-    setIsOpen(false);
-    const route = getRouteForNotification(notification);
-    navigate(route);
-  };
-
   return (
     <header className={cn(
       "sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/95 backdrop-blur-sm",
@@ -197,117 +119,8 @@ export function TopBar() {
         )}
       </div>
 
-      {/* Right side - notifications + user */}
+      {/* Right side - user menu */}
       <div className="flex items-center gap-2 md:gap-4">
-        {/* Notifications Popover */}
-        <Popover open={isOpen} onOpenChange={setIsOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "relative text-muted-foreground hover:text-foreground hover:bg-secondary",
-                "h-9 w-9 md:h-10 md:w-10"
-              )}
-            >
-              <Bell className="h-5 w-5" />
-              {unreadCount > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground animate-pulse">
-                  {unreadCount}
-                </span>
-              )}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent 
-            align="end" 
-            sideOffset={8}
-            className={cn(
-              "p-0 bg-white/95 backdrop-blur-sm border border-border/50 shadow-lg rounded-xl overflow-hidden animate-in fade-in-0 slide-in-from-top-2 duration-200",
-              // Mobile: full width with margins
-              "w-[calc(100vw-2rem)] max-w-[400px] md:w-96"
-            )}
-          >
-            {/* Header */}
-            <div className="px-4 py-3 border-b border-border/50 bg-secondary/30">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-foreground">Notificaciones</h3>
-                {unreadCount > 0 && (
-                  <span className="text-xs text-primary font-medium">
-                    {unreadCount} sin leer
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Notifications List */}
-            <div className="max-h-[320px] overflow-y-auto">
-              {notifications.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                  <Bell className="h-8 w-8 mb-2 opacity-20" />
-                  <p className="text-sm">Sin notificaciones</p>
-                </div>
-              ) : (
-                notifications.slice(0, 5).map((notification) => {
-                  const Icon = getNotificationIcon(notification.type);
-                  const colorClass = getNotificationColor(notification.type);
-
-                  return (
-                    <div
-                      key={notification.id}
-                      className={cn(
-                        "flex items-start gap-3 px-4 py-3 hover:bg-secondary/50 active:bg-secondary transition-colors cursor-pointer border-b border-border/30 last:border-b-0",
-                        !notification.is_read && "bg-primary/5"
-                      )}
-                      onClick={() => handleNotificationClick(notification)}
-                    >
-                      <div className={cn("p-1.5 rounded-lg shrink-0 mt-0.5", colorClass)}>
-                        <Icon className="h-3.5 w-3.5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className={cn(
-                            "text-sm leading-tight",
-                            !notification.is_read ? "font-semibold text-foreground" : "font-medium text-foreground/90"
-                          )}>
-                            {notification.title}
-                          </p>
-                          {!notification.is_read && (
-                            <div className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5" />
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-                          {notification.message || ''}
-                        </p>
-                        {notification.created_at && (
-                          <span className="text-[10px] text-muted-foreground/70 mt-1 block">
-                            {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true, locale: es })}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="px-4 py-2.5 border-t border-border/50 bg-secondary/30">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full justify-center text-xs text-primary hover:text-primary hover:bg-primary/10 gap-1"
-                onClick={() => {
-                  setIsOpen(false);
-                  navigate("/notificaciones");
-                }}
-              >
-                Ver todas las notificaciones
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </PopoverContent>
-        </Popover>
-
         {/* User Dropdown - Desktop only, on mobile it's in the drawer */}
         {!isMobile && (
           <DropdownMenu>
