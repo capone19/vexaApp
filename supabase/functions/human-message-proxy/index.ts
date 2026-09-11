@@ -98,15 +98,13 @@ serve(async (req) => {
     }
 
     const source = (payload.source as string) || "human_agent";
-    const isInstagram = source === "instagram";
 
     console.log(
       "[human-message-proxy] Forwarding message for session:",
       payload.session_id,
       "tenant:",
       tenantId || "none",
-      "channel:",
-      isInstagram ? "instagram" : "whatsapp"
+      "channel: whatsapp"
     );
 
     // Determinar el webhook URL basado en el tenant
@@ -115,35 +113,19 @@ serve(async (req) => {
     if (tenantId && supabaseUrl && supabaseServiceKey) {
       const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-      const webhookType = isInstagram ? "instagram_human_message" : "human_message";
-
-      let { data: webhookConfig, error: webhookError } = await supabase
+      const { data: webhookConfig, error: webhookError } = await supabase
         .from("tenant_webhooks")
         .select("webhook_url")
         .eq("tenant_id", tenantId)
-        .eq("webhook_type", webhookType)
+        .eq("webhook_type", "human_message")
         .eq("is_active", true)
         .single();
 
       if (webhookError) {
         console.log(
-          "[human-message-proxy] No specific webhook found for tenant, trying fallback:",
+          "[human-message-proxy] No specific webhook found for tenant, using default:",
           webhookError.message
         );
-
-        if (isInstagram) {
-          const { data: fallbackConfig } = await supabase
-            .from("tenant_webhooks")
-            .select("webhook_url")
-            .eq("tenant_id", tenantId)
-            .eq("webhook_type", "human_message")
-            .eq("is_active", true)
-            .single();
-          if (fallbackConfig?.webhook_url) {
-            webhookConfig = fallbackConfig;
-            webhookError = null;
-          }
-        }
       }
 
       if (webhookConfig?.webhook_url) {
@@ -160,21 +142,16 @@ serve(async (req) => {
 
     const sessionId = (payload.session_id as string) || "";
     const phoneNumber = sessionId.split("@")[0] || sessionId;
-    const username =
-      typeof payload.username === "string" && payload.username.trim()
-        ? payload.username.trim().replace(/^@/, "")
-        : null;
 
     const fullPayload: Record<string, unknown> = {
       message: payload.message,
       type: payload.type || "text",
       session_id: sessionId,
       sessionId: sessionId,
-      phone_number: isInstagram ? null : phoneNumber,
-      username: isInstagram ? username : null,
+      phone_number: phoneNumber,
       tenant_id: payload.tenant_id || null,
       source,
-      channel: isInstagram ? "instagram" : "whatsapp",
+      channel: "whatsapp",
       timestamp: payload.timestamp || new Date().toISOString(),
       webhookUrl: normalizedUrl,
       executionMode: "production",

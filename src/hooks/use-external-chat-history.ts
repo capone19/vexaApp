@@ -118,24 +118,6 @@ export function useExternalChatList(options: UseExternalChatListOptions) {
         offset += rows.length;
       }
 
-      if (isDev && table === 'instagram_chat_histories') {
-        console.log('[useExternalChatList:instagram]', {
-          tenantId,
-          rowCount: collected.length,
-          skipDateFilter,
-          sinceList: skipDateFilter ? null : sinceListMs != null ? new Date(sinceListMs).toISOString() : null,
-        });
-        if (collected.length > 0) {
-          const sample = collected[0] as ExternalChatMessage;
-          console.log('[useExternalChatList:instagram] sample row:', {
-            session_id: sample.session_id,
-            tenant_id: sample.tenant_id,
-            messageType: typeof sample.message,
-            username: 'username' in sample ? sample.username : undefined,
-          });
-        }
-      }
-
       setMessages(collected);
     } catch (err) {
       if (!isMountedRef.current) return;

@@ -1,8 +1,8 @@
 // ============================================
 // VEXA - Sincronización Global de Chats (Realtime)
 // ============================================
-// Provider montado en MainLayout con canales
-// n8n_chat_histories + instagram_chat_histories.
+// Provider montado en MainLayout con canal
+// n8n_chat_histories.
 // ============================================
 
 import {
@@ -40,7 +40,7 @@ interface ChatRealtimeSyncContextValue {
 
 const ChatRealtimeSyncContext = createContext<ChatRealtimeSyncContextValue | null>(null);
 
-const REALTIME_TABLES: ExternalChatTable[] = ['n8n_chat_histories', 'instagram_chat_histories'];
+const REALTIME_TABLES: ExternalChatTable[] = ['n8n_chat_histories'];
 
 const POLL_MS_DESCONECTADO = 30_000;   // realtime caído: ritmo actual
 const POLL_MS_CONECTADO    = 300_000;  // realtime OK: red de seguridad cada 5 min

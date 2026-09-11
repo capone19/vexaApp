@@ -5,7 +5,7 @@ export interface ParsedChatMessage {
   content: string | null;
 }
 
-/** Acepta message jsonb como objeto o string JSON (común en algunas filas de Instagram). */
+/** Acepta message jsonb como objeto o string JSON. */
 export function parseMessageField(raw: unknown): ParsedChatMessage | null {
   if (raw == null) return null;
 
@@ -21,7 +21,7 @@ export function parseMessageField(raw: unknown): ParsedChatMessage | null {
   if (typeof parsed !== 'object' || parsed === null) return null;
 
   const m = parsed as { type?: unknown; content?: unknown; text?: unknown };
-  // Intentar 'content' primero, luego 'text' como fallback (algunos formatos de Instagram usan 'text')
+  // Intentar 'content' primero, luego 'text' como fallback
   const rawContent = m.content ?? m.text ?? null;
   const content =
     rawContent != null && String(rawContent).trim() !== '' ? String(rawContent) : null;

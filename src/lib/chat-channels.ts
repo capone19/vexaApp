@@ -1,12 +1,12 @@
 import type { ExternalChatMessage, ExternalChatTable } from '@/integrations/supabase/external-client';
 
-export type ChatChannelId = 'whatsapp' | 'instagram';
+export type ChatChannelId = 'whatsapp';
 
 export interface ChatChannelConfig {
   id: ChatChannelId;
   label: string;
   table: ExternalChatTable;
-  humanMessageSource: 'human_agent' | 'instagram';
+  humanMessageSource: 'human_agent';
   supportsMedia: boolean;
   supportsRemarketing: boolean;
   supportsAttachments: boolean;
@@ -19,14 +19,6 @@ export interface ChatChannelConfig {
   listFetchLimit: number;
   getContactDisplay: (msg: ExternalChatMessage, sessionId: string) => string;
   getListPrimaryLabel: (session: { contactName: string; phoneNumber: string }) => string;
-}
-
-function formatInstagramUsername(username: string | null | undefined, sessionId: string): string {
-  if (username?.trim()) {
-    const clean = username.trim().replace(/^@/, '');
-    return `@${clean}`;
-  }
-  return `Usuario ${sessionId.slice(-4)}`;
 }
 
 export const CHAT_CHANNELS: Record<ChatChannelId, ChatChannelConfig> = {
@@ -52,28 +44,8 @@ export const CHAT_CHANNELS: Record<ChatChannelId, ChatChannelConfig> = {
     },
     getListPrimaryLabel: (session) => session.phoneNumber,
   },
-  instagram: {
-    id: 'instagram',
-    label: 'Instagram',
-    table: 'instagram_chat_histories',
-    humanMessageSource: 'instagram',
-    supportsMedia: false,
-    supportsRemarketing: false,
-    supportsAttachments: false,
-    emptyStateHint: 'Cuando tus clientes envíen mensajes por Instagram, aparecerán aquí en tiempo real.',
-    defaultListHistoryDays: 7,
-    skipListDateFilter: false,
-    listFetchLimit: 5000,
-    getContactDisplay: (msg, sessionId) => {
-      if ('username' in msg) {
-        return formatInstagramUsername(msg.username, sessionId);
-      }
-      return formatInstagramUsername(null, sessionId);
-    },
-    getListPrimaryLabel: (session) => session.contactName,
-  },
 };
 
-export function getChannelConfig(channel: ChatChannelId): ChatChannelConfig {
+export function getChannelConfig(channel: ChatChannelId = 'whatsapp'): ChatChannelConfig {
   return CHAT_CHANNELS[channel];
 }

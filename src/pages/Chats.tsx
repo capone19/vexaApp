@@ -1,13 +1,10 @@
-import { useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ChatChannelPanel } from "@/components/chats/ChatChannelPanel";
-import type { ChatChannelId } from "@/lib/chat-channels";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
 function ChatsPage() {
-  const [channelTab, setChannelTab] = useState<ChatChannelId>("whatsapp");
   const isMobile = useIsMobile();
 
   return (
@@ -22,12 +19,7 @@ function ChatsPage() {
       )}
 
       <div className="flex-1 min-h-0 flex flex-col">
-        <ChatChannelPanel
-          key={channelTab}
-          channel={channelTab}
-          onChannelChange={setChannelTab}
-          showChannelTabs={!isMobile}
-        />
+        <ChatChannelPanel />
       </div>
     </div>
   );

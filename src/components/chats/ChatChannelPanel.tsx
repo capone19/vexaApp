@@ -11,8 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
 import { useChatLabels } from "@/hooks/use-chat-labels";
-import { getChannelConfig, type ChatChannelId } from "@/lib/chat-channels";
-import { ChatChannelTabs } from "@/components/chats/ChatChannelTabs";
+import { getChannelConfig } from "@/lib/chat-channels";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { getDisplayContent, hasDisplayableContent, parseMessageField } from "@/lib/chat-message-utils";
 import {
@@ -253,18 +252,8 @@ const ChatComposer = memo(function ChatComposer({
   );
 });
 
-interface ChatChannelPanelProps {
-  channel: ChatChannelId;
-  onChannelChange?: (channel: ChatChannelId) => void;
-  showChannelTabs?: boolean;
-}
-
-export function ChatChannelPanel({
-  channel,
-  onChannelChange,
-  showChannelTabs = true,
-}: ChatChannelPanelProps) {
-  const channelConfig = getChannelConfig(channel);
+export function ChatChannelPanel() {
+  const channelConfig = getChannelConfig('whatsapp');
   const navigate = useNavigate();
   const isDev = import.meta.env.DEV;
   const BOT_STATE_RECONCILE_WINDOW_MS = 1500;
@@ -471,15 +460,6 @@ export function ChatChannelPanel({
     if ((!hasText && !hasFile) || !selectedSessionId) return;
 
     const messageContent = messageText.trim();
-    let instagramUsername: string | null = null;
-    if (channel === 'instagram') {
-      const row = listMessages.find(
-        m => m.session_id === selectedSessionId && 'username' in m && m.username
-      );
-      if (row && 'username' in row && row.username) {
-        instagramUsername = row.username.replace(/^@/, '');
-      }
-    }
 
     try {
       let attachmentData: Record<string, unknown> | undefined;
@@ -528,7 +508,6 @@ export function ChatChannelPanel({
             session_id: selectedSessionId,
             tenant_id: selectedSessionTenantId,
             source: channelConfig.humanMessageSource,
-            ...(instagramUsername ? { username: instagramUsername } : {}),
             timestamp: new Date().toISOString(),
             ...(attachmentData ? { attachment: attachmentData } : {}),
           }),
@@ -565,7 +544,7 @@ export function ChatChannelPanel({
       console.error("[Chats] Error sending human message:", err);
       toast.error(err instanceof Error ? err.message : "Error al enviar el mensaje");
     }
-  }, [selectedSessionId, refetchSession, selectedSessionTenantId, botStates, channelConfig.table, channelConfig.humanMessageSource, channel, listMessages]);
+  }, [selectedSessionId, refetchSession, selectedSessionTenantId, botStates, channelConfig.table, channelConfig.humanMessageSource]);
 
   // Remarketing: toggle seleccion de una sesion
   const toggleRemarketingSelection = useCallback((sessionId: string) => {
@@ -597,7 +576,7 @@ export function ChatChannelPanel({
     setBotStates({});
     setHistoryWindowDays(channelConfig.defaultListHistoryDays);
     setSessionWindowDays(7);
-  }, [channel, channelConfig.defaultListHistoryDays]);
+  }, [channelConfig.defaultListHistoryDays]);
 
   // Cargar estados iniciales de bot_activado desde la DB externa (solo una vez)
   useEffect(() => {
@@ -633,7 +612,7 @@ export function ChatChannelPanel({
     };
     
     loadBotStates();
-  }, [channel, channelConfig.table, chatTenantId]);
+  }, [channelConfig.table, chatTenantId]);
 
   // Actualizar estados de bot solo para sesiones nuevas que no conocemos
   useEffect(() => {
@@ -821,24 +800,14 @@ export function ChatChannelPanel({
           existing.intentLabel = getIntentLabel(existing.messageCount);
         }
         existing.botEnabled = botStates[msg.session_id] ?? true;
-        if (channel === 'whatsapp' && 'phone_number' in msg && msg.phone_number && existing.phoneNumber === existing.sessionId) {
+        if ('phone_number' in msg && msg.phone_number && existing.phoneNumber === existing.sessionId) {
           existing.phoneNumber = contactDisplay;
           existing.contactName = contactDisplay;
-        }
-        if (channel === 'instagram' && 'username' in msg && msg.username) {
-          const updated = channelConfig.getContactDisplay(msg, msg.session_id);
-          existing.contactName = updated;
-          existing.phoneNumber = updated;
         }
         if (msgDate > existing.lastMessageAt) {
           existing.lastMessageAt = msgDate;
           // Solo actualizar el preview si el mensaje más reciente tiene texto
           if (hasContent) existing.lastMessage = displayContent;
-          if (channel === 'instagram' && 'username' in msg && msg.username) {
-            const updated = channelConfig.getContactDisplay(msg, msg.session_id);
-            existing.contactName = updated;
-            existing.phoneNumber = updated;
-          }
         }
       }
     });
@@ -846,18 +815,8 @@ export function ChatChannelPanel({
     return Array.from(sessionMap.values()).sort(
       (a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime()
     );
-  }, [listMessages, botStates, channel, channelConfig]);
+  }, [listMessages, botStates, channelConfig]);
 
-  useEffect(() => {
-    if (!isDev || channel !== 'instagram') return;
-    if (listLoading || listMessages.length === 0 || processedSessions.length > 0) return;
-    console.warn(
-      '[Chats:instagram] Hay',
-      listMessages.length,
-      'filas pero 0 sesiones — revisar formato de message o filtros'
-    );
-    toast.warning('Hay mensajes en la base pero no se pudieron agrupar. Revisá la consola (dev).');
-  }, [channel, listLoading, listMessages.length, processedSessions.length, isDev]);
   const filteredSessions = useMemo(() => {
     let filtered = processedSessions;
     
@@ -973,13 +932,6 @@ export function ChatChannelPanel({
       <p className="text-sm text-muted-foreground max-w-sm">
         {channelConfig.emptyStateHint}
       </p>
-      {channel === 'instagram' && !listLoading && listMessages.length === 0 && (
-        <p className="text-xs text-muted-foreground max-w-sm mt-3">
-          Si en SQL ves filas pero acá dice 0 filas, ejecutá la policy RLS en el Supabase externo
-          (archivo <code className="text-[10px]">supabase/EXTERNAL_SUPABASE_INSTAGRAM.sql</code>)
-          y verificá que <code className="text-[10px]">tenant_id</code> coincida con tu cuenta.
-        </p>
-      )}
     </div>
   );
 
@@ -1013,9 +965,6 @@ export function ChatChannelPanel({
     )}>
       {/* Header with realtime indicator */}
       <div className="p-3 md:p-4 border-b border-border space-y-3">
-        {showChannelTabs && onChannelChange && (
-          <ChatChannelTabs value={channel} onChange={onChannelChange} />
-        )}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="gap-1.5 text-xs">
@@ -1755,9 +1704,6 @@ export function ChatChannelPanel({
               className="mb-3"
               actions={remarketingControls ?? undefined}
             />
-            {onChannelChange && (
-              <ChatChannelTabs value={channel} onChange={onChannelChange} />
-            )}
           </div>
         )}
 
