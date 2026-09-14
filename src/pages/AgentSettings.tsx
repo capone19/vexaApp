@@ -14,43 +14,25 @@ import { FAQSection } from "@/components/agent-settings/sections/FAQSection";
 import { LimitsSection } from "@/components/agent-settings/sections/LimitsSection";
 import { getEmptyAgentSettings } from "@/lib/mock/empty-defaults";
 import type { AgentSettings as AgentSettingsType } from "@/lib/types";
+import {
+  sectionsList,
+  type AgentSettingsSectionId,
+  type AgentSettingsSectionInfo,
+} from "@/lib/agent-settings-sections";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
 import { cn } from "@/lib/utils";
 import { saveAgentSection, loadAgentSection } from "@/lib/api/save-agent-section";
 import { useToast } from "@/hooks/use-toast";
+import { useSectionMeasuringExperiment } from "@/hooks/use-learning";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import { Loader2 } from "lucide-react";
 
-export type AgentSettingsSectionId = 
-  | "personality"
-  | "business"
-  | "policies"
-  | "services"
-  | "rescheduling"
-  | "payments"
-  | "intervention"
-  | "faq"
-  | "limits";
-
-export interface AgentSettingsSectionInfo {
-  id: AgentSettingsSectionId;
-  title: string;
-  description: string;
-  lastModified: Date;
-}
-
-const sectionsList: Omit<AgentSettingsSectionInfo, "lastModified">[] = [
-  { id: "personality", title: "Personalidad del Agente", description: "Tono, formalidad y estilo de comunicación" },
-  { id: "business", title: "Sobre tu negocio", description: "Información general y ubicaciones" },
-  { id: "policies", title: "Políticas generales", description: "Reglas y garantías de servicio" },
-  { id: "services", title: "Servicios", description: "Catálogo, horarios y precios" },
-  { id: "rescheduling", title: "Re-agendamientos", description: "Reglas de cancelación y cambios" },
-  { id: "payments", title: "Opciones de pago", description: "Métodos y restricciones" },
-  { id: "intervention", title: "Intervención asistida", description: "Cuándo escalar a humanos" },
-  { id: "faq", title: "Preguntas frecuentes", description: "Respuestas predefinidas" },
-  { id: "limits", title: "Límites del agente", description: "Prohibiciones y restricciones" },
-];
+export type { AgentSettingsSectionId, AgentSettingsSectionInfo };
+export { sectionsList };
 
 export default function AgentSettings() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -70,6 +52,7 @@ export default function AgentSettings() {
   const { user } = useAuth();
   const { tenantId: effectiveTenantId, isImpersonating } = useEffectiveTenant();
   const { toast } = useToast();
+  const measuringExperiment = useSectionMeasuringExperiment(activeSection);
 
   // Limpiar cache cuando cambia el tenant efectivo (evita datos stale)
   useEffect(() => {
@@ -408,7 +391,22 @@ export default function AgentSettings() {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : (
-                renderSection()
+                <>
+                  {measuringExperiment.data?.freeze_until ? (
+                    <Alert className="mb-4">
+                      <AlertDescription>
+                        Esta sección tiene un cambio en medición hasta el{" "}
+                        {format(new Date(measuringExperiment.data.freeze_until), "d MMM yyyy", {
+                          locale: es,
+                        })}
+                        . Puedes editarla, pero si cambias el campo{" "}
+                        {measuringExperiment.data.target_field ?? "afectado"} vas a interferir con
+                        el experimento.
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+                  {renderSection()}
+                </>
               )}
             </div>
           </div>

@@ -111,6 +111,11 @@ export interface Experiment {
   baseline: Record<string, unknown> | null;
   prompt_before: string | null;
   prompt_after: string | null;
+  settings_section_key: string | null;
+  target_field: string | null;
+  field_op: 'set' | 'add' | 'edit' | 'remove' | null;
+  value_before: unknown | null;
+  value_after: unknown | null;
   status: ExperimentStatus;
   proposed_at: string;
   approved_at: string | null;

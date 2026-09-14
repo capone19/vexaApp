@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenant } from './use-effective-tenant';
+import type { AgentSettingsSectionId } from '@/lib/agent-settings-sections';
 import type {
   ConversationAnalysis, DashboardSummary, Experiment, ExperimentTimelineItem,
   Finding, FindingType, LearningReport, MetricsPeriod, Outcome,
@@ -151,6 +152,29 @@ export function useExperimentos() {
         .limit(100);
       if (error) throw new Error(error.message);
       return (data as Experiment[]) ?? [];
+    },
+  });
+}
+
+/** Experimento en medición que congela una sección de ajustes. */
+export function useSectionMeasuringExperiment(sectionKey: AgentSettingsSectionId) {
+  const { tenantId } = useEffectiveTenant();
+  return useQuery({
+    queryKey: ['learning', 'section-measuring', tenantId, sectionKey],
+    enabled: !!tenantId && !!sectionKey,
+    staleTime: STALE,
+    queryFn: async (): Promise<Experiment | null> => {
+      const { data, error } = await db()
+        .from('experiments')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('settings_section_key', sectionKey)
+        .in('status', ['applied', 'measuring'])
+        .gt('freeze_until', new Date().toISOString())
+        .order('freeze_until', { ascending: false })
+        .limit(1);
+      if (error) throw new Error(error.message);
+      return ((data as Experiment[]) ?? [])[0] ?? null;
     },
   });
 }

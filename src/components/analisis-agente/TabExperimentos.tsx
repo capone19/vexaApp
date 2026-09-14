@@ -30,11 +30,21 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useExperimentos, useLearningGate } from '@/hooks/use-learning';
+import { useAuth } from '@/hooks/use-auth';
+import { useEffectiveTenant } from '@/hooks/use-effective-tenant';
+import { getSectionTitle } from '@/lib/agent-settings-sections';
+import { FIELD_OP_LABEL, getFieldLabel } from '@/lib/learning/field-labels';
+import { persistExperimentFieldChange } from '@/lib/learning/persist-field-experiment';
+import type { FieldOp } from '@/lib/learning/apply-field-change';
 import type { Experiment } from '@/types/learning';
 import { cn } from '@/lib/utils';
 import { EstadoError, EstadoVacio, EsqueletoTabla } from './estados';
 
 type ReasonAction = 'reject' | 'revert';
+
+function isFieldExperiment(experiment: Experiment): boolean {
+  return experiment.target_field != null;
+}
 
 function PromptDiff({ before, after }: { before: string | null; after: string | null }) {
   const lines = useMemo(() => {
@@ -75,6 +85,110 @@ function PromptDiff({ before, after }: { before: string | null; after: string | 
           {line.text}
         </div>
       ))}
+    </div>
+  );
+}
+
+function ObjectValuePreview({ value }: { value: unknown }) {
+  if (value == null) {
+    return <p className="text-sm text-muted-foreground">—</p>;
+  }
+  if (typeof value === 'string') {
+    return <p className="whitespace-pre-wrap text-sm text-foreground">{value}</p>;
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    return <p className="text-sm text-foreground">{String(value)}</p>;
+  }
+
+  const rec = value as Record<string, unknown>;
+  const rows: { label: string; text: string }[] = [];
+  if (typeof rec.instruction === 'string') rows.push({ label: 'Instrucción', text: rec.instruction });
+  if (typeof rec.question === 'string') rows.push({ label: 'Pregunta', text: rec.question });
+  if (typeof rec.answer === 'string') rows.push({ label: 'Respuesta', text: rec.answer });
+  if (typeof rec.priority === 'string') rows.push({ label: 'Prioridad', text: rec.priority });
+  if (typeof rec.order === 'number') rows.push({ label: 'Paso', text: String(rec.order) });
+  if (rows.length === 0 && typeof rec.id === 'string') {
+    rows.push({ label: 'Id', text: rec.id });
+  }
+
+  if (rows.length === 0) {
+    return <p className="text-sm text-muted-foreground">Sin detalle legible.</p>;
+  }
+
+  return (
+    <dl className="space-y-2 text-sm">
+      {rows.map((row) => (
+        <div key={row.label}>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {row.label}
+          </dt>
+          <dd className="whitespace-pre-wrap text-foreground">{row.text}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function FieldChangePreview({ experiment }: { experiment: Experiment }) {
+  const op = experiment.field_op as FieldOp | null;
+  const sample = experiment.value_after ?? experiment.value_before;
+  const before = experiment.value_before;
+  const after = experiment.value_after;
+  const bothStrings =
+    (before == null || typeof before === 'string') &&
+    (after == null || typeof after === 'string') &&
+    (typeof before === 'string' || typeof after === 'string');
+
+  return (
+    <div className="space-y-3 rounded-md border border-border bg-secondary/20 p-3">
+      <dl className="grid gap-2 text-sm sm:grid-cols-3">
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Sección
+          </dt>
+          <dd className="text-foreground">
+            {getSectionTitle(experiment.settings_section_key)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Campo
+          </dt>
+          <dd className="text-foreground">{getFieldLabel(experiment.target_field, sample)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Operación
+          </dt>
+          <dd className="text-foreground">{op ? FIELD_OP_LABEL[op] : '—'}</dd>
+        </div>
+      </dl>
+      {bothStrings ? (
+        <div>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Antes / Después
+          </p>
+          <PromptDiff
+            before={typeof before === 'string' ? before : null}
+            after={typeof after === 'string' ? after : null}
+          />
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-md border-2 border-zinc-700 bg-transparent p-3">
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Antes
+            </p>
+            <ObjectValuePreview value={before} />
+          </div>
+          <div className="rounded-md border-2 border-[#39FF14] bg-transparent p-3">
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Después
+            </p>
+            <ObjectValuePreview value={after} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -127,6 +241,7 @@ function ProposedCard({
   busy: boolean;
 }) {
   const [openDiff, setOpenDiff] = useState(false);
+  const fieldBased = isFieldExperiment(experiment);
 
   return (
     <Card>
@@ -158,17 +273,21 @@ function ProposedCard({
           </p>
           <EvidenceBlock experiment={experiment} />
         </div>
-        <Collapsible open={openDiff} onOpenChange={setOpenDiff}>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="gap-1 px-0">
-              {openDiff ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-              Ver diff del prompt
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="pt-2">
-            <PromptDiff before={experiment.prompt_before} after={experiment.prompt_after} />
-          </CollapsibleContent>
-        </Collapsible>
+        {fieldBased ? (
+          <FieldChangePreview experiment={experiment} />
+        ) : (
+          <Collapsible open={openDiff} onOpenChange={setOpenDiff}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-1 px-0">
+                {openDiff ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                Ver diff del prompt
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <PromptDiff before={experiment.prompt_before} after={experiment.prompt_after} />
+            </CollapsibleContent>
+          </Collapsible>
+        )}
         <div className="flex flex-wrap gap-2">
           <Button size="sm" className="gap-1.5" disabled={busy} onClick={onApprove}>
             <Check className="h-4 w-4" />
@@ -190,14 +309,24 @@ function verdictColor(status: string): string {
   return 'bg-secondary text-muted-foreground';
 }
 
+function canRevertFieldExperiment(experiment: Experiment): boolean {
+  return (
+    isFieldExperiment(experiment) &&
+    ['applied', 'measuring', 'kept', 'inconclusive'].includes(experiment.status)
+  );
+}
+
 export function TabExperimentos() {
   const query = useExperimentos();
   const gate = useLearningGate();
+  const { user } = useAuth();
+  const { tenantId } = useEffectiveTenant();
   const [reasonOpen, setReasonOpen] = useState<{
     action: ReasonAction;
     experiment: Experiment;
   } | null>(null);
   const [reason, setReason] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const pending = (query.data ?? []).filter((e) => e.status === 'proposed');
   const measuring = (query.data ?? []).filter(
@@ -206,6 +335,8 @@ export function TabExperimentos() {
   const history = (query.data ?? []).filter((e) =>
     ['kept', 'reverted', 'rejected', 'inconclusive'].includes(e.status)
   );
+
+  const busy = gate.isPending || busyId !== null;
 
   const runGate = async (
     action: 'approve' | 'reject' | 'revert',
@@ -226,6 +357,58 @@ export function TabExperimentos() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error desconocido');
     }
+  };
+
+  const approveExperiment = async (experiment: Experiment) => {
+    if (!isFieldExperiment(experiment)) {
+      await runGate('approve', experiment.id);
+      return;
+    }
+    if (!tenantId) {
+      toast.error('No hay un tenant activo para aplicar el cambio.');
+      return;
+    }
+    setBusyId(experiment.id);
+    try {
+      await persistExperimentFieldChange(experiment, 'apply', tenantId, user?.id ?? null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo guardar el cambio.');
+      setBusyId(null);
+      return;
+    }
+
+    try {
+      await gate.mutateAsync({ action: 'approve', experiment_id: experiment.id });
+      toast.success(
+        `Cambio aplicado en ${getSectionTitle(experiment.settings_section_key)} · ${getFieldLabel(
+          experiment.target_field,
+          experiment.value_after ?? experiment.value_before
+        )}. El prompt se regenera en unos segundos.`
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error desconocido');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const revertExperiment = async (experiment: Experiment, gateReason: string) => {
+    if (isFieldExperiment(experiment)) {
+      if (!tenantId) {
+        toast.error('No hay un tenant activo para revertir el cambio.');
+        return;
+      }
+      setBusyId(experiment.id);
+      try {
+        await persistExperimentFieldChange(experiment, 'revert', tenantId, user?.id ?? null);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'No se pudo revertir el cambio.');
+        setBusyId(null);
+        return;
+      }
+      setBusyId(null);
+    }
+    await runGate('revert', experiment.id, gateReason);
   };
 
   if (query.isLoading) return <EsqueletoTabla filas={5} />;
@@ -255,8 +438,8 @@ export function TabExperimentos() {
             <ProposedCard
               key={e.id}
               experiment={e}
-              busy={gate.isPending}
-              onApprove={() => void runGate('approve', e.id)}
+              busy={busy}
+              onApprove={() => void approveExperiment(e)}
               onReject={() => {
                 setReason('');
                 setReasonOpen({ action: 'reject', experiment: e });
@@ -279,7 +462,12 @@ export function TabExperimentos() {
                 <div>
                   <p className="font-medium text-foreground">{e.hypothesis}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {e.target_section}
+                    {isFieldExperiment(e)
+                      ? `${getSectionTitle(e.settings_section_key)} · ${getFieldLabel(
+                          e.target_field,
+                          e.value_after ?? e.value_before
+                        )}`
+                      : e.target_section}
                     {e.applied_at && (
                       <>
                         {' · '}Aplicado{' '}
@@ -301,7 +489,7 @@ export function TabExperimentos() {
                   size="sm"
                   variant="outline"
                   className="gap-1.5"
-                  disabled={gate.isPending}
+                  disabled={busy}
                   onClick={() => {
                     setReason('');
                     setReasonOpen({ action: 'revert', experiment: e });
@@ -332,13 +520,18 @@ export function TabExperimentos() {
                       <TableHead>Veredicto</TableHead>
                       <TableHead>Delta</TableHead>
                       <TableHead>Nota</TableHead>
+                      <TableHead className="w-[1%]" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {history.map((e) => (
                       <TableRow key={e.id}>
                         <TableCell className="max-w-[240px] font-medium">{e.hypothesis}</TableCell>
-                        <TableCell>{e.target_section}</TableCell>
+                        <TableCell>
+                          {isFieldExperiment(e)
+                            ? getSectionTitle(e.settings_section_key)
+                            : e.target_section}
+                        </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={verdictColor(e.status)}>
                             {e.status}
@@ -351,6 +544,23 @@ export function TabExperimentos() {
                         </TableCell>
                         <TableCell className="max-w-[200px] text-muted-foreground">
                           {e.verdict_note ?? e.decided_by ?? '—'}
+                        </TableCell>
+                        <TableCell>
+                          {canRevertFieldExperiment(e) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5"
+                              disabled={busy}
+                              onClick={() => {
+                                setReason('');
+                                setReasonOpen({ action: 'revert', experiment: e });
+                              }}
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                              Revertir
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -396,9 +606,13 @@ export function TabExperimentos() {
               Cancelar
             </Button>
             <Button
-              disabled={!reason.trim() || gate.isPending}
+              disabled={!reason.trim() || busy}
               onClick={() => {
                 if (!reasonOpen) return;
+                if (reasonOpen.action === 'revert') {
+                  void revertExperiment(reasonOpen.experiment, reason.trim());
+                  return;
+                }
                 void runGate(reasonOpen.action, reasonOpen.experiment.id, reason.trim());
               }}
             >
