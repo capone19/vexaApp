@@ -11,6 +11,12 @@ Panel de VEXA (Chatbot AI y automatización) construido con Next.js 15 (App Rout
 | `/ajustes-agente/analisis` | Análisis del agente |
 | `/chats` | Chats en tiempo real |
 | `/marketing/plantillas` | Plantillas de WhatsApp (oculta en el menú; se abre desde Chats) |
+| `/studio` | Content Studio: panel central de YouTube, Instagram y TikTok (tema lila) |
+| `/studio/cuentas` | Cuentas conectadas (varias por plataforma, elegir cuáles gestionar) |
+| `/studio/youtube`, `/studio/instagram`, `/studio/tiktok` | Acciones por plataforma: subir, IA, programar |
+| `/studio/automatizaciones` | Automatizaciones (cronos y reglas en n8n) |
+
+El botón con degradado lila (barra superior y sidebar) cambia entre VEXA Chat y Content Studio.
 
 `/` redirige a `/chats`. Las rutas protegidas redirigen a `/auth` si no hay sesión.
 
@@ -37,6 +43,8 @@ npm run dev            # http://localhost:3000
 ## Variables de entorno
 
 Ver [.env.example](.env.example). Todas usan el prefijo `NEXT_PUBLIC_` porque se leen en el navegador. Las de n8n son opcionales.
+
+`NEXT_PUBLIC_N8N_WEBHOOK_STUDIO` es la ruta del webhook de n8n que recibe todos los eventos del Content Studio (`youtube.video.upload`, `youtube.metadata.generate`, `studio.automation.toggle`, etc.; ver `src/lib/studio/`). Si está vacía, el Studio funciona en modo local y no publica nada.
 
 ## Estructura
 

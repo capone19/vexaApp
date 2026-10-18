@@ -1,6 +1,7 @@
 import { NavLink } from "@/components/NavLink";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/shared/Logo";
+import { ModeSwitchButton } from "@/components/shared/ModeSwitchButton";
 import {
   MessageSquare,
   Bot,
@@ -128,6 +129,11 @@ export function Sidebar({ isExpanded, onExpandedChange }: SidebarProps) {
           ))}
         </ul>
       </nav>
+
+      {/* Cambio a Content Studio */}
+      <div className="border-t border-border p-3">
+        <ModeSwitchButton to="studio" showLabel={isExpanded} />
+      </div>
     </aside>
   );
 }

@@ -1,6 +1,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/shared/Logo";
+import { ModeSwitchButton } from "@/components/shared/ModeSwitchButton";
 import {
   Sheet,
   SheetContent,
@@ -186,7 +187,8 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
           </nav>
         </ScrollArea>
 
-        <div className="p-4 border-t border-border">
+        <div className="p-4 border-t border-border space-y-2">
+          <ModeSwitchButton to="studio" onNavigate={() => onOpenChange(false)} />
           <Button
             variant="ghost"
             className="w-full justify-start gap-3 text-destructive hover:text-destructive hover:bg-destructive/10"

@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { logout } from "@/lib/auth";
 import { useAuth } from "@/hooks/use-auth";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { ModeSwitchButton } from "@/components/shared/ModeSwitchButton";
 
 // Función para obtener el perfil del usuario desde localStorage
 const getUserProfile = () => {
@@ -120,6 +121,8 @@ export function TopBar() {
 
       {/* Right side - user menu */}
       <div className="flex items-center gap-2 md:gap-4">
+        <ModeSwitchButton to="studio" variant="icon" />
+
         {/* User Dropdown - Desktop only, on mobile it's in the drawer */}
         {!isMobile && (
           <DropdownMenu>
