@@ -419,11 +419,11 @@ export default function Auth() {
             {/* Legal Text */}
             <p className="mt-6 text-center text-xs text-muted-foreground leading-relaxed">
               Al continuar, aceptas nuestros{" "}
-              <a href="#" className="text-primary hover:text-primary/80 transition-colors underline-offset-2 hover:underline">
+              <a href="/terminos" className="text-primary hover:text-primary/80 transition-colors underline-offset-2 hover:underline">
                 Términos de Servicio
               </a>{" "}
               y{" "}
-              <a href="#" className="text-primary hover:text-primary/80 transition-colors underline-offset-2 hover:underline">
+              <a href="/privacidad" className="text-primary hover:text-primary/80 transition-colors underline-offset-2 hover:underline">
                 Política de Privacidad
               </a>
             </p>
