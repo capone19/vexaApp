@@ -90,11 +90,41 @@ async function canUseTenant(admin: SupabaseClient, userId: string, email: string
 
 async function getJson(res: Response) {
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error_message ?? body.error?.message ?? `http_${res.status}`);
+  if (!res.ok) {
+    const e = body.error ?? {};
+    const detail = [e.code && `code ${e.code}`, e.error_subcode && `subcode ${e.error_subcode}`, e.fbtrace_id]
+      .filter(Boolean)
+      .join(", ");
+    throw new Error(`${body.error_message ?? e.message ?? `http_${res.status}`}${detail ? ` (${detail})` : ""}`);
+  }
   return body;
 }
 
-/** code -> token corto (1 h) -> token largo (60 días) */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Token corto (1 h) -> token largo (60 días). Meta a veces responde "Unsupported request" sin motivo: se reintenta. */
+async function toLongToken(shortToken: string) {
+  const params = new URLSearchParams({ grant_type: "ig_exchange_token", client_secret: appSecret, access_token: shortToken });
+  const urls = [
+    `https://graph.instagram.com/access_token?${params}`,
+    `${GRAPH}/access_token?${params}`,
+    `https://graph.instagram.com/access_token?${params}`,
+  ];
+  let lastError: unknown;
+  for (const [i, url] of urls.entries()) {
+    try {
+      const body = await getJson(await fetch(url));
+      return { access_token: body.access_token as string, expires_in: Number(body.expires_in) };
+    } catch (err) {
+      lastError = err;
+      console.warn(`[studio-instagram-oauth] ig_exchange_token intento ${i + 1}:`, String(err));
+      await sleep(600);
+    }
+  }
+  throw lastError;
+}
+
+/** code -> token corto -> token largo. Si el canje falla, queda el corto y se reintenta al pedir el token. */
 async function exchangeCode(code: string) {
   const short = await getJson(
     await fetch("https://api.instagram.com/oauth/access_token", {
@@ -111,18 +141,19 @@ async function exchangeCode(code: string) {
   );
   // Según la versión, la respuesta viene plana o dentro de data[0]
   const shortData = short.data?.[0] ?? short;
-
-  const long = await getJson(
-    await fetch(
-      `https://graph.instagram.com/access_token?${new URLSearchParams({
-        grant_type: "ig_exchange_token",
-        client_secret: appSecret,
-        access_token: shortData.access_token,
-      })}`
-    )
-  );
   const permissions = Array.isArray(shortData.permissions) ? shortData.permissions.join(",") : shortData.permissions;
-  return { access_token: long.access_token as string, expires_in: Number(long.expires_in), scope: permissions ?? null };
+
+  try {
+    const long = await toLongToken(shortData.access_token);
+    return { ...long, scope: permissions ?? null };
+  } catch (err) {
+    console.error("[studio-instagram-oauth] no se pudo obtener el token largo, se guarda el corto:", String(err));
+    return {
+      access_token: shortData.access_token as string,
+      expires_in: Number(shortData.expires_in ?? 3600),
+      scope: permissions ?? null,
+    };
+  }
 }
 
 async function refreshLongToken(accessToken: string) {
@@ -289,6 +320,20 @@ async function handleToken(admin: SupabaseClient, req: Request, body: Record<str
   if (expiresIn <= 0) {
     await admin.from("studio_accounts").update({ status: "error" }).eq("id", account.id);
     return json({ ok: false, code: "token_expired" }, 409);
+  }
+  // Token corto que quedó del login (el canje falló): intentar pasarlo a largo ahora
+  if (expiresIn < 2 * 60 * 60 * 1000) {
+    try {
+      const long = await toLongToken(tokens.access_token);
+      const expiresAt = new Date(Date.now() + long.expires_in * 1000).toISOString();
+      await admin
+        .from("studio_account_tokens")
+        .update({ access_token: long.access_token, expires_at: expiresAt, updated_at: new Date().toISOString() })
+        .eq("account_id", account.id);
+      return json({ ...base, access_token: long.access_token, expires_at: expiresAt });
+    } catch {
+      // No era un token corto o Meta sigue fallando: sigue con la renovación normal
+    }
   }
   // Instagram solo deja renovar tokens con más de 24 h de antigüedad
   const tokenAge = Date.now() - new Date(tokens.updated_at).getTime();
