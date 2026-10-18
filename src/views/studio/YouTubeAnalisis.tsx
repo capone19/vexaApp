@@ -10,10 +10,13 @@ import {
   ChartLine,
   ExternalLink,
   Lightbulb,
+  MessageSquare,
   Minus,
   PlugZap,
   RefreshCw,
+  Radio,
   Sparkles,
+  ThumbsUp,
   TriangleAlert,
   Video,
 } from "lucide-react";
@@ -36,7 +39,7 @@ import {
   type VideoDetail,
   type VideoStat,
 } from "@/lib/studio/youtube-analytics";
-import { formatDuration } from "@/lib/studio/youtube";
+import { fetchYouTubeVideos, formatDuration, type YouTubeVideo } from "@/lib/studio/youtube";
 import { cn } from "@/lib/utils";
 
 const PERIODS: { days: PeriodDays; label: string }[] = [
@@ -136,6 +139,85 @@ function BarRow({ label, value, total, detail }: { label: string; value: number;
       </div>
       {detail && <p className="text-[11px] text-muted-foreground">{detail}</p>}
     </div>
+  );
+}
+
+const LIVE_DAYS = 7;
+
+/**
+ * Contador público de cada video (YouTube Data API): se actualiza casi al instante, a diferencia de
+ * YouTube Analytics que tarda ~2 días. Cubre justo los días que el análisis todavía no ve.
+ */
+function LiveCounters({ accountId }: { accountId: string }) {
+  const [videos, setVideos] = useState<YouTubeVideo[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setVideos(null);
+    void fetchYouTubeVideos(accountId).then((result) => {
+      if (cancelled) return;
+      if (!result.ok) return setVideos([]);
+      const published = result.videos.filter((v) => v.privacy === "public" && v.publishedAt);
+      const since = Date.now() - LIVE_DAYS * 86_400_000;
+      const recent = published.filter((v) => new Date(v.publishedAt as string).getTime() >= since);
+      setVideos((recent.length ? recent : published).slice(0, 6));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
+
+  if (videos === null) return <Skeleton className="h-40 rounded-2xl" />;
+  if (!videos.length) return null;
+
+  return (
+    <StudioCard>
+      <div className="mb-1 flex items-center gap-2">
+        <Radio className="h-4 w-4 text-emerald-400" />
+        <h2 className="font-semibold">Contador en vivo</h2>
+      </div>
+      <p className="mb-4 text-xs text-muted-foreground">
+        Vistas totales de tus videos más recientes, al momento. El análisis de arriba las suma cuando YouTube las consolida (~2 días).
+      </p>
+      <ul className="divide-y divide-border">
+        {videos.map((v) => (
+          <li key={v.id} className="flex items-center gap-3 py-2.5">
+            {v.thumbnail ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={v.thumbnail} alt="" className={cn("shrink-0 rounded-md object-cover", v.isShort ? "h-12 w-7" : "h-9 w-16")} />
+            ) : (
+              <div className="flex h-9 w-16 shrink-0 items-center justify-center rounded-md bg-secondary">
+                <Video className="h-4 w-4 text-muted-foreground" />
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <a
+                href={`https://www.youtube.com/watch?v=${v.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="block truncate text-sm font-medium hover:underline"
+              >
+                {v.title}
+              </a>
+              <p className="text-[11px] text-muted-foreground">
+                {v.isShort ? "Short" : "Video"} · {format(new Date(v.publishedAt as string), "d MMM, HH:mm", { locale: es })}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-3 text-xs tabular-nums text-muted-foreground">
+              <span className="text-sm font-semibold text-foreground">{formatFollowers(v.views)}</span>
+              <span className="hidden items-center gap-1 sm:flex">
+                <ThumbsUp className="h-3 w-3" />
+                {formatFollowers(v.likes)}
+              </span>
+              <span className="hidden items-center gap-1 sm:flex">
+                <MessageSquare className="h-3 w-3" />
+                {formatFollowers(v.comments)}
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </StudioCard>
   );
 }
 
@@ -265,11 +347,14 @@ export default function YouTubeAnalisis() {
           <Skeleton className="h-72 rounded-2xl" />
         </div>
       ) : empty ? (
-        <EmptyState
-          icon={<ChartLine className="h-6 w-6" />}
-          title="Todavía no hay vistas que analizar"
-          description="Cuando tus videos empiecen a sumar vistas, aquí verás si vas en alza, cuáles ganan y qué hacer. YouTube entrega los datos con ~2 días de retraso."
-        />
+        <div className="space-y-6">
+          <EmptyState
+            icon={<ChartLine className="h-6 w-6" />}
+            title="El análisis todavía no tiene datos consolidados"
+            description={`YouTube Analytics entrega los datos con ~2 días de retraso: este reporte llega hasta el ${data ? dayLabel(data.range.end) : ""}. Las vistas más nuevas ya se ven abajo, en el contador en vivo, y aparecerán aquí en un par de días.`}
+          />
+          <LiveCounters accountId={channel.id} />
+        </div>
       ) : data && t && p ? (
         <div className={cn("space-y-6 transition-opacity", loading && "opacity-60")}>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -310,6 +395,8 @@ export default function YouTubeAnalisis() {
               </ul>
             </StudioCard>
           )}
+
+          <LiveCounters accountId={channel.id} />
 
           <StudioCard>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
