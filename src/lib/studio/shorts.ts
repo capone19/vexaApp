@@ -684,20 +684,28 @@ export interface StoredRender {
   revision: number;
   file: File;
   srt: string;
+  /** Si se guardó en la carpeta del PC: subcarpeta y nombre del archivo */
+  path?: string[];
 }
+
+/** Lo que queda en el navegador de cada render: el archivo solo si no hay carpeta elegida */
+type RenderRecord = Omit<StoredRender, "file"> & { file?: File };
 
 const DB_NAME = "vexa-studio-shorts";
 const PROJECTS = "projects";
 const FILES = "files";
 const AUDIO = "audio-library";
+const SETTINGS = "settings";
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = indexedDB.open(DB_NAME, 2);
     req.onupgradeneeded = () => {
-      req.result.createObjectStore(PROJECTS, { keyPath: "id" }).createIndex("accountId", "accountId");
-      req.result.createObjectStore(FILES);
-      req.result.createObjectStore(AUDIO, { keyPath: "id" });
+      const db = req.result;
+      if (!db.objectStoreNames.contains(PROJECTS)) db.createObjectStore(PROJECTS, { keyPath: "id" }).createIndex("accountId", "accountId");
+      if (!db.objectStoreNames.contains(FILES)) db.createObjectStore(FILES);
+      if (!db.objectStoreNames.contains(AUDIO)) db.createObjectStore(AUDIO, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(SETTINGS)) db.createObjectStore(SETTINGS);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -718,6 +726,70 @@ async function tx<T>(stores: string[], mode: IDBTransactionMode, run: (t: IDBTra
     db.close();
   }
 }
+
+// ---------- Archivos del PC (Chrome y Edge) ----------
+// Con la API de archivos del navegador, el video largo se lee desde donde está (sin copiarlo) y los
+// Shorts se escriben directo en una carpeta elegida una vez. Así el navegador no acumula gigas.
+
+type PermissionMode = { mode: "read" | "readwrite" };
+type WithPermission = {
+  queryPermission(opts: PermissionMode): Promise<PermissionState>;
+  requestPermission(opts: PermissionMode): Promise<PermissionState>;
+};
+type PickerWindow = Window & {
+  showDirectoryPicker?: (opts?: { id?: string; mode?: string }) => Promise<FileSystemDirectoryHandle>;
+  showOpenFilePicker?: (opts?: { id?: string; types?: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle[]>;
+};
+
+export const canUseLocalFiles = () =>
+  typeof window !== "undefined" && "showDirectoryPicker" in window && "showOpenFilePicker" in window;
+
+/** true si ya hay permiso; con request=true lo pide (tiene que venir de un clic) */
+export async function hasAccess(handle: FileSystemHandle, mode: "read" | "readwrite", request = false): Promise<boolean> {
+  const h = handle as unknown as WithPermission;
+  if ((await h.queryPermission({ mode })) === "granted") return true;
+  return request ? (await h.requestPermission({ mode })) === "granted" : false;
+}
+
+export async function getShortsFolder(): Promise<FileSystemDirectoryHandle | null> {
+  return tx([SETTINGS], "readonly", (t) => {
+    const req = t.objectStore(SETTINGS).get("folder") as IDBRequest<FileSystemDirectoryHandle | undefined>;
+    return () => req.result ?? null;
+  });
+}
+
+export async function chooseShortsFolder(): Promise<FileSystemDirectoryHandle> {
+  const dir = await (window as PickerWindow).showDirectoryPicker!({ id: "vexa-shorts", mode: "readwrite" });
+  await tx([SETTINGS], "readwrite", (t) => {
+    t.objectStore(SETTINGS).put(dir, "folder");
+    return () => undefined;
+  });
+  return dir;
+}
+
+/** Elegir el video largo sin copiarlo: se guarda solo la referencia al archivo */
+export async function pickVideoFile(): Promise<{ file: File; handle: FileSystemFileHandle } | null> {
+  try {
+    const [handle] = await (window as PickerWindow).showOpenFilePicker!({
+      id: "vexa-shorts-video",
+      types: [{ description: "Video", accept: { "video/*": [".mp4", ".mov", ".webm", ".mkv", ".m4v"] } }],
+    });
+    return { file: await handle.getFile(), handle };
+  } catch {
+    return null;
+  }
+}
+
+const safeName = (name: string) => name.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 80) || "Shorts";
+
+async function writeFile(dir: FileSystemDirectoryHandle, name: string, data: Blob | string) {
+  const handle = await dir.getFileHandle(name, { create: true });
+  const writable = await handle.createWritable();
+  await writable.write(data);
+  await writable.close();
+}
+
+// ---------- Proyectos ----------
 
 export function newProject(accountId: string, patch: Partial<ShortsProject>): ShortsProject {
   const now = new Date().toISOString();
@@ -754,50 +826,99 @@ export async function listProjects(accountId: string): Promise<ShortsProject[]> 
   return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export async function saveProject(project: ShortsProject, video?: File | null): Promise<void> {
+/** Guarda el proyecto. El video: la referencia al archivo del PC si existe; si no, una copia */
+export async function saveProject(project: ShortsProject, video?: File | FileSystemFileHandle | null): Promise<void> {
   void navigator.storage?.persist?.().catch(() => undefined);
   await tx([PROJECTS, FILES], "readwrite", (t) => {
     t.objectStore(PROJECTS).put({ ...project, updatedAt: new Date().toISOString() });
-    if (video) t.objectStore(FILES).put(video, `${project.id}:video`);
+    if (video instanceof File) {
+      t.objectStore(FILES).put(video, `${project.id}:video`);
+      t.objectStore(FILES).delete(`${project.id}:videoHandle`);
+    } else if (video) {
+      t.objectStore(FILES).put(video, `${project.id}:videoHandle`);
+      t.objectStore(FILES).delete(`${project.id}:video`);
+    }
     return () => undefined;
   });
 }
 
-export async function loadProjectVideo(projectId: string): Promise<File | null> {
-  return tx([FILES], "readonly", (t) => {
-    const req = t.objectStore(FILES).get(`${projectId}:video`) as IDBRequest<File | undefined>;
-    return () => req.result ?? null;
-  });
+export interface ProjectVideo {
+  file: File | null;
+  /** El video está en el PC pero hay que volver a dar permiso (un clic) */
+  handle: FileSystemFileHandle | null;
 }
 
+export async function loadProjectVideo(projectId: string, request = false): Promise<ProjectVideo> {
+  const [copy, handle] = await tx([FILES], "readonly", (t) => {
+    const a = t.objectStore(FILES).get(`${projectId}:video`) as IDBRequest<File | undefined>;
+    const b = t.objectStore(FILES).get(`${projectId}:videoHandle`) as IDBRequest<FileSystemFileHandle | undefined>;
+    return () => [a.result ?? null, b.result ?? null] as const;
+  });
+  if (copy) return { file: copy, handle: null };
+  if (!handle) return { file: null, handle: null };
+  try {
+    if (await hasAccess(handle, "read", request)) return { file: await handle.getFile(), handle };
+  } catch {
+    // El archivo se movió o se borró: hay que elegirlo de nuevo
+    return { file: null, handle: null };
+  }
+  return { file: null, handle };
+}
+
+/** Borra el proyecto del navegador (los Shorts ya guardados en la carpeta del PC se quedan ahí) */
 export async function deleteProject(project: ShortsProject): Promise<void> {
   await tx([PROJECTS, FILES], "readwrite", (t) => {
     t.objectStore(PROJECTS).delete(project.id);
     t.objectStore(FILES).delete(`${project.id}:video`);
+    t.objectStore(FILES).delete(`${project.id}:videoHandle`);
     for (const plan of project.plans) t.objectStore(FILES).delete(`${project.id}:render:${plan.id}`);
     return () => undefined;
   });
 }
 
-export async function saveRender(projectId: string, render: StoredRender): Promise<void> {
+/** Con carpeta elegida, el Short y su .srt van a "<carpeta>/<proyecto>/"; en el navegador queda solo la ficha */
+export async function saveRender(project: ShortsProject, render: StoredRender, folder: FileSystemDirectoryHandle | null): Promise<StoredRender> {
+  let record: RenderRecord = render;
+  let saved = render;
+  if (folder) {
+    const sub = safeName(project.name);
+    const dir = await folder.getDirectoryHandle(sub, { create: true });
+    await writeFile(dir, render.file.name, render.file);
+    await writeFile(dir, render.file.name.replace(/\.[^.]+$/, ".srt"), render.srt);
+    const path = [sub, render.file.name];
+    saved = { ...render, path };
+    record = { planId: render.planId, revision: render.revision, srt: render.srt, path };
+  }
   await tx([FILES], "readwrite", (t) => {
-    t.objectStore(FILES).put(render, `${projectId}:render:${render.planId}`);
+    t.objectStore(FILES).put(record, `${project.id}:render:${render.planId}`);
     return () => undefined;
   });
+  return saved;
 }
 
-export async function loadRenders(project: ShortsProject): Promise<Record<string, StoredRender>> {
-  return tx([FILES], "readonly", (t) => {
-    const reqs = project.plans.map((p) => t.objectStore(FILES).get(`${project.id}:render:${p.id}`) as IDBRequest<StoredRender | undefined>);
-    return () =>
-      Object.fromEntries(
-        reqs.flatMap((r, i) => {
-          const render = r.result;
-          // Un render de una versión anterior del plan ya no sirve
-          return render && render.revision === project.plans[i].revision ? [[render.planId, render]] : [];
-        })
-      );
+export async function loadRenders(project: ShortsProject, folder: FileSystemDirectoryHandle | null): Promise<Record<string, StoredRender>> {
+  const records = await tx([FILES], "readonly", (t) => {
+    const reqs = project.plans.map((p) => t.objectStore(FILES).get(`${project.id}:render:${p.id}`) as IDBRequest<RenderRecord | undefined>);
+    return () => reqs.map((r) => r.result ?? null);
   });
+  const out: Record<string, StoredRender> = {};
+  const canRead = folder ? await hasAccess(folder, "readwrite").catch(() => false) : false;
+  for (const [i, rec] of records.entries()) {
+    // Un render de una versión anterior del plan ya no sirve
+    if (!rec || rec.revision !== project.plans[i].revision) continue;
+    if (rec.file) {
+      out[rec.planId] = { ...rec, file: rec.file };
+    } else if (rec.path && folder && canRead) {
+      try {
+        const dir = await folder.getDirectoryHandle(rec.path[0]);
+        const file = await (await dir.getFileHandle(rec.path[1])).getFile();
+        out[rec.planId] = { ...rec, file };
+      } catch {
+        // Lo borraste o moviste de la carpeta: se puede volver a renderizar
+      }
+    }
+  }
+  return out;
 }
 
 // ---------- Biblioteca de sonidos propia (música y efectos del creador) ----------

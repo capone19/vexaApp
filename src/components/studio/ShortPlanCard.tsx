@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Clapperboard,
   Download,
+  FolderOpen,
   Loader2,
   Music2,
   Play,
@@ -72,13 +73,30 @@ interface Props {
   scheduledDraftId?: string;
   onChange: (plan: ShortPlan) => void;
   onRevise: (instruction: string) => Promise<void>;
+  /** Se llama dentro del clic de "Renderizar" (para pedir la carpeta o su permiso) */
+  onBeforeRender?: () => Promise<void>;
   onRendered: (render: StoredRender) => Promise<void>;
   onSend: () => Promise<void>;
   onDelete: () => void;
   onActive: (active: boolean) => void;
 }
 
-export function ShortPlanCard({ rank, plan, cues, file, render, locked, scheduledDraftId, onChange, onRevise, onRendered, onSend, onDelete, onActive }: Props) {
+export function ShortPlanCard({
+  rank,
+  plan,
+  cues,
+  file,
+  render,
+  locked,
+  scheduledDraftId,
+  onChange,
+  onRevise,
+  onBeforeRender,
+  onRendered,
+  onSend,
+  onDelete,
+  onActive,
+}: Props) {
   const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<ShortEngine | null>(null);
@@ -125,6 +143,7 @@ export function ShortPlanCard({ rank, plan, cues, file, render, locked, schedule
   const run = async (record: boolean) => {
     const engine = engineRef.current;
     if (!engine) return;
+    if (record) await onBeforeRender?.();
     setMode(record ? "render" : "preview");
     setProgress(0);
     onActive(true);
@@ -135,7 +154,6 @@ export function ShortPlanCard({ rank, plan, cues, file, render, locked, schedule
         const slug = (plan.title || "short").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 50);
         const out = new File([blob], `${slug || "short"}.${renderExtension(blob)}`, { type: blob.type });
         await onRendered({ planId: plan.id, revision: plan.revision, file: out, srt: timelineToSrt(timeline) });
-        toast({ title: "Short renderizado", description: "Revísalo, descárgalo o envíalo a Programación." });
       }
     } catch (e) {
       toast({ title: "No se pudo terminar", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
@@ -251,6 +269,12 @@ export function ShortPlanCard({ rank, plan, cues, file, render, locked, schedule
           {rendered && !busy && (
             <div className="space-y-2 rounded-xl bg-emerald-500/10 p-3 ring-1 ring-emerald-400/20">
               <p className="text-xs font-medium text-emerald-300">Render listo · {(rendered.file.size / 1024 ** 2).toFixed(1)} MB</p>
+              {rendered.path && (
+                <p className="flex items-center gap-1 truncate text-[11px] text-emerald-200/80" title={rendered.path.join("/")}>
+                  <FolderOpen className="h-3 w-3 shrink-0" />
+                  {rendered.path.join("/")}
+                </p>
+              )}
               <div className="flex gap-2">
                 <Button variant="secondary" size="sm" className="flex-1 gap-1.5" onClick={download}>
                   <Download className="h-4 w-4" />

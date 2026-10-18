@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ChevronDown,
   FileVideo,
+  FolderOpen,
   Loader2,
   Music2,
   PlugZap,
@@ -35,13 +36,18 @@ import { LANGUAGES, normalizeProfile, transcribeAudio } from "@/lib/studio/ai";
 import { extractAudioChunks, getVideoInfo } from "@/lib/studio/media";
 import {
   ANGLE_LABELS,
+  canUseLocalFiles,
   channelLearnings,
+  chooseShortsFolder,
   deleteProject,
   editShorts,
+  getShortsFolder,
+  hasAccess,
   listProjects,
   loadProjectVideo,
   loadRenders,
   newProject,
+  pickVideoFile,
   reviseShort,
   saveProject,
   saveRender,
@@ -84,6 +90,9 @@ export default function YouTubeShorts() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [video, setVideo] = useState<File | null>(null);
   const [videoMissing, setVideoMissing] = useState(false);
+  const [videoLocked, setVideoLocked] = useState(false);
+  const [folder, setFolder] = useState<FileSystemDirectoryHandle | null>(null);
+  const [folderReady, setFolderReady] = useState(false);
   const [renders, setRenders] = useState<Record<string, StoredRender>>({});
   const [activePlan, setActivePlan] = useState<string | null>(null);
   const [step, setStep] = useState<{ key: StepKey; detail?: string } | null>(null);
@@ -93,6 +102,7 @@ export default function YouTubeShorts() {
   // Formulario de proyecto nuevo
   const [formOpen, setFormOpen] = useState(false);
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoHandle, setVideoHandle] = useState<FileSystemFileHandle | null>(null);
   const [subFile, setSubFile] = useState<File | null>(null);
   const [name, setName] = useState("");
   const [language, setLanguage] = useState(profile.language);
@@ -108,8 +118,20 @@ export default function YouTubeShorts() {
 
   const project = projects.find((p) => p.id === openId) ?? null;
   const busy = Boolean(step);
+  const localFiles = useMemo(() => canUseLocalFiles(), []);
 
   useEffect(() => setLanguage(profile.language), [profile.language]);
+
+  // Carpeta del PC donde se guardan los Shorts (se elige una vez)
+  useEffect(() => {
+    if (!localFiles) return;
+    void getShortsFolder()
+      .then(async (dir) => {
+        setFolder(dir);
+        setFolderReady(dir ? await hasAccess(dir, "readwrite").catch(() => false) : false);
+      })
+      .catch(() => undefined);
+  }, [localFiles]);
 
   // ---------- Carga ----------
   useEffect(() => {
@@ -136,19 +158,21 @@ export default function YouTubeShorts() {
     let cancelled = false;
     setVideo(null);
     setVideoMissing(false);
+    setVideoLocked(false);
     setRenders({});
-    loadProjectVideo(openId).then((file) => {
+    loadProjectVideo(openId).then(({ file, handle }) => {
       if (cancelled) return;
       setVideo(file);
-      setVideoMissing(!file);
+      setVideoLocked(!file && Boolean(handle));
+      setVideoMissing(!file && !handle);
     });
     const p = projects.find((x) => x.id === openId);
-    if (p) void loadRenders(p).then((r) => !cancelled && setRenders(r)).catch(() => undefined);
+    if (p) void loadRenders(p, folder).then((r) => !cancelled && setRenders(r)).catch(() => undefined);
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openId]);
+  }, [openId, folderReady]);
 
   // Avisar antes de cerrar con un análisis o render en curso
   useEffect(() => {
@@ -244,12 +268,13 @@ export default function YouTubeShorts() {
         cues,
         relatedVideo: related,
       });
-      setStep({ key: "lectura", detail: "Guardando el video en este navegador…" });
-      await saveProject(p, videoFile);
+      if (!videoHandle) setStep({ key: "lectura", detail: "Guardando una copia del video en este navegador…" });
+      await saveProject(p, videoHandle ?? videoFile);
       setProjects((list) => [p, ...list]);
       setOpenId(p.id);
       setFormOpen(false);
       setVideoFile(null);
+      setVideoHandle(null);
       setSubFile(null);
       setName("");
       setNotes("");
@@ -295,12 +320,74 @@ export default function YouTubeShorts() {
     }
   };
 
+  // Antes de renderizar (dentro del clic): pedir la carpeta o su permiso. Si no se da, se guarda en el navegador.
+  const folderForRender = useRef<FileSystemDirectoryHandle | null>(null);
+  const beforeRender = async () => {
+    folderForRender.current = null;
+    if (!localFiles) return;
+    try {
+      let dir = folder;
+      if (!dir) {
+        dir = await chooseShortsFolder();
+        setFolder(dir);
+      }
+      if (await hasAccess(dir, "readwrite", true)) {
+        folderForRender.current = dir;
+        setFolderReady(true);
+      }
+    } catch {
+      // Canceló el selector: queda en el navegador
+    }
+  };
+
   const rendered = async (render: StoredRender) => {
     if (!project) return;
-    await saveRender(project.id, render).catch(() =>
-      toast({ title: "El render no quedó guardado", description: "Bájalo ahora: falta espacio en el disco.", variant: "destructive" })
-    );
-    setRenders((r) => ({ ...r, [render.planId]: render }));
+    try {
+      const saved = await saveRender(project, render, folderForRender.current);
+      setRenders((r) => ({ ...r, [render.planId]: saved }));
+      toast({
+        title: "Short renderizado",
+        description: saved.path ? `Guardado en tu carpeta: ${saved.path.join("/")}` : "Revísalo, descárgalo o envíalo a Programación.",
+      });
+    } catch {
+      setRenders((r) => ({ ...r, [render.planId]: render }));
+      toast({ title: "El render no quedó guardado", description: "Bájalo ahora con el botón Bajar.", variant: "destructive" });
+    }
+  };
+
+  const pickFolder = async () => {
+    try {
+      const dir = await chooseShortsFolder();
+      setFolder(dir);
+      setFolderReady(await hasAccess(dir, "readwrite", true));
+    } catch {
+      // Canceló
+    }
+  };
+
+  const unlockFolder = async () => {
+    if (folder && (await hasAccess(folder, "readwrite", true).catch(() => false))) setFolderReady(true);
+  };
+
+  const unlockVideo = async () => {
+    if (!openId) return;
+    const { file } = await loadProjectVideo(openId, true);
+    if (file) {
+      setVideo(file);
+      setVideoLocked(false);
+    }
+  };
+
+  const chooseVideo = async () => {
+    if (!localFiles) {
+      videoInputRef.current?.click();
+      return;
+    }
+    const picked = await pickVideoFile();
+    if (!picked) return;
+    setVideoFile(picked.file);
+    setVideoHandle(picked.handle);
+    if (!name) setName(picked.file.name.replace(/\.[^.]+$/, ""));
   };
 
   const send = async (plan: ShortPlan) => {
@@ -318,14 +405,14 @@ export default function YouTubeShorts() {
     }
   };
 
-  const relink = async (file: File | undefined) => {
+  const relink = async (file: File | undefined, handle?: FileSystemFileHandle) => {
     if (!project || !file) return;
     const info = await getVideoInfo(file).catch(() => null);
     if (!info || Math.abs(info.duration - project.duration) > 2) {
       toast({ title: "Ese no parece el mismo video", description: "La duración no coincide con la del proyecto.", variant: "destructive" });
       return;
     }
-    await saveProject(project, file);
+    await saveProject(project, handle ?? file);
     setVideo(file);
     setVideoMissing(false);
   };
@@ -375,6 +462,12 @@ export default function YouTubeShorts() {
                 ))}
               </SelectContent>
             </Select>
+          )}
+          {localFiles && (
+            <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => void pickFolder()} disabled={busy || Boolean(activePlan)} title="Carpeta de tu PC donde se guardan los Shorts">
+              <FolderOpen className="h-4 w-4" />
+              {folder ? `Carpeta: ${folder.name}` : "Elegir carpeta"}
+            </Button>
           )}
           <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setSoundsOpen(true)}>
             <Music2 className="h-4 w-4" />
@@ -459,8 +552,33 @@ export default function YouTubeShorts() {
         {videoMissing && (
           <StudioCard className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">El video de este proyecto ya no está guardado en este navegador. Vuelve a elegir el mismo archivo para renderizar.</p>
-            <Button size="sm" onClick={() => relinkRef.current?.click()}>
+            <Button
+              size="sm"
+              onClick={async () => {
+                if (!localFiles) return relinkRef.current?.click();
+                const picked = await pickVideoFile();
+                if (picked) await relink(picked.file, picked.handle);
+              }}
+            >
               Elegir el video
+            </Button>
+          </StudioCard>
+        )}
+
+        {videoLocked && (
+          <StudioCard className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">El video está en tu PC: dale acceso otra vez para ver y renderizar los Shorts.</p>
+            <Button size="sm" onClick={() => void unlockVideo()}>
+              Dar acceso al video
+            </Button>
+          </StudioCard>
+        )}
+
+        {folder && !folderReady && (
+          <StudioCard className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">Para mostrar los Shorts ya guardados en la carpeta "{folder.name}", dale acceso otra vez.</p>
+            <Button size="sm" variant="secondary" onClick={() => void unlockFolder()}>
+              Permitir acceso a la carpeta
             </Button>
           </StudioCard>
         )}
@@ -479,6 +597,7 @@ export default function YouTubeShorts() {
                 scheduledDraftId={project.sentToSchedule[plan.id]}
                 onChange={setPlan}
                 onRevise={(instruction) => revise(plan, instruction)}
+                onBeforeRender={beforeRender}
                 onRendered={rendered}
                 onSend={() => send(plan)}
                 onDelete={() => commit({ ...project, plans: project.plans.filter((x) => x.id !== plan.id) }, true)}
@@ -548,6 +667,7 @@ export default function YouTubeShorts() {
       <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={(e) => {
         const f = e.target.files?.[0] ?? null;
         setVideoFile(f);
+        setVideoHandle(null);
         if (f && !name) setName(f.name.replace(/\.[^.]+$/, ""));
         e.target.value = "";
       }} />
@@ -563,11 +683,14 @@ export default function YouTubeShorts() {
         <StudioCard className="space-y-5">
           <div>
             <p className="font-semibold text-foreground">Nuevo proyecto de Shorts</p>
-            <p className="text-sm text-muted-foreground">El video se procesa en este PC: no se sube a ningún servidor. A la IA solo le llegan los subtítulos.</p>
+            <p className="text-sm text-muted-foreground">
+              El video se procesa en este PC: no se sube a ningún servidor y {localFiles ? "se lee desde donde está (no se copia)" : "se guarda una copia en este navegador"}. A
+              la IA solo le llegan los subtítulos.
+            </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <button
-              onClick={() => videoInputRef.current?.click()}
+              onClick={() => void chooseVideo()}
               className={cn(
                 "flex items-center gap-3 rounded-xl border border-dashed p-4 text-left transition-colors hover:border-primary/60",
                 videoFile ? "border-primary/50 bg-primary/5" : "border-border"
