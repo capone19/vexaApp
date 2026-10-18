@@ -26,6 +26,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ChannelProfileDialog } from "@/components/studio/ChannelProfileDialog";
 import { PlatformIcon } from "@/components/studio/PlatformIcon";
 import { AiBadge } from "@/components/studio/StudioUI";
+import { TranslateHint } from "@/components/studio/TranslateHint";
 import { useStudio } from "@/contexts/StudioContext";
 import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
 import { useToast } from "@/hooks/use-toast";
@@ -670,21 +671,23 @@ export function PostComposerDialog({ open, onOpenChange, platform, action, accou
                         {ai.titles.map((option) => {
                           const active = title === option.text;
                           return (
-                            <button
-                              key={option.text}
-                              type="button"
-                              onClick={() => setTitle(option.text)}
-                              className={cn(
-                                "w-full rounded-xl border p-3 text-left transition-colors",
-                                active ? "border-primary/60 bg-primary/10" : "border-border hover:border-primary/30"
-                              )}
-                            >
-                              <span className="mr-2 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                                {ANGLE_LABELS[option.angle] ?? option.angle}
-                              </span>
-                              <span className="text-sm font-medium">{option.text}</span>
-                              {active && option.why && <p className="mt-1.5 text-xs text-muted-foreground">{option.why}</p>}
-                            </button>
+                            <div key={option.text} className="flex items-start gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setTitle(option.text)}
+                                className={cn(
+                                  "min-w-0 flex-1 rounded-xl border p-3 text-left transition-colors",
+                                  active ? "border-primary/60 bg-primary/10" : "border-border hover:border-primary/30"
+                                )}
+                              >
+                                <span className="mr-2 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                                  {ANGLE_LABELS[option.angle] ?? option.angle}
+                                </span>
+                                <span className="text-sm font-medium">{option.text}</span>
+                                {active && option.why && <p className="mt-1.5 text-xs text-muted-foreground">{option.why}</p>}
+                              </button>
+                              <TranslateHint text={option.text} language={language} className="mt-3" />
+                            </div>
                           );
                         })}
                       </div>
@@ -694,16 +697,25 @@ export function PostComposerDialog({ open, onOpenChange, platform, action, accou
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="composer-title">{platform === "youtube" ? "Título" : "Nombre interno"}</Label>
-                      {platform === "youtube" && <span className="text-xs text-muted-foreground">{title.length}/100</span>}
+                      <div className="flex items-center gap-1">
+                        {isYouTubeUpload && <TranslateHint text={title} language={language} />}
+                        {platform === "youtube" && <span className="text-xs text-muted-foreground">{title.length}/100</span>}
+                      </div>
                     </div>
                     <Input id="composer-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={100} />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="composer-desc">{platform === "youtube" ? "Descripción" : "Caption"}</Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="composer-desc">{platform === "youtube" ? "Descripción" : "Caption"}</Label>
+                      {isYouTubeUpload && <TranslateHint text={description} language={language} />}
+                    </div>
                     <Textarea id="composer-desc" rows={isYouTubeUpload ? 8 : 4} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={5000} />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="composer-tags">{platform === "youtube" ? "Tags" : "Hashtags"} (separados por coma)</Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="composer-tags">{platform === "youtube" ? "Tags" : "Hashtags"} (separados por coma)</Label>
+                      {isYouTubeUpload && <TranslateHint text={tags} language={language} />}
+                    </div>
                     <Input id="composer-tags" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="ia, automatizacion, ventas" />
                   </div>
 
@@ -712,7 +724,7 @@ export function PostComposerDialog({ open, onOpenChange, platform, action, accou
                       {ai.thumbnail_text.length > 0 && (
                         <div className="space-y-1.5">
                           <Label className="text-xs text-muted-foreground">Texto para la miniatura (clic para copiar)</Label>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             {ai.thumbnail_text.map((text) => (
                               <button
                                 key={text}
@@ -723,6 +735,7 @@ export function PostComposerDialog({ open, onOpenChange, platform, action, accou
                                 {text}
                               </button>
                             ))}
+                            <TranslateHint text={ai.thumbnail_text.join("\n")} language={language} />
                           </div>
                         </div>
                       )}
@@ -731,6 +744,7 @@ export function PostComposerDialog({ open, onOpenChange, platform, action, accou
                           <Label className="text-xs text-muted-foreground">Comentario para fijar (YouTube no deja fijarlo por API)</Label>
                           <div className="flex items-start gap-2 rounded-lg border border-border p-2 text-sm">
                             <p className="flex-1">{ai.pinned_comment}</p>
+                            <TranslateHint text={ai.pinned_comment} language={language} className="h-7 w-7" />
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copy(ai.pinned_comment)} aria-label="Copiar comentario">
                               <Copy className="h-3.5 w-3.5" />
                             </Button>
@@ -742,9 +756,12 @@ export function PostComposerDialog({ open, onOpenChange, platform, action, accou
                           <div className="min-w-0 space-y-1">
                             <p className="text-sm font-medium">Traducciones: {localeNames}</p>
                             {ai.localizations.map((l) => (
-                              <p key={l.lang} className="truncate text-xs text-muted-foreground">
-                                {l.lang.toUpperCase()} · {l.title}
-                              </p>
+                              <div key={l.lang} className="flex items-center gap-1">
+                                <p className="truncate text-xs text-muted-foreground">
+                                  {l.lang.toUpperCase()} · {l.title}
+                                </p>
+                                <TranslateHint text={`${l.title}\n\n${l.description}`} language={l.lang} className="h-5 w-5" />
+                              </div>
                             ))}
                           </div>
                           <Switch checked={useLocalizations} onCheckedChange={setUseLocalizations} aria-label="Incluir traducciones" />

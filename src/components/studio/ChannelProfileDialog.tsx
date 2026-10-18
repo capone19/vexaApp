@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { TranslateHint } from "@/components/studio/TranslateHint";
 import { useStudio } from "@/contexts/StudioContext";
 import { useToast } from "@/hooks/use-toast";
 import { LANGUAGES, normalizeProfile, YOUTUBE_CATEGORIES, type ChannelProfile } from "@/lib/studio/ai";
@@ -97,7 +98,10 @@ export function ChannelProfileDialog({ account, onOpenChange }: ChannelProfileDi
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="profile-niche">De qué trata el canal</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="profile-niche">De qué trata el canal</Label>
+              <TranslateHint text={profile.niche} />
+            </div>
             <Textarea
               id="profile-niche"
               rows={2}
@@ -108,20 +112,32 @@ export function ChannelProfileDialog({ account, onOpenChange }: ChannelProfileDi
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
               <Label htmlFor="profile-tone">Tono</Label>
+              <TranslateHint text={profile.tone} />
+            </div>
               <Input id="profile-tone" value={profile.tone} onChange={(e) => set("tone", e.target.value)} placeholder="Oscuro, con humor, muy simple" />
             </div>
             <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
               <Label htmlFor="profile-audience">Audiencia</Label>
+              <TranslateHint text={profile.audience} />
+            </div>
               <Input id="profile-audience" value={profile.audience} onChange={(e) => set("audience", e.target.value)} placeholder="Adultos curiosos de 18 a 44 años" />
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="profile-cta">Llamado a la acción (va al final de la descripción)</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="profile-cta">Llamado a la acción (va al final de la descripción)</Label>
+              <TranslateHint text={profile.cta} />
+            </div>
             <Input id="profile-cta" value={profile.cta} onChange={(e) => set("cta", e.target.value)} placeholder="Subscribe and see what history did to people like you." />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="profile-examples">Títulos de ejemplo que funcionaron (uno por línea)</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="profile-examples">Títulos de ejemplo que funcionaron (uno por línea)</Label>
+              <TranslateHint text={examples} />
+            </div>
             <Textarea
               id="profile-examples"
               rows={4}

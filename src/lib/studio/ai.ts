@@ -12,6 +12,7 @@ import type { Cue } from "./subtitles";
 const N8N_BASE_URL = process.env.NEXT_PUBLIC_N8N_BASE_URL || "https://n8ninnovatec-n8n.t0bgq1.easypanel.host";
 const METADATA_PATH = process.env.NEXT_PUBLIC_N8N_WEBHOOK_STUDIO_METADATA || "/webhook/vexa-studio/metadata";
 const TRANSCRIBE_PATH = process.env.NEXT_PUBLIC_N8N_WEBHOOK_STUDIO_TRANSCRIBE || "/webhook/vexa-studio/transcribe";
+const TRANSLATE_PATH = process.env.NEXT_PUBLIC_N8N_WEBHOOK_STUDIO_TRANSLATE || "/webhook/vexa-studio/translate";
 
 // Las tablas del Studio aún no están en los tipos generados de Supabase
 const db = supabase as unknown as SupabaseClient;
@@ -170,4 +171,15 @@ export async function transcribeAudio(chunks: AudioChunk[], onProgress?: (done: 
   }
   onProgress?.(chunks.length, chunks.length);
   return cues;
+}
+
+/** Traducción al español con IA (respaldo cuando el navegador no trae traductor propio) */
+export async function translateWithAi(texts: string[]): Promise<string[]> {
+  const res = await fetch(`${N8N_BASE_URL}${TRANSLATE_PATH}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ access_token: await accessToken(), texts }),
+  });
+  const body = await readResponse<{ translations: string[] }>(res);
+  return body.translations;
 }
