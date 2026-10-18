@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarDays, ChartLine, ChevronDown, Clapperboard, LayoutDashboard, LogOut, Menu, PlugZap, Workflow } from "lucide-react";
+import { CalendarDays, ChartLine, ChevronDown, Clapperboard, LayoutDashboard, LogOut, Menu, PlugZap, Scissors, Workflow } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { ModeSwitchButton } from "@/components/shared/ModeSwitchButton";
 import { PlatformIcon } from "@/components/studio/PlatformIcon";
@@ -26,6 +26,7 @@ const pageTitles: Record<string, string> = {
   "/studio/youtube": "YouTube",
   "/studio/youtube/analisis": "YouTube · Análisis",
   "/studio/youtube/programar": "YouTube · Programación",
+  "/studio/youtube/shorts": "YouTube · Shorts",
   "/studio/instagram": "Instagram",
   "/studio/tiktok": "TikTok",
 };
@@ -36,6 +37,7 @@ const platformSubNav: Partial<Record<string, { title: string; href: string; icon
     { title: "Contenido", href: "/studio/youtube", icon: Clapperboard, end: true },
     { title: "Análisis", href: "/studio/youtube/analisis", icon: ChartLine },
     { title: "Programación", href: "/studio/youtube/programar", icon: CalendarDays },
+    { title: "Shorts", href: "/studio/youtube/shorts", icon: Scissors },
   ],
 };
 
