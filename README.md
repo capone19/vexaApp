@@ -1,73 +1,51 @@
-# Welcome to your Lovable project
+# VEXA App
 
-## Project info
+Panel de VEXA (Chatbot AI y automatización) construido con Next.js 15 (App Router), React, TypeScript, Tailwind CSS 3, shadcn/ui, TanStack Query y Supabase.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Secciones
 
-## How can I edit this code?
+| Ruta | Sección |
+|---|---|
+| `/auth` | Inicio de sesión y registro |
+| `/ajustes-agente` | Ajustes del Agente |
+| `/ajustes-agente/analisis` | Análisis del agente |
+| `/chats` | Chats en tiempo real |
+| `/marketing/plantillas` | Plantillas de WhatsApp (oculta en el menú; se abre desde Chats) |
 
-There are several ways of editing your application.
+`/` redirige a `/chats`. Las rutas protegidas redirigen a `/auth` si no hay sesión.
 
-**Use Lovable**
+## Desarrollo local
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+Requisitos: Node.js 20 o superior.
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+npm install
+cp .env.example .env   # completar los valores
+npm run dev            # http://localhost:3000
 ```
 
-**Edit a file directly in GitHub**
+## Scripts
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+- `npm run dev`: servidor de desarrollo.
+- `npm run build`: build de producción.
+- `npm run start`: sirve el build de producción.
+- `npm run lint`: ESLint con la configuración de Next.
+- `npm test`: tests con Vitest.
 
-**Use GitHub Codespaces**
+`next build` no hace type-check (igual que el build anterior de Vite). Para revisar tipos: `npx tsc --noEmit`.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Variables de entorno
 
-## What technologies are used for this project?
+Ver [.env.example](.env.example). Todas usan el prefijo `NEXT_PUBLIC_` porque se leen en el navegador. Las de n8n son opcionales.
 
-This project is built with:
+## Estructura
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+- `src/app/`: rutas de Next (wrappers delgados que cargan las vistas).
+- `src/views/`: componentes de página.
+- `src/components/`, `src/hooks/`, `src/contexts/`, `src/lib/`: UI, hooks, contextos y lógica.
+- `src/integrations/supabase/`: clientes de Supabase.
+- `supabase/`: migraciones y edge functions.
 
-## How can I deploy this project?
+## Despliegue
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+En Vercel, con el Framework Preset **Next.js** y las variables de entorno de `.env.example` configuradas.
