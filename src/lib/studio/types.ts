@@ -23,6 +23,8 @@ export interface SocialAccount {
   remote?: boolean;
   /** Perfil de estilo para "Rellenar con IA" (studio_accounts.ai_profile) */
   aiProfile?: Record<string, unknown>;
+  /** Frecuencia de publicación (studio_accounts.publish_plan) */
+  publishPlan?: Record<string, unknown>;
 }
 
 export type PostStatus = "borrador" | "programado" | "procesando" | "publicado" | "error";
@@ -61,6 +63,8 @@ export interface PlatformAction {
   format?: PostFormat;
   /** Evento que se envía al webhook de n8n */
   n8nEvent: string;
+  /** Si existe, la tarjeta lleva a esta página en vez de abrir el compositor */
+  href?: string;
 }
 
 export interface StudioAutomation {

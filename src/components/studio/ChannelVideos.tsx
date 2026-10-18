@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { AlertCircle, ExternalLink, Eye, Loader2, MessageCircle, RefreshCw, ThumbsUp, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -34,9 +34,11 @@ interface ChannelVideosProps {
   accounts: SocialAccount[];
   /** Se llama cuando la API devuelve estadísticas frescas del canal */
   onChannelStats?: (accountId: string, stats: YouTubeChannelStats) => void;
+  /** Videos de la primera página (para contar los programados) */
+  onVideos?: (accountId: string, videos: YouTubeVideo[]) => void;
 }
 
-export function ChannelVideos({ accounts, onChannelStats }: ChannelVideosProps) {
+export function ChannelVideos({ accounts, onChannelStats, onVideos }: ChannelVideosProps) {
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [videos, setVideos] = useState<YouTubeVideo[]>([]);
   const [channel, setChannel] = useState<YouTubeChannelStats | null>(null);
@@ -65,12 +67,15 @@ export function ChannelVideos({ accounts, onChannelStats }: ChannelVideosProps) 
         setVideos((prev) => (pageToken ? [...prev, ...result.videos] : result.videos));
         setNextPage(result.nextPageToken);
         setChannel(result.channel);
-        if (!pageToken) onChannelStats?.(accountId, result.channel);
+        if (!pageToken) {
+          onChannelStats?.(accountId, result.channel);
+          onVideos?.(accountId, result.videos);
+        }
       }
       setLoading(false);
       setLoadingMore(false);
     },
-    [accountId, onChannelStats]
+    [accountId, onChannelStats, onVideos]
   );
 
   useEffect(() => {
@@ -189,7 +194,10 @@ export function ChannelVideos({ accounts, onChannelStats }: ChannelVideosProps) 
 
 function VideoCard({ video }: { video: YouTubeVideo }) {
   const url = video.isShort ? `https://www.youtube.com/shorts/${video.id}` : `https://www.youtube.com/watch?v=${video.id}`;
-  const privacy = PRIVACY_LABELS[video.privacy];
+  const privacy =
+    video.privacy === "private" && video.publishAt
+      ? `Programado · ${format(new Date(video.publishAt), "d MMM HH:mm", { locale: es })}`
+      : PRIVACY_LABELS[video.privacy];
   return (
     <a
       href={url}

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
 import { ArrowRight, PlugZap } from "lucide-react";
@@ -8,11 +8,13 @@ import { ChannelVideos } from "@/components/studio/ChannelVideos";
 import { PlatformIcon } from "@/components/studio/PlatformIcon";
 import { PostComposerDialog } from "@/components/studio/PostComposerDialog";
 import { PostList } from "@/components/studio/PostList";
+import { YouTubeUploadDialog } from "@/components/studio/YouTubeUploadDialog";
 import { AiBadge, EmptyState, SoonBadge, StudioCard, StudioPageHeader } from "@/components/studio/StudioUI";
 import { useStudio } from "@/contexts/StudioContext";
 import { formatFollowers, isPlatformId, PLATFORMS } from "@/lib/studio/platforms";
 import type { PlatformAction } from "@/lib/studio/types";
-import type { YouTubeChannelStats } from "@/lib/studio/youtube";
+import type { YouTubeChannelStats, YouTubeVideo } from "@/lib/studio/youtube";
+import { listDrafts } from "@/lib/studio/youtube-draft";
 import { cn } from "@/lib/utils";
 
 const ALL = "todas";
@@ -56,8 +58,30 @@ export default function StudioPlataforma() {
     [accountFollowers, refreshAccounts]
   );
 
-  const scheduled = platformPosts.filter((p) => p.status === "programado").length;
-  const drafts = platformPosts.filter((p) => p.status === "borrador").length;
+  const isYouTube = platform === "youtube";
+  // YouTube: programados reales del canal y borradores guardados en este PC (Programación)
+  const [ytScheduled, setYtScheduled] = useState<Record<string, number>>({});
+  const [ytDrafts, setYtDrafts] = useState(0);
+  const handleVideos = useCallback((accountId: string, videos: YouTubeVideo[]) => {
+    const now = Date.now();
+    const count = videos.filter((v) => v.privacy === "private" && v.publishAt && new Date(v.publishAt).getTime() > now).length;
+    setYtScheduled((prev) => (prev[accountId] === count ? prev : { ...prev, [accountId]: count }));
+  }, []);
+  useEffect(() => {
+    if (!isYouTube || activeAction) return;
+    let cancelled = false;
+    Promise.all(channelAccounts.map((a) => listDrafts(a.id).catch(() => [])))
+      .then((lists) => !cancelled && setYtDrafts(lists.reduce((n, l) => n + l.length, 0)))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isYouTube, channelAccounts, activeAction]);
+
+  const scheduled = isYouTube
+    ? channelAccounts.reduce((n, a) => n + (ytScheduled[a.id] ?? 0), 0)
+    : platformPosts.filter((p) => p.status === "programado").length;
+  const drafts = isYouTube ? ytDrafts : platformPosts.filter((p) => p.status === "borrador").length;
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -120,17 +144,12 @@ export default function StudioPlataforma() {
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {meta.actions.map((action) => {
                 const available = action.availability === "disponible";
-                return (
-                  <button
-                    key={action.id}
-                    type="button"
-                    disabled={!available}
-                    onClick={() => setActiveAction(action)}
-                    className={cn(
-                      "studio-glass group flex flex-col rounded-2xl p-5 text-left",
-                      available ? "studio-glow-hover" : "cursor-not-allowed opacity-60"
-                    )}
-                  >
+                const cardClass = cn(
+                  "studio-glass group flex flex-col rounded-2xl p-5 text-left",
+                  available ? "studio-glow-hover" : "cursor-not-allowed opacity-60"
+                );
+                const body = (
+                  <>
                     <div className="flex items-start justify-between gap-2">
                       <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20">
                         <action.icon className="h-5 w-5" />
@@ -148,6 +167,15 @@ export default function StudioPlataforma() {
                         <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                       </span>
                     )}
+                  </>
+                );
+                return action.href && available ? (
+                  <Link key={action.id} href={action.href} className={cardClass}>
+                    {body}
+                  </Link>
+                ) : (
+                  <button key={action.id} type="button" disabled={!available} onClick={() => setActiveAction(action)} className={cardClass}>
+                    {body}
                   </button>
                 );
               })}
@@ -155,9 +183,10 @@ export default function StudioPlataforma() {
           </section>
 
           {platform === "youtube" && channelAccounts.length > 0 && (
-            <ChannelVideos accounts={channelAccounts} onChannelStats={handleChannelStats} />
+            <ChannelVideos accounts={channelAccounts} onChannelStats={handleChannelStats} onVideos={handleVideos} />
           )}
 
+          {!isYouTube && (
           <StudioCard>
             <div className="mb-2 flex items-center justify-between">
               <h2 className="font-semibold">Publicaciones</h2>
@@ -165,11 +194,17 @@ export default function StudioPlataforma() {
             </div>
             <PostList posts={platformPosts} emptyText={`Usa una acción para crear tu primera publicación en ${meta.name}.`} />
           </StudioCard>
+          )}
         </>
       )}
 
+      <YouTubeUploadDialog
+        open={isYouTube && activeAction?.id === "subir-video"}
+        onOpenChange={(open) => !open && setActiveAction(null)}
+        accountId={accountFilter === ALL ? undefined : accountFilter}
+      />
       <PostComposerDialog
-        open={activeAction !== null}
+        open={activeAction !== null && !isYouTube}
         onOpenChange={(open) => !open && setActiveAction(null)}
         platform={platform}
         action={activeAction}

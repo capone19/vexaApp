@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, LogOut, Menu, PlugZap, Workflow } from "lucide-react";
+import { CalendarDays, ChartLine, ChevronDown, Clapperboard, LayoutDashboard, LogOut, Menu, PlugZap, Workflow } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { ModeSwitchButton } from "@/components/shared/ModeSwitchButton";
 import { PlatformIcon } from "@/components/studio/PlatformIcon";
@@ -24,8 +24,19 @@ const pageTitles: Record<string, string> = {
   "/studio/cuentas": "Cuentas conectadas",
   "/studio/automatizaciones": "Automatizaciones",
   "/studio/youtube": "YouTube",
+  "/studio/youtube/analisis": "YouTube · Análisis",
+  "/studio/youtube/programar": "YouTube · Programación",
   "/studio/instagram": "Instagram",
   "/studio/tiktok": "TikTok",
+};
+
+// Submódulos que se despliegan bajo la plataforma cuando está abierta
+const platformSubNav: Partial<Record<string, { title: string; href: string; icon: React.ElementType; end?: boolean }[]>> = {
+  youtube: [
+    { title: "Contenido", href: "/studio/youtube", icon: Clapperboard, end: true },
+    { title: "Análisis", href: "/studio/youtube/analisis", icon: ChartLine },
+    { title: "Programación", href: "/studio/youtube/programar", icon: CalendarDays },
+  ],
 };
 
 function StudioBrand() {
@@ -44,6 +55,7 @@ function StudioBrand() {
 
 function StudioNav({ onNavigate }: { onNavigate?: () => void }) {
   const { accounts } = useStudio();
+  const pathname = usePathname() ?? "";
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -73,9 +85,11 @@ function StudioNav({ onNavigate }: { onNavigate?: () => void }) {
         <ul className="space-y-1">
           {PLATFORM_IDS.map((id) => {
             const count = accounts.filter((a) => a.platform === id && a.managed).length;
+            const subNav = platformSubNav[id];
+            const expanded = Boolean(subNav) && (pathname === `/studio/${id}` || pathname.startsWith(`/studio/${id}/`));
             return (
               <li key={id}>
-                <NavLink to={`/studio/${id}`} className={linkClass} onClick={onNavigate}>
+                <NavLink to={`/studio/${id}`} end={Boolean(subNav)} className={() => linkClass({ isActive: expanded || pathname === `/studio/${id}` })} onClick={onNavigate}>
                   <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", PLATFORMS[id].chipClassName)}>
                     <PlatformIcon platform={id} className="h-4 w-4" />
                   </span>
@@ -83,7 +97,32 @@ function StudioNav({ onNavigate }: { onNavigate?: () => void }) {
                   {count > 0 && (
                     <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">{count}</span>
                   )}
+                  {subNav && (
+                    <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", !expanded && "-rotate-90")} />
+                  )}
                 </NavLink>
+                {subNav && expanded && (
+                  <ul className="mt-1 ml-[22px] space-y-0.5 border-l border-sidebar-border pl-3 animate-fade-in">
+                    {subNav.map((item) => (
+                      <li key={item.href}>
+                        <NavLink
+                          to={item.href}
+                          end={item.end}
+                          onClick={onNavigate}
+                          className={({ isActive }) =>
+                            cn(
+                              "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors",
+                              isActive ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                            )
+                          }
+                        >
+                          <item.icon className="h-4 w-4 shrink-0" />
+                          {item.title}
+                        </NavLink>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             );
           })}

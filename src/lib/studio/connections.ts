@@ -28,6 +28,7 @@ interface StudioAccountRow {
   managed: boolean;
   created_at: string;
   ai_profile: Record<string, unknown> | null;
+  publish_plan: Record<string, unknown> | null;
 }
 
 const toAccount = (row: StudioAccountRow): SocialAccount => ({
@@ -42,12 +43,13 @@ const toAccount = (row: StudioAccountRow): SocialAccount => ({
   connectedAt: row.created_at,
   remote: true,
   aiProfile: row.ai_profile ?? {},
+  publishPlan: row.publish_plan ?? {},
 });
 
 export async function fetchConnectedAccounts(tenantId: string): Promise<SocialAccount[]> {
   const { data, error } = await db
     .from("studio_accounts")
-    .select("id, platform, handle, display_name, avatar_url, followers, status, managed, created_at, ai_profile")
+    .select("id, platform, handle, display_name, avatar_url, followers, status, managed, created_at, ai_profile, publish_plan")
     .eq("tenant_id", tenantId)
     .order("created_at", { ascending: true });
   if (error) throw error;

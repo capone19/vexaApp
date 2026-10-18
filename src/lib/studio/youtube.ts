@@ -15,6 +15,8 @@ export interface YouTubeVideo {
   durationSeconds: number;
   isShort: boolean;
   privacy: "public" | "unlisted" | "private" | string;
+  /** Si está programado: cuándo lo publica YouTube */
+  publishAt: string | null;
   live: "none" | "live" | "upcoming" | string;
   views: number;
   likes: number;
@@ -40,6 +42,7 @@ interface VideoRow {
   duration_seconds: number;
   is_short: boolean;
   privacy: string;
+  publish_at?: string | null;
   live: string;
   views: number;
   likes: number;
@@ -68,6 +71,7 @@ export async function fetchYouTubeVideos(accountId: string, pageToken?: string):
       durationSeconds: v.duration_seconds,
       isShort: v.is_short,
       privacy: v.privacy,
+      publishAt: v.publish_at ?? null,
       live: v.live,
       views: v.views,
       likes: v.likes,

@@ -401,6 +401,8 @@ async function handleVideos(admin: SupabaseClient, req: Request, body: Record<st
         // La API no marca los Shorts: se infieren por duración (hasta 3 min)
         is_short: duration > 0 && duration <= 180,
         privacy: v.status?.privacyStatus ?? "public",
+        // Programado: privado hasta esta fecha, luego YouTube lo publica solo
+        publish_at: v.status?.publishAt ?? null,
         upload_status: v.status?.uploadStatus ?? null,
         live: v.snippet?.liveBroadcastContent ?? "none",
         views: Number(v.statistics?.viewCount ?? 0),

@@ -22,18 +22,25 @@ export interface UploadMetadata {
   localizations?: Localization[];
 }
 
+// Token por canal en memoria: se reutiliza hasta un minuto antes de que venza
+const tokenCache = new Map<string, { token: string; expiresAt: number }>();
+
+/** Token de acceso del canal (sirve para subir, leer el canal y YouTube Analytics) */
 export async function getUploadToken(accountId: string): Promise<string> {
+  const cached = tokenCache.get(accountId);
+  if (cached && cached.expiresAt - Date.now() > 60_000) return cached.token;
   const { data, error } = await supabase.functions.invoke("studio-youtube-oauth", {
     body: { action: "upload_token", account_id: accountId },
   });
   if (error || !data?.ok) {
     const body = error ? await (error as { context?: Response }).context?.json?.().catch(() => null) : data;
-    throw new Error(body?.code === "refresh_failed" ? "YouTube revocó el acceso a este canal. Vuelve a conectarlo." : "No se pudo obtener permiso para subir a este canal.");
+    throw new Error(body?.code === "refresh_failed" ? "YouTube revocó el acceso a este canal. Vuelve a conectarlo." : "No se pudo obtener permiso para usar este canal.");
   }
+  tokenCache.set(accountId, { token: data.access_token, expiresAt: new Date(data.expires_at).getTime() });
   return data.access_token as string;
 }
 
-async function googleError(res: Response, fallback: string): Promise<Error> {
+export async function googleError(res: Response, fallback: string): Promise<Error> {
   const body = await res.json().catch(() => null);
   const reason = body?.error?.errors?.[0]?.reason as string | undefined;
   const messages: Record<string, string> = {
@@ -53,13 +60,13 @@ function putChunk(
   file: File,
   from: number,
   onProgress: (fraction: number) => void
-): Promise<{ status: number; body: string; range: string | null }> {
+): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", url);
     if (from > 0) xhr.setRequestHeader("Content-Range", `bytes ${from}-${file.size - 1}/${file.size}`);
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress((from + e.loaded) / file.size);
-    xhr.onload = () => resolve({ status: xhr.status, body: xhr.responseText, range: xhr.getResponseHeader("Range") });
+    xhr.onload = () => resolve({ status: xhr.status, body: xhr.responseText });
     xhr.onerror = () => reject(new Error("network"));
     xhr.send(from > 0 ? file.slice(from) : file);
   });
