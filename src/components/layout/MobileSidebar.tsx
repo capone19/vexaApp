@@ -1,4 +1,4 @@
-import { useLocation, useNavigate } from "react-router-dom";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/shared/Logo";
 import {
@@ -11,15 +11,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
-  LayoutDashboard,
   MessageSquare,
-  Calendar,
-  FileText,
-  Megaphone,
-  CreditCard,
   Bot,
   Brain,
-  Cog,
   Lock,
   LogOut,
   ChevronRight,
@@ -47,7 +41,6 @@ interface NavItem {
 }
 
 const mainNavItems: NavItem[] = [
-  { title: "Dashboard", href: "/", icon: LayoutDashboard, exactActive: true },
   {
     title: "Ajustes del Agente",
     href: "/ajustes-agente",
@@ -62,23 +55,6 @@ const mainNavItems: NavItem[] = [
     ],
   },
   { title: "Chats", href: "/chats", icon: MessageSquare },
-  { title: "Calendario", href: "/calendario", icon: Calendar },
-  { title: "Facturación", href: "/facturacion", icon: CreditCard },
-  { title: "Reportes", href: "/reportes", icon: FileText, isUpgrade: true },
-  {
-    title: "Marketing",
-    href: "/marketing",
-    icon: Megaphone,
-    isUpgrade: true,
-    children: [
-      { title: "Plantillas", href: "/marketing/plantillas" },
-      { title: "Performance", href: "/marketing/performance" },
-    ],
-  },
-];
-
-const bottomNavItems: NavItem[] = [
-  { title: "Configuración", href: "/configuracion", icon: Cog },
 ];
 
 interface MobileSidebarProps {
@@ -99,8 +75,8 @@ const getUserProfile = () => {
 };
 
 export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
-  const location = useLocation();
-  const navigate = useNavigate();
+  const pathname = usePathname();
+  const router = useRouter();
   const userProfile = getUserProfile();
   const { user: authUser } = useAuth();
   
@@ -120,18 +96,18 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
     .slice(0, 2);
 
   const isActive = (href: string, exact = false) => {
-    if (href === "/" || exact) return location.pathname === href;
-    return location.pathname.startsWith(href);
+    if (href === "/" || exact) return pathname === href;
+    return pathname.startsWith(href);
   };
 
   const handleNavigation = (href: string) => {
-    navigate(href);
+    router.push(href);
     onOpenChange(false);
   };
 
   const handleLogout = async () => {
     await logout();
-    navigate('/auth');
+    router.push('/auth');
     onOpenChange(false);
   };
 
@@ -188,7 +164,7 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
                             onClick={() => handleNavigation(child.href)}
                             className={cn(
                               "w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs transition-colors text-left",
-                              location.pathname === child.href
+                              pathname === child.href
                                 ? "bg-primary/10 text-primary font-medium"
                                 : "text-muted-foreground active:bg-secondary"
                             )}
@@ -205,26 +181,6 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
-
-            <div className="my-4 border-t border-border" />
-
-            <div className="space-y-1">
-              {bottomNavItems.map((item) => (
-                <button
-                  key={item.title}
-                  onClick={() => handleNavigation(item.href)}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm transition-colors text-left",
-                    isActive(item.href)
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "text-muted-foreground active:bg-secondary"
-                  )}
-                >
-                  <item.icon className="h-5 w-5 shrink-0" />
-                  <span>{item.title}</span>
-                </button>
               ))}
             </div>
           </nav>

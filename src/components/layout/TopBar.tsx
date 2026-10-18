@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useRouter, usePathname } from "next/navigation";
 import { 
   ChevronDown, 
   LogOut, 
-  Settings,
   ArrowLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -50,16 +49,16 @@ const pageTitles: Record<string, string> = {
 };
 
 export function TopBar() {
-  const navigate = useNavigate();
-  const location = useLocation();
+  const router = useRouter();
+  const pathname = usePathname();
   const isMobile = useIsMobile();
   const [userProfile, setUserProfile] = useState(getUserProfile());
   
   // Get current page title
-  const currentPageTitle = pageTitles[location.pathname] || "VEXA";
+  const currentPageTitle = pageTitles[pathname] || "VEXA";
   
   // Check if we can go back
-  const canGoBack = location.pathname !== "/" && window.history.length > 1;
+  const canGoBack = pathname !== "/" && window.history.length > 1;
 
   // Escuchar cambios en el perfil (evento personalizado y storage)
   useEffect(() => {
@@ -109,7 +108,7 @@ export function TopBar() {
             variant="ghost"
             size="icon"
             className="h-9 w-9 -ml-2"
-            onClick={() => navigate(-1)}
+            onClick={() => router.back()}
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -147,16 +146,11 @@ export function TopBar() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem className="cursor-pointer" onClick={() => navigate('/configuracion')}>
-                <Settings className="mr-2 h-4 w-4" />
-                Configuración
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem 
                 className="cursor-pointer text-destructive focus:text-destructive"
                 onClick={async () => {
                   await logout();
-                  navigate('/auth');
+                  router.push('/auth');
                 }}
               >
                 <LogOut className="mr-2 h-4 w-4" />
@@ -183,16 +177,11 @@ export function TopBar() {
               <div className="px-2 py-1.5 text-sm font-medium">{displayName}</div>
               <div className="px-2 pb-1.5 text-xs text-muted-foreground capitalize">{displayRole}</div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer" onClick={() => navigate('/configuracion')}>
-                <Settings className="mr-2 h-4 w-4" />
-                Configuración
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem 
                 className="cursor-pointer text-destructive focus:text-destructive"
                 onClick={async () => {
                   await logout();
-                  navigate('/auth');
+                  router.push('/auth');
                 }}
               >
                 <LogOut className="mr-2 h-4 w-4" />

@@ -98,8 +98,8 @@ function prepareRawData(sectionData: Record<string, unknown>): Record<string, un
 
 // URL del webhook de n8n para ajustes del agente
 // Configurable mediante variable de entorno, con fallback al valor por defecto
-const N8N_BASE_URL = import.meta.env.VITE_N8N_BASE_URL || "https://n8ninnovatec-n8n.t0bgq1.easypanel.host";
-const N8N_SETTINGS_PATH = import.meta.env.VITE_N8N_WEBHOOK_SETTINGS || "/webhook/76e801a3-1b3d-4753-be54-a81223b3c29f";
+const N8N_BASE_URL = process.env.NEXT_PUBLIC_N8N_BASE_URL || "https://n8ninnovatec-n8n.t0bgq1.easypanel.host";
+const N8N_SETTINGS_PATH = process.env.NEXT_PUBLIC_N8N_WEBHOOK_SETTINGS || "/webhook/76e801a3-1b3d-4753-be54-a81223b3c29f";
 const N8N_WEBHOOK_URL = `${N8N_BASE_URL}${N8N_SETTINGS_PATH}`;
 
 /**

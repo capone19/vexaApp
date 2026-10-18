@@ -1,15 +1,16 @@
-import { useLocation, Link } from "react-router-dom";
+import { usePathname } from "next/navigation";
+import Link from "next/link";
 import { useEffect } from "react";
 import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
 import { Home } from "lucide-react";
 
 const NotFound = () => {
-  const location = useLocation();
+  const pathname = usePathname();
 
   useEffect(() => {
-    console.error("404 Error: User attempted to access non-existent route:", location.pathname);
-  }, [location.pathname]);
+    console.error("404 Error: User attempted to access non-existent route:", pathname);
+  }, [pathname]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
@@ -31,7 +32,7 @@ const NotFound = () => {
         </p>
         
         <Button asChild className="mt-4">
-          <Link to="/">
+          <Link href="/">
             <Home className="mr-2 h-4 w-4" />
             Volver al inicio
           </Link>

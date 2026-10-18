@@ -1,10 +1,8 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { usePathname } from "next/navigation";
+import { NavLink } from "@/components/NavLink";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard,
   MessageSquare,
-  Calendar,
-  Package,
   Bot,
   Menu,
 } from "lucide-react";
@@ -14,19 +12,16 @@ interface MobileNavProps {
 }
 
 const navItems = [
-  { title: "Dashboard", href: "/", icon: LayoutDashboard },
   { title: "Chats", href: "/chats", icon: MessageSquare },
-  { title: "Calendario", href: "/calendario", icon: Calendar },
-  { title: "Entregas", href: "/entregas", icon: Package },
   { title: "Agente", href: "/ajustes-agente", icon: Bot },
 ];
 
 export function MobileNav({ onMenuClick }: MobileNavProps) {
-  const location = useLocation();
+  const pathname = usePathname();
 
   const isActive = (href: string) => {
-    if (href === "/") return location.pathname === "/";
-    return location.pathname.startsWith(href);
+    if (href === "/") return pathname === "/";
+    return pathname.startsWith(href);
   };
 
   return (

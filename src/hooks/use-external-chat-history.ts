@@ -7,7 +7,7 @@ import {
 import { useChatRealtimeSync } from '@/hooks/use-chat-realtime-sync';
 import { parseMessageField } from '@/lib/chat-message-utils';
 
-const isDev = import.meta.env.DEV;
+const isDev = process.env.NODE_ENV === "development";
 
 function deduplicateMessages(messages: ExternalChatMessage[]): ExternalChatMessage[] {
   const seen = new Map<string, ExternalChatMessage>();

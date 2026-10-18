@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef, memo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -254,8 +254,8 @@ const ChatComposer = memo(function ChatComposer({
 
 export function ChatChannelPanel() {
   const channelConfig = getChannelConfig('whatsapp');
-  const navigate = useNavigate();
-  const isDev = import.meta.env.DEV;
+  const router = useRouter();
+  const isDev = process.env.NODE_ENV === "development";
   const BOT_STATE_RECONCILE_WINDOW_MS = 1500;
   const { user, isLoading: authLoading } = useAuth();
   const { tenantId: effectiveTenantId, isImpersonating } = useEffectiveTenant();
@@ -495,12 +495,12 @@ export function ChatChannelPanel() {
       }
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/human-message-proxy`,
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/human-message-proxy`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            "apikey": process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
           },
           body: JSON.stringify({
             message: messageContent || (attachmentData ? `[${attachmentData.media_type}]` : ""),
@@ -1619,7 +1619,7 @@ export function ChatChannelPanel() {
                   </p>
                 </div>
                 <Button 
-                  onClick={() => navigate('/marketing/plantillas')}
+                  onClick={() => router.push('/marketing/plantillas')}
                   className={cn(
                     "gap-2",
                     isMobile && "h-8 text-xs px-3"
