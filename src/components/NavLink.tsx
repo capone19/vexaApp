@@ -20,7 +20,7 @@ interface NavLinkCompatProps
   children?: ReactNode | ((props: NavLinkRenderProps) => ReactNode);
 }
 
-// Misma regla de coincidencia que NavLink de react-router-dom v6.
+// Misma regla de coincidencia que el NavLink de React Router v6.
 function matchesPath(pathname: string, to: string, end: boolean, caseSensitive: boolean) {
   let locationPathname = pathname;
   let toPathname = to.split(/[?#]/)[0] || "/";
