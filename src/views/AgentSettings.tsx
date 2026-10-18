@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { AgentSettingsSidebar } from "@/components/agent-settings/AgentSettingsSidebar";
 import { AgentSettingsHeader } from "@/components/agent-settings/AgentSettingsHeader";
@@ -35,7 +35,12 @@ export type { AgentSettingsSectionId, AgentSettingsSectionInfo };
 export { sectionsList };
 
 export default function AgentSettings() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const setSearchParams = (params: Record<string, string>) => {
+    router.push(`${pathname}?${new URLSearchParams(params).toString()}`, { scroll: false });
+  };
   const sectionParam = searchParams.get("section");
   const activeSection = (
     sectionParam && sectionParam !== "analisis"
@@ -119,6 +124,13 @@ export default function AgentSettings() {
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [activeSection, loadSection, effectiveTenantId]);
+
+  // URL antigua: /ajustes-agente?section=analisis → ruta nueva
+  useEffect(() => {
+    if (sectionParam === "analisis") {
+      router.replace("/ajustes-agente/analisis");
+    }
+  }, [sectionParam, router]);
 
   const handleSectionChange = (sectionId: AgentSettingsSectionId) => {
     setSearchParams({ section: sectionId });
@@ -340,7 +352,11 @@ export default function AgentSettings() {
 
   // URL antigua: /ajustes-agente?section=analisis → ruta nueva
   if (sectionParam === "analisis") {
-    return <Navigate to="/ajustes-agente/analisis" replace />;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
   }
 
   return (

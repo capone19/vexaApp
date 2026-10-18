@@ -99,14 +99,14 @@ export async function saveAgentSection(
         throw new Error("Sesión no disponible (sin access token)");
       }
 
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/agent_settings_ui?on_conflict=tenant_id,section_key`;
+      const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/agent_settings_ui?on_conflict=tenant_id,section_key`;
 
       const res = await fetch(url, {
         method: "POST",
         signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
-          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          apikey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
           Authorization: `Bearer ${accessToken}`,
           Prefer: "resolution=merge-duplicates,return=minimal",
         },

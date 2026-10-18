@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import Link from "next/link";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { AnalisisSection } from "@/components/analisis-agente/AnalisisSection";
 import {
@@ -24,7 +24,7 @@ export default function AnalisisAgente() {
               <BreadcrumbItem>
                 <BreadcrumbLink asChild>
                   <Link
-                    to="/ajustes-agente"
+                    href="/ajustes-agente"
                     className="text-muted-foreground hover:text-foreground"
                   >
                     Ajustes del Agente
