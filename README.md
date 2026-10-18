@@ -54,6 +54,13 @@ La Edge Function `studio-youtube-oauth` (Supabase) hace el login con Google, gua
 - `STUDIO_N8N_KEY`: clave que n8n envía en el header `x-studio-key` para pedir un access token vigente (`POST {action:"token", account_id}`).
 - `STUDIO_APP_ORIGINS` (opcional): orígenes extra permitidos para volver al Studio, separados por coma (ya se aceptan `*.vercel.app`, `whatsai.cl`, `vexalatam.com` y sus subdominios, y localhost).
 
+### Conexión de cuentas de Instagram
+
+La Edge Function `studio-instagram-oauth` usa la API de Instagram con inicio de sesión de Instagram (sin página de Facebook). Solo acepta cuentas profesionales (Empresa o Creador). Guarda un token de 60 días que se renueva solo cuando n8n lo pide (`POST {action:"token", account_id}`). Secrets en Supabase → Edge Functions:
+
+- `INSTAGRAM_APP_ID` y `INSTAGRAM_APP_SECRET`: el "ID de la app de Instagram" y su clave secreta. Están en Meta for Developers → tu app → Instagram → Configuración de la API con inicio de sesión de Instagram. No son el ID de la app de Facebook. URL de redireccionamiento OAuth: `https://<proyecto>.supabase.co/functions/v1/studio-instagram-oauth`.
+- Mientras la app esté en modo desarrollo, cada cuenta debe agregarse como "Evaluador de Instagram" en Roles de la app y aceptar la invitación desde Instagram.
+
 ## Estructura
 
 - `src/app/`: rutas de Next (wrappers delgados que cargan las vistas).

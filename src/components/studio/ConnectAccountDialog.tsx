@@ -8,7 +8,7 @@ import { PlatformIcon } from "@/components/studio/PlatformIcon";
 import { useStudio } from "@/contexts/StudioContext";
 import { useToast } from "@/hooks/use-toast";
 import { PLATFORM_IDS, PLATFORMS } from "@/lib/studio/platforms";
-import { OAUTH_ERROR_MESSAGES, OAUTH_PLATFORMS, startYouTubeConnect } from "@/lib/studio/connections";
+import { OAUTH_PLATFORMS, OAUTH_PROVIDERS, oauthErrorMessage, startOAuthConnect } from "@/lib/studio/connections";
 import { sendStudioEvent } from "@/lib/studio/n8n";
 import type { PlatformId } from "@/lib/studio/types";
 import { cn } from "@/lib/utils";
@@ -36,21 +36,22 @@ export function ConnectAccountDialog({ open, onOpenChange, defaultPlatform = "yo
   }, [open, defaultPlatform]);
 
   const usesOAuth = OAUTH_PLATFORMS.includes(platform);
+  const provider = OAUTH_PROVIDERS[platform]?.name ?? PLATFORMS[platform].name;
 
   const handleOAuth = async () => {
     if (!tenantId) return;
     setSaving(true);
     const returnTo = `${window.location.origin}/studio/cuentas`;
-    const result = await startYouTubeConnect(tenantId, returnTo);
+    const result = await startOAuthConnect(platform, tenantId, returnTo);
     if (result.ok && result.url) {
-      // Google pide elegir cuenta/canal y vuelve a /studio/cuentas
+      // La plataforma pide iniciar sesión y vuelve a /studio/cuentas
       window.location.assign(result.url);
       return;
     }
     setSaving(false);
     toast({
-      title: "No se pudo conectar YouTube",
-      description: OAUTH_ERROR_MESSAGES[result.code ?? ""] ?? result.code,
+      title: `No se pudo conectar ${PLATFORMS[platform].name}`,
+      description: oauthErrorMessage(result.code, platform),
       variant: "destructive",
     });
   };
@@ -122,12 +123,22 @@ export function ConnectAccountDialog({ open, onOpenChange, defaultPlatform = "yo
             <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm">
               <div className="flex items-center gap-2 font-medium">
                 <ShieldCheck className="h-4 w-4 text-primary" />
-                Inicio de sesión seguro con Google
+                Inicio de sesión seguro con {provider}
               </div>
               <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-                <li>Elige la cuenta de Google y el canal (o cuenta de marca) que quieres conectar.</li>
-                <li>VEXA pide permiso para ver tu canal y sus estadísticas, subir y editar videos y responder comentarios.</li>
-                <li>Repite el proceso para sumar más canales. Puedes desconectarlos cuando quieras.</li>
+                {platform === "instagram" ? (
+                  <>
+                    <li>Inicia sesión con la cuenta de Instagram que quieres conectar. Debe ser profesional (Empresa o Creador).</li>
+                    <li>VEXA pide permiso para ver tu perfil y sus estadísticas, publicar posts y reels y responder comentarios.</li>
+                    <li>Para sumar otra cuenta, repite el proceso e inicia sesión con ella. Puedes desconectarlas cuando quieras.</li>
+                  </>
+                ) : (
+                  <>
+                    <li>Elige la cuenta de Google y el canal (o cuenta de marca) que quieres conectar.</li>
+                    <li>VEXA pide permiso para ver tu canal y sus estadísticas, subir y editar videos y responder comentarios.</li>
+                    <li>Repite el proceso para sumar más canales. Puedes desconectarlos cuando quieras.</li>
+                  </>
+                )}
               </ul>
             </div>
           ) : (
@@ -165,7 +176,7 @@ export function ConnectAccountDialog({ open, onOpenChange, defaultPlatform = "yo
             className="gap-2"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            {usesOAuth ? "Continuar con Google" : `Conectar ${PLATFORMS[platform].name}`}
+            {usesOAuth ? `Continuar con ${provider}` : `Conectar ${PLATFORMS[platform].name}`}
           </Button>
         </DialogFooter>
       </DialogContent>

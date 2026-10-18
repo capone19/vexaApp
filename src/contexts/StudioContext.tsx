@@ -100,9 +100,10 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
 
   const removeAccount = useCallback(
     async (id: string) => {
-      if (remoteAccounts.some((a) => a.id === id)) {
+      const remote = remoteAccounts.find((a) => a.id === id);
+      if (remote) {
         // Revoca el acceso en la plataforma y borra la cuenta en Supabase
-        if (!(await disconnectAccount(id))) return false;
+        if (!(await disconnectAccount(remote))) return false;
         setRemoteAccounts((list) => list.filter((a) => a.id !== id));
       }
       setState((s) => ({

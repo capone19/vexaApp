@@ -1,14 +1,17 @@
 // ============================================
 // VEXA Content Studio - Cuentas conectadas por OAuth (Supabase)
 // ============================================
-// La Edge Function `studio-youtube-oauth` hace el login con Google y guarda el canal
-// en `studio_accounts`; los tokens quedan en una tabla que solo lee el servidor.
+// Cada plataforma tiene su Edge Function (`studio-youtube-oauth`, `studio-instagram-oauth`) que hace el
+// login y guarda la cuenta en `studio_accounts`; los tokens quedan en una tabla que solo lee el servidor.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import type { AccountStatus, PlatformId, SocialAccount } from "./types";
 
-const OAUTH_FUNCTION = "studio-youtube-oauth";
+const OAUTH_FUNCTIONS: Partial<Record<PlatformId, string>> = {
+  youtube: "studio-youtube-oauth",
+  instagram: "studio-instagram-oauth",
+};
 
 // Las tablas del Studio aún no están en los tipos generados de Supabase
 const db = supabase as unknown as SupabaseClient;
@@ -55,9 +58,15 @@ export async function setAccountManaged(id: string, managed: boolean) {
 
 export type OAuthStartResult = { ok: boolean; url?: string; code?: string };
 
-/** Pide a la Edge Function la URL de consentimiento de Google */
-export async function startYouTubeConnect(tenantId: string, returnTo: string): Promise<OAuthStartResult> {
-  const { data, error } = await supabase.functions.invoke(OAUTH_FUNCTION, {
+/** Pide a la Edge Function de la plataforma la URL de inicio de sesión */
+export async function startOAuthConnect(
+  platform: PlatformId,
+  tenantId: string,
+  returnTo: string
+): Promise<OAuthStartResult> {
+  const fn = OAUTH_FUNCTIONS[platform];
+  if (!fn) return { ok: false, code: "bad_request" };
+  const { data, error } = await supabase.functions.invoke(fn, {
     body: { action: "start", tenant_id: tenantId, return_to: returnTo },
   });
   if (error) {
@@ -68,18 +77,26 @@ export async function startYouTubeConnect(tenantId: string, returnTo: string): P
   return data as OAuthStartResult;
 }
 
-export async function disconnectAccount(id: string): Promise<boolean> {
-  const { data, error } = await supabase.functions.invoke(OAUTH_FUNCTION, {
-    body: { action: "disconnect", account_id: id },
+export async function disconnectAccount(account: Pick<SocialAccount, "id" | "platform">): Promise<boolean> {
+  const fn = OAUTH_FUNCTIONS[account.platform];
+  if (!fn) return false;
+  const { data, error } = await supabase.functions.invoke(fn, {
+    body: { action: "disconnect", account_id: account.id },
   });
   return !error && Boolean(data?.ok);
 }
 
 /** Plataformas que ya tienen login real (el resto sigue en modo manual/pendiente) */
-export const OAUTH_PLATFORMS: PlatformId[] = ["youtube"];
+export const OAUTH_PLATFORMS = Object.keys(OAUTH_FUNCTIONS) as PlatformId[];
+
+/** Proveedor del inicio de sesión y secrets que necesita cada Edge Function */
+export const OAUTH_PROVIDERS: Partial<Record<PlatformId, { name: string; secrets: string }>> = {
+  youtube: { name: "Google", secrets: "GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET" },
+  instagram: { name: "Instagram", secrets: "INSTAGRAM_APP_ID e INSTAGRAM_APP_SECRET" },
+};
 
 export const OAUTH_ERROR_MESSAGES: Record<string, string> = {
-  not_configured: "Falta configurar las credenciales de Google en Supabase (GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET).",
+  not_configured: "Falta configurar las credenciales de la plataforma en Supabase.",
   unauthorized: "Tu sesión expiró. Vuelve a iniciar sesión.",
   forbidden: "No tienes permiso para conectar cuentas en este negocio.",
   bad_request: "No se pudo iniciar la conexión desde este dominio.",
@@ -88,4 +105,13 @@ export const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   expirado: "La conexión tardó demasiado. Vuelve a intentarlo.",
   sin_canal: "Esa cuenta de Google no tiene un canal de YouTube.",
   google: "Google rechazó la conexión. Vuelve a intentarlo.",
+  instagram: "Instagram rechazó la conexión. Vuelve a intentarlo.",
+  cuenta_personal: "Esa cuenta de Instagram es personal. Cámbiala a cuenta profesional (Empresa o Creador) y vuelve a intentarlo.",
 };
+
+export function oauthErrorMessage(code: string | undefined, platform?: PlatformId): string {
+  if (code === "not_configured" && platform && OAUTH_PROVIDERS[platform]) {
+    return `Falta configurar las credenciales en Supabase (${OAUTH_PROVIDERS[platform]!.secrets}).`;
+  }
+  return OAUTH_ERROR_MESSAGES[code ?? ""] ?? code ?? "Error desconocido.";
+}

@@ -8,7 +8,7 @@ import { PlatformIcon } from "@/components/studio/PlatformIcon";
 import { AccountStatusBadge, DemoBadge, StudioCard, StudioPageHeader } from "@/components/studio/StudioUI";
 import { useStudio } from "@/contexts/StudioContext";
 import { useToast } from "@/hooks/use-toast";
-import { OAUTH_ERROR_MESSAGES } from "@/lib/studio/connections";
+import { oauthErrorMessage } from "@/lib/studio/connections";
 import { formatFollowers, isPlatformId, PLATFORM_IDS, PLATFORMS } from "@/lib/studio/platforms";
 import type { PlatformId } from "@/lib/studio/types";
 import { cn } from "@/lib/utils";
@@ -33,7 +33,7 @@ export default function StudioCuentas() {
     } else if (error) {
       toast({
         title: "No se pudo conectar la cuenta",
-        description: OAUTH_ERROR_MESSAGES[error] ?? error,
+        description: oauthErrorMessage(error),
         variant: "destructive",
       });
     }

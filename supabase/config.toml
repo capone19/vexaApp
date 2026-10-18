@@ -59,3 +59,6 @@ verify_jwt = false
 
 [functions.studio-youtube-oauth]
 verify_jwt = false
+
+[functions.studio-instagram-oauth]
+verify_jwt = false
