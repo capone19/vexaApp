@@ -13,7 +13,7 @@ import {
   HelpCircle,
   ShieldAlert,
 } from "lucide-react";
-import type { AgentSettingsSectionId, AgentSettingsSectionInfo } from "@/pages/AgentSettings";
+import type { AgentSettingsSectionId, AgentSettingsSectionInfo } from "@/views/AgentSettings";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 interface AgentSettingsSidebarProps {

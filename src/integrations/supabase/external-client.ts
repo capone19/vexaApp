@@ -2,12 +2,12 @@
 import { createClient } from '@supabase/supabase-js';
 
 // URLs configurables exclusivamente mediante variables de entorno
-const EXTERNAL_SUPABASE_URL = import.meta.env.VITE_EXTERNAL_SUPABASE_URL;
-const EXTERNAL_SUPABASE_ANON_KEY = import.meta.env.VITE_EXTERNAL_SUPABASE_ANON_KEY;
+const EXTERNAL_SUPABASE_URL = process.env.NEXT_PUBLIC_EXTERNAL_SUPABASE_URL;
+const EXTERNAL_SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_EXTERNAL_SUPABASE_ANON_KEY;
 
 if (!EXTERNAL_SUPABASE_URL || !EXTERNAL_SUPABASE_ANON_KEY) {
   throw new Error(
-    'Missing required environment variables: VITE_EXTERNAL_SUPABASE_URL and VITE_EXTERNAL_SUPABASE_ANON_KEY must be configured in .env file'
+    'Missing required environment variables: NEXT_PUBLIC_EXTERNAL_SUPABASE_URL and NEXT_PUBLIC_EXTERNAL_SUPABASE_ANON_KEY must be configured in .env file'
   );
 }
 

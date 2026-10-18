@@ -4,7 +4,7 @@
 // ============================================
 
 import { supabase } from "@/integrations/supabase/client";
-import type { AgentSettingsSectionId } from "@/pages/AgentSettings";
+import type { AgentSettingsSectionId } from "@/views/AgentSettings";
 
 // Mapeo de section_key a section_label
 const SECTION_LABELS: Record<AgentSettingsSectionId, string> = {

@@ -7,7 +7,7 @@
 
 import { supabase } from "@/integrations/supabase/client";
 import { sendWebhookToN8n } from "./webhook-n8n";
-import type { AgentSettingsSectionId } from "@/pages/AgentSettings";
+import type { AgentSettingsSectionId } from "@/views/AgentSettings";
 
 export interface SaveSectionResult {
   success: boolean;

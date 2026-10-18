@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Badge } from "@/components/ui/badge";
 import { PlaygroundChat } from "./PlaygroundChat";
-import type { AgentSettingsSectionInfo } from "@/pages/AgentSettings";
+import type { AgentSettingsSectionInfo } from "@/views/AgentSettings";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 

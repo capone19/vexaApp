@@ -8,12 +8,12 @@ import { useImpersonation } from '@/contexts/ImpersonationContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Eye, LogOut, Shield } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 
 export function ImpersonationBanner() {
   const { isImpersonating, impersonatedTenant, stopImpersonation } = useImpersonation();
   const { isAdmin } = useAuthContext();
-  const navigate = useNavigate();
+  const router = useRouter();
 
   // Solo mostrar si es admin y está impersonando
   if (!isAdmin || !isImpersonating || !impersonatedTenant) {
@@ -22,7 +22,8 @@ export function ImpersonationBanner() {
 
   const handleExit = async () => {
     await stopImpersonation();
-    navigate('/admin/clientes');
+    // TODO(migracion): /admin/clientes ya no existe en esta app; se mantiene el destino original (cae en 404).
+    router.push('/admin/clientes');
   };
 
   return (
