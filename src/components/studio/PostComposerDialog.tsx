@@ -30,7 +30,16 @@ import { TranslateHint } from "@/components/studio/TranslateHint";
 import { useStudio } from "@/contexts/StudioContext";
 import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
 import { useToast } from "@/hooks/use-toast";
-import { ANGLE_LABELS, generateMetadata, LANGUAGES, normalizeProfile, transcribeAudio, type GeneratedMetadata } from "@/lib/studio/ai";
+import {
+  ANGLE_LABELS,
+  generateMetadata,
+  LANGUAGES,
+  normalizeProfile,
+  transcribeAudio,
+  translateWithAi,
+  type GeneratedMetadata,
+  type Localization,
+} from "@/lib/studio/ai";
 import { captureFrames, extractAudioChunks, getVideoInfo, type VideoInfo } from "@/lib/studio/media";
 import { sendStudioEvent } from "@/lib/studio/n8n";
 import { FORMAT_LABELS, PLATFORMS } from "@/lib/studio/platforms";
@@ -308,6 +317,23 @@ export function PostComposerDialog({ open, onOpenChange, platform, action, accou
   const canSubmit =
     selectedAccounts.length > 0 && (title.trim().length > 0 || isShorts) && (!needsFile || Boolean(file)) && !submitting && !generating;
 
+  /** Traducciones del título elegido; lo que se editó a mano se traduce en el momento */
+  const resolveLocalizations = async (): Promise<Localization[]> => {
+    if (!ai) return [];
+    const option = ai.titles.find((t) => t.text === title.trim());
+    const descriptionEdited = description.trim() !== ai.description.trim();
+    return Promise.all(
+      ai.localizations
+        .filter((l) => l.lang !== language)
+        .map(async (l) => {
+          const optionTitle = option?.localized_titles?.find((x) => x.lang === l.lang)?.title;
+          const [localTitle] = optionTitle ? [optionTitle] : await translateWithAi([title.trim()], l.lang);
+          const [localDescription] = descriptionEdited ? await translateWithAi([description], l.lang) : [l.description];
+          return { lang: l.lang, title: localTitle.slice(0, 100), description: localDescription.slice(0, 5000) };
+        })
+    );
+  };
+
   const publishYouTube = async () => {
     if (!file) return;
     const scheduledIso = mode === "programar" ? new Date(scheduledAt).toISOString() : undefined;
@@ -315,8 +341,16 @@ export function PostComposerDialog({ open, onOpenChange, platform, action, accou
       toast({ title: "Elige una hora futura", description: "La publicación programada debe ser al menos 5 minutos después de ahora.", variant: "destructive" });
       return;
     }
-    const localizations = useLocalizations ? ai?.localizations.filter((l) => l.lang !== language) : undefined;
     const warnings: string[] = [];
+    let localizations: Localization[] | undefined;
+    if (useLocalizations && ai?.localizations.length) {
+      try {
+        setUploadStatus("Preparando traducciones…");
+        localizations = await resolveLocalizations();
+      } catch {
+        warnings.push("Traducciones: no se pudieron preparar; el video se subió sin ellas");
+      }
+    }
     let uploaded = 0;
     for (const accountId of selectedAccounts) {
       const account = managedAccounts.find((a) => a.id === accountId);
@@ -755,14 +789,21 @@ export function PostComposerDialog({ open, onOpenChange, platform, action, accou
                         <div className="flex items-start justify-between gap-3 rounded-lg border border-border p-2.5">
                           <div className="min-w-0 space-y-1">
                             <p className="text-sm font-medium">Traducciones: {localeNames}</p>
-                            {ai.localizations.map((l) => (
-                              <div key={l.lang} className="flex items-center gap-1">
-                                <p className="truncate text-xs text-muted-foreground">
-                                  {l.lang.toUpperCase()} · {l.title}
-                                </p>
-                                <TranslateHint text={`${l.title}\n\n${l.description}`} language={l.lang} className="h-5 w-5" />
-                              </div>
-                            ))}
+                            {ai.localizations.map((l) => {
+                              const localTitle = ai.titles
+                                .find((t) => t.text === title.trim())
+                                ?.localized_titles?.find((x) => x.lang === l.lang)?.title;
+                              return (
+                                <div key={l.lang} className="flex items-center gap-1">
+                                  <p className="truncate text-xs text-muted-foreground">
+                                    {l.lang.toUpperCase()} · {localTitle ?? "Título editado: se traduce al publicar"}
+                                  </p>
+                                  {localTitle && (
+                                    <TranslateHint text={`${localTitle}\n\n${l.description}`} language={l.lang} className="h-5 w-5" />
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                           <Switch checked={useLocalizations} onCheckedChange={setUseLocalizations} aria-label="Incluir traducciones" />
                         </div>

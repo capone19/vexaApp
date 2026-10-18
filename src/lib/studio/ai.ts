@@ -81,6 +81,8 @@ export interface TitleOption {
   text: string;
   angle: "curiosity" | "controversy" | "stakes";
   why: string;
+  /** El mismo título en cada idioma de traducción del canal */
+  localized_titles: { lang: string; title: string }[];
 }
 
 export interface Localization {
@@ -173,12 +175,12 @@ export async function transcribeAudio(chunks: AudioChunk[], onProgress?: (done: 
   return cues;
 }
 
-/** Traducción al español con IA (respaldo cuando el navegador no trae traductor propio) */
-export async function translateWithAi(texts: string[]): Promise<string[]> {
+/** Traducción con IA: al español por defecto (respaldo del traductor del navegador) o al idioma indicado */
+export async function translateWithAi(texts: string[], target = "es"): Promise<string[]> {
   const res = await fetch(`${N8N_BASE_URL}${TRANSLATE_PATH}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ access_token: await accessToken(), texts }),
+    body: JSON.stringify({ access_token: await accessToken(), texts, target }),
   });
   const body = await readResponse<{ translations: string[] }>(res);
   return body.translations;
