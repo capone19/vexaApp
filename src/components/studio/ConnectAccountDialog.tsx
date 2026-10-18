@@ -126,7 +126,7 @@ export function ConnectAccountDialog({ open, onOpenChange, defaultPlatform = "yo
               </div>
               <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
                 <li>Elige la cuenta de Google y el canal (o cuenta de marca) que quieres conectar.</li>
-                <li>VEXA solo pide permiso para ver tu canal y subir videos.</li>
+                <li>VEXA solo pide permiso para ver tu canal y sus estadísticas, y subir videos.</li>
                 <li>Repite el proceso para sumar más canales. Puedes desconectarlos cuando quieras.</li>
               </ul>
             </div>

@@ -22,6 +22,8 @@ const ADMIN_EMAIL = "contacto@vexalatam.com";
 const SCOPES = [
   "https://www.googleapis.com/auth/youtube.upload",
   "https://www.googleapis.com/auth/youtube.readonly",
+  // Estadísticas para "mejor horario" y reporte semanal
+  "https://www.googleapis.com/auth/yt-analytics.readonly",
 ];
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
