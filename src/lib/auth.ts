@@ -101,7 +101,7 @@ export const logout = async (): Promise<void> => {
     console.warn('[logout] Error during signOut, clearing local state anyway:', error);
   }
   // Limpiar localStorage de cualquier dato de sesión
-  localStorage.removeItem('sb-' + import.meta.env.VITE_SUPABASE_PROJECT_ID + '-auth-token');
+  localStorage.removeItem('sb-' + process.env.NEXT_PUBLIC_SUPABASE_PROJECT_ID + '-auth-token');
 };
 
 // Autenticación con Google

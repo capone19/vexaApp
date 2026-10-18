@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useNavigate, useLocation, type Location } from "react-router-dom";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +12,8 @@ import { isAdminEmail } from "@/lib/admin-config";
 import { useAuthContext } from "@/contexts/AuthContext";
 
 type AuthMode = "login" | "register";
+
+type Location = { pathname: string; search?: string; hash?: string };
 
 function translateAuthError(error: string): string {
   const lower = error.toLowerCase();
@@ -55,8 +57,13 @@ function getReturnPathFromState(state: unknown): string | null {
 }
 
 export default function Auth() {
-  const navigate = useNavigate();
-  const location = useLocation();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const fromParam = searchParams.get("from");
+  const locationState = useMemo(
+    () => (fromParam ? { from: new URL(fromParam, window.location.origin) } : null),
+    [fromParam]
+  );
   const { isAuthenticated, isLoading: authIsLoading, isAuthReady, user } = useAuthContext();
   const [mode, setMode] = useState<AuthMode>("login");
   const [isLoading, setIsLoading] = useState(false);
@@ -102,17 +109,18 @@ export default function Auth() {
     clearLoginTimeout();
     setIsLoading(false);
 
-    const returnTo = getReturnPathFromState(location.state);
+    const returnTo = getReturnPathFromState(locationState);
     if (isAdminEmail(user.email)) {
-      navigate("/admin", { replace: true });
+      // TODO(migracion): el panel /admin se eliminó; los admins entran a "/" como cualquier usuario (antes: "/admin").
+      router.replace("/");
       return;
     }
     if (returnTo) {
-      navigate(returnTo, { replace: true });
+      router.replace(returnTo);
     } else {
-      navigate("/", { replace: true });
+      router.replace("/");
     }
-  }, [authIsLoading, isAuthReady, isAuthenticated, user, navigate, location.state]);
+  }, [authIsLoading, isAuthReady, isAuthenticated, user, router, locationState]);
 
   useEffect(() => () => clearLoginTimeout(), []);
 
