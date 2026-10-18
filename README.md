@@ -46,6 +46,14 @@ Ver [.env.example](.env.example). Todas usan el prefijo `NEXT_PUBLIC_` porque se
 
 `NEXT_PUBLIC_N8N_WEBHOOK_STUDIO` es la ruta del webhook de n8n que recibe todos los eventos del Content Studio (`youtube.video.upload`, `youtube.metadata.generate`, `studio.automation.toggle`, etc.; ver `src/lib/studio/`). Si está vacía, el Studio funciona en modo local y no publica nada.
 
+### Conexión de canales de YouTube
+
+La Edge Function `studio-youtube-oauth` (Supabase) hace el login con Google, guarda el canal en `studio_accounts` y los tokens en `studio_account_tokens` (solo accesible con service role). Secrets en Supabase → Edge Functions:
+
+- `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`: cliente OAuth "Aplicación web" de Google Cloud con YouTube Data API v3 habilitada. URI de redirección autorizada: `https://<proyecto>.supabase.co/functions/v1/studio-youtube-oauth`.
+- `STUDIO_N8N_KEY`: clave que n8n envía en el header `x-studio-key` para pedir un access token vigente (`POST {action:"token", account_id}`).
+- `STUDIO_APP_ORIGINS` (opcional): orígenes extra permitidos para volver al Studio, separados por coma (ya se aceptan `*.vercel.app`, `*.vexalatam.com` y localhost).
+
 ## Estructura
 
 - `src/app/`: rutas de Next (wrappers delgados que cargan las vistas).

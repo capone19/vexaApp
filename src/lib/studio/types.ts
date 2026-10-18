@@ -19,6 +19,8 @@ export interface SocialAccount {
   connectedAt: string;
   /** Datos de ejemplo (se reemplazan al conectar cuentas reales vía OAuth) */
   demo?: boolean;
+  /** Conectada por OAuth y guardada en Supabase (no en localStorage) */
+  remote?: boolean;
 }
 
 export type PostStatus = "borrador" | "programado" | "procesando" | "publicado" | "error";

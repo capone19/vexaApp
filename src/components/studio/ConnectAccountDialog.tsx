@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Info } from "lucide-react";
+import { Info, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { PlatformIcon } from "@/components/studio/PlatformIcon";
 import { useStudio } from "@/contexts/StudioContext";
 import { useToast } from "@/hooks/use-toast";
 import { PLATFORM_IDS, PLATFORMS } from "@/lib/studio/platforms";
+import { OAUTH_ERROR_MESSAGES, OAUTH_PLATFORMS, startYouTubeConnect } from "@/lib/studio/connections";
 import { sendStudioEvent } from "@/lib/studio/n8n";
 import type { PlatformId } from "@/lib/studio/types";
 import { cn } from "@/lib/utils";
@@ -34,7 +35,28 @@ export function ConnectAccountDialog({ open, onOpenChange, defaultPlatform = "yo
     }
   }, [open, defaultPlatform]);
 
+  const usesOAuth = OAUTH_PLATFORMS.includes(platform);
+
+  const handleOAuth = async () => {
+    if (!tenantId) return;
+    setSaving(true);
+    const returnTo = `${window.location.origin}/studio/cuentas`;
+    const result = await startYouTubeConnect(tenantId, returnTo);
+    if (result.ok && result.url) {
+      // Google pide elegir cuenta/canal y vuelve a /studio/cuentas
+      window.location.assign(result.url);
+      return;
+    }
+    setSaving(false);
+    toast({
+      title: "No se pudo conectar YouTube",
+      description: OAUTH_ERROR_MESSAGES[result.code ?? ""] ?? result.code,
+      variant: "destructive",
+    });
+  };
+
   const handleConnect = async () => {
+    if (usesOAuth) return handleOAuth();
     const clean = handle.trim().replace(/^@?/, "@");
     if (clean.length < 2) return;
     setSaving(true);
@@ -96,33 +118,54 @@ export function ConnectAccountDialog({ open, onOpenChange, defaultPlatform = "yo
             ))}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="studio-handle">Usuario o canal</Label>
-            <Input
-              id="studio-handle"
-              placeholder={platform === "youtube" ? "@micanal" : "@miusuario"}
-              value={handle}
-              onChange={(e) => setHandle(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleConnect()}
-              autoFocus
-            />
-          </div>
+          {usesOAuth ? (
+            <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm">
+              <div className="flex items-center gap-2 font-medium">
+                <ShieldCheck className="h-4 w-4 text-primary" />
+                Inicio de sesión seguro con Google
+              </div>
+              <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                <li>Elige la cuenta de Google y el canal (o cuenta de marca) que quieres conectar.</li>
+                <li>VEXA solo pide permiso para ver tu canal y subir videos.</li>
+                <li>Repite el proceso para sumar más canales. Puedes desconectarlos cuando quieras.</li>
+              </ul>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="studio-handle">Usuario o cuenta</Label>
+                <Input
+                  id="studio-handle"
+                  placeholder="@miusuario"
+                  value={handle}
+                  onChange={(e) => setHandle(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+                  autoFocus
+                />
+              </div>
 
-          <div className="flex gap-2 rounded-xl bg-info-soft p-3 text-xs text-info-soft-foreground">
-            <Info className="mt-0.5 h-4 w-4 shrink-0" />
-            <p>
-              El inicio de sesión con {PLATFORMS[platform].name} (OAuth) se hace desde n8n. Mientras tanto la cuenta queda
-              como <b>pendiente</b>.
-            </p>
-          </div>
+              <div className="flex gap-2 rounded-xl bg-info-soft p-3 text-xs text-info-soft-foreground">
+                <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>
+                  El inicio de sesión con {PLATFORMS[platform].name} todavía no está activo. Mientras tanto la cuenta
+                  queda como <b>pendiente</b>.
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleConnect} disabled={handle.trim().length < 2 || saving}>
-            Conectar {PLATFORMS[platform].name}
+          <Button
+            onClick={handleConnect}
+            disabled={saving || (usesOAuth ? !tenantId : handle.trim().length < 2)}
+            className="gap-2"
+          >
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            {usesOAuth ? "Continuar con Google" : `Conectar ${PLATFORMS[platform].name}`}
           </Button>
         </DialogFooter>
       </DialogContent>

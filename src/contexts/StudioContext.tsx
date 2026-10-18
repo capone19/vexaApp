@@ -1,9 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
+import { disconnectAccount, fetchConnectedAccounts, setAccountManaged } from "@/lib/studio/connections";
 import { DEFAULT_AUTOMATIONS, DEMO_ACCOUNTS, DEMO_POSTS } from "@/lib/studio/mock";
 import type { PlatformId, SocialAccount, StudioAutomation, StudioPost } from "@/lib/studio/types";
 
-// Estado local del Studio (persistido en localStorage).
-// Cuando estén listas las tablas en Supabase, este contexto pasa a leer/escribir ahí.
+// Estado del Studio: las cuentas conectadas por OAuth vienen de Supabase (`remote`);
+// demo, cuentas manuales, publicaciones y automatizaciones siguen en localStorage.
 const STORAGE_KEY = "vexa_studio_v1";
 
 interface StudioState {
@@ -15,7 +17,9 @@ interface StudioState {
 interface StudioContextValue extends StudioState {
   accountsFor: (platform: PlatformId) => SocialAccount[];
   addAccount: (account: Omit<SocialAccount, "id" | "connectedAt">) => SocialAccount;
-  removeAccount: (id: string) => void;
+  removeAccount: (id: string) => Promise<boolean>;
+  refreshAccounts: () => Promise<void>;
+  accountsLoading: boolean;
   toggleManaged: (id: string) => void;
   addPost: (post: Omit<StudioPost, "id" | "createdAt">) => StudioPost;
   removePost: (id: string) => void;
@@ -50,6 +54,30 @@ const newId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.r
 
 export function StudioProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<StudioState>(loadState);
+  const [remoteAccounts, setRemoteAccounts] = useState<SocialAccount[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(false);
+  const { tenantId } = useEffectiveTenant();
+
+  const refreshAccounts = useCallback(async () => {
+    if (!tenantId) {
+      setRemoteAccounts([]);
+      return;
+    }
+    setAccountsLoading(true);
+    try {
+      setRemoteAccounts(await fetchConnectedAccounts(tenantId));
+    } catch (err) {
+      console.warn("[Studio] No se pudieron cargar las cuentas conectadas:", err);
+    } finally {
+      setAccountsLoading(false);
+    }
+  }, [tenantId]);
+
+  useEffect(() => {
+    void refreshAccounts();
+  }, [refreshAccounts]);
+
+  const accounts = useMemo(() => [...remoteAccounts, ...state.accounts], [remoteAccounts, state.accounts]);
 
   useEffect(() => {
     try {
@@ -60,8 +88,8 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
   }, [state]);
 
   const accountsFor = useCallback(
-    (platform: PlatformId) => state.accounts.filter((a) => a.platform === platform),
-    [state.accounts]
+    (platform: PlatformId) => accounts.filter((a) => a.platform === platform),
+    [accounts]
   );
 
   const addAccount = useCallback((account: Omit<SocialAccount, "id" | "connectedAt">) => {
@@ -70,20 +98,41 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
     return created;
   }, []);
 
-  const removeAccount = useCallback((id: string) => {
-    setState((s) => ({
-      ...s,
-      accounts: s.accounts.filter((a) => a.id !== id),
-      posts: s.posts.filter((p) => p.accountId !== id),
-    }));
-  }, []);
+  const removeAccount = useCallback(
+    async (id: string) => {
+      if (remoteAccounts.some((a) => a.id === id)) {
+        // Revoca el acceso en la plataforma y borra la cuenta en Supabase
+        if (!(await disconnectAccount(id))) return false;
+        setRemoteAccounts((list) => list.filter((a) => a.id !== id));
+      }
+      setState((s) => ({
+        ...s,
+        accounts: s.accounts.filter((a) => a.id !== id),
+        posts: s.posts.filter((p) => p.accountId !== id),
+      }));
+      return true;
+    },
+    [remoteAccounts]
+  );
 
-  const toggleManaged = useCallback((id: string) => {
-    setState((s) => ({
-      ...s,
-      accounts: s.accounts.map((a) => (a.id === id ? { ...a, managed: !a.managed } : a)),
-    }));
-  }, []);
+  const toggleManaged = useCallback(
+    (id: string) => {
+      const remote = remoteAccounts.find((a) => a.id === id);
+      if (remote) {
+        const managed = !remote.managed;
+        const apply = (value: boolean) =>
+          setRemoteAccounts((list) => list.map((a) => (a.id === id ? { ...a, managed: value } : a)));
+        apply(managed);
+        setAccountManaged(id, managed).catch(() => apply(!managed));
+        return;
+      }
+      setState((s) => ({
+        ...s,
+        accounts: s.accounts.map((a) => (a.id === id ? { ...a, managed: !a.managed } : a)),
+      }));
+    },
+    [remoteAccounts]
+  );
 
   const addPost = useCallback((post: Omit<StudioPost, "id" | "createdAt">) => {
     const created: StudioPost = { ...post, id: newId("post"), createdAt: new Date().toISOString() };
@@ -115,9 +164,12 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<StudioContextValue>(
     () => ({
       ...state,
+      accounts,
       accountsFor,
       addAccount,
       removeAccount,
+      refreshAccounts,
+      accountsLoading,
       toggleManaged,
       addPost,
       removePost,
@@ -125,7 +177,7 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
       clearDemoData,
       hasDemoData,
     }),
-    [state, accountsFor, addAccount, removeAccount, toggleManaged, addPost, removePost, toggleAutomation, clearDemoData, hasDemoData]
+    [state, accounts, accountsFor, addAccount, removeAccount, refreshAccounts, accountsLoading, toggleManaged, addPost, removePost, toggleAutomation, clearDemoData, hasDemoData]
   );
 
   return <StudioContext.Provider value={value}>{children}</StudioContext.Provider>;

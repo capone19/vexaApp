@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Unplug } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -7,13 +7,46 @@ import { ConnectAccountDialog } from "@/components/studio/ConnectAccountDialog";
 import { PlatformIcon } from "@/components/studio/PlatformIcon";
 import { AccountStatusBadge, DemoBadge, StudioCard, StudioPageHeader } from "@/components/studio/StudioUI";
 import { useStudio } from "@/contexts/StudioContext";
-import { formatFollowers, PLATFORM_IDS, PLATFORMS } from "@/lib/studio/platforms";
+import { useToast } from "@/hooks/use-toast";
+import { OAUTH_ERROR_MESSAGES } from "@/lib/studio/connections";
+import { formatFollowers, isPlatformId, PLATFORM_IDS, PLATFORMS } from "@/lib/studio/platforms";
 import type { PlatformId } from "@/lib/studio/types";
 import { cn } from "@/lib/utils";
 
 export default function StudioCuentas() {
-  const { accountsFor, toggleManaged, removeAccount } = useStudio();
+  const { accountsFor, toggleManaged, removeAccount, refreshAccounts } = useStudio();
+  const { toast } = useToast();
   const [dialogPlatform, setDialogPlatform] = useState<PlatformId | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  // Resultado del OAuth: la Edge Function vuelve con ?studio_connected=... o ?studio_error=...
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const connected = url.searchParams.get("studio_connected");
+    const error = url.searchParams.get("studio_error");
+    if (!connected && !error) return;
+
+    if (connected) {
+      const name = isPlatformId(connected) ? PLATFORMS[connected].name : connected;
+      toast({ title: `${name} conectado`, description: url.searchParams.get("studio_account") ?? undefined });
+      void refreshAccounts();
+    } else if (error) {
+      toast({
+        title: "No se pudo conectar la cuenta",
+        description: OAUTH_ERROR_MESSAGES[error] ?? error,
+        variant: "destructive",
+      });
+    }
+    ["studio_connected", "studio_account", "studio_error"].forEach((k) => url.searchParams.delete(k));
+    window.history.replaceState(null, "", url.pathname + url.search);
+  }, [refreshAccounts, toast]);
+
+  const handleRemove = async (id: string, handle: string) => {
+    setRemovingId(id);
+    const ok = await removeAccount(id);
+    setRemovingId(null);
+    if (!ok) toast({ title: `No se pudo desconectar ${handle}`, variant: "destructive" });
+  };
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -83,11 +116,12 @@ export default function StudioCuentas() {
                       />
                       <button
                         type="button"
-                        onClick={() => removeAccount(acc.id)}
-                        className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-destructive"
+                        onClick={() => handleRemove(acc.id, acc.handle)}
+                        disabled={removingId === acc.id}
+                        className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-destructive disabled:opacity-50"
                       >
                         <Unplug className="h-3 w-3" />
-                        Quitar
+                        {acc.remote ? "Desconectar" : "Quitar"}
                       </button>
                     </div>
                   </li>

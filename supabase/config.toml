@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.receive-report]
 verify_jwt = false
+
+[functions.studio-youtube-oauth]
+verify_jwt = false
