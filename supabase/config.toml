@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.studio-instagram-oauth]
 verify_jwt = false
+
+[functions.studio-tiktok-oauth]
+verify_jwt = false

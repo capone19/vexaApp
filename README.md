@@ -61,6 +61,13 @@ La Edge Function `studio-instagram-oauth` usa la API de Instagram con inicio de 
 - `INSTAGRAM_APP_ID` y `INSTAGRAM_APP_SECRET`: el "ID de la app de Instagram" y su clave secreta. Están en Meta for Developers → tu app → Instagram → Configuración de la API con inicio de sesión de Instagram. No son el ID de la app de Facebook. URL de redireccionamiento OAuth: `https://<proyecto>.supabase.co/functions/v1/studio-instagram-oauth`.
 - Mientras la app esté en modo desarrollo, cada cuenta debe agregarse como "Evaluador de Instagram" en Roles de la app y aceptar la invitación desde Instagram.
 
+### Conexión de cuentas de TikTok
+
+La Edge Function `studio-tiktok-oauth` usa Login Kit v2. El access token dura 24 h y se renueva con el refresh token (365 días) cuando n8n lo pide (`POST {action:"token", account_id}`). Secrets en Supabase → Edge Functions:
+
+- `TIKTOK_CLIENT_KEY` y `TIKTOK_CLIENT_SECRET`: de la app en developers.tiktok.com (en modo Sandbox la app tiene sus propias claves). Productos: Login Kit, Content Posting API y Display API, con los scopes `user.info.basic`, `user.info.profile`, `user.info.stats`, `video.list`, `video.upload` y `video.publish`. Redirect URI: `https://<proyecto>.supabase.co/functions/v1/studio-tiktok-oauth`.
+- En Sandbox solo pueden conectarse las cuentas agregadas como "Target users". Hasta que TikTok apruebe la app, lo que se publique por API queda privado (`SELF_ONLY`).
+
 ## Estructura
 
 - `src/app/`: rutas de Next (wrappers delgados que cargan las vistas).

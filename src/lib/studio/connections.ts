@@ -1,7 +1,7 @@
 // ============================================
 // VEXA Content Studio - Cuentas conectadas por OAuth (Supabase)
 // ============================================
-// Cada plataforma tiene su Edge Function (`studio-youtube-oauth`, `studio-instagram-oauth`) que hace el
+// Cada plataforma tiene su Edge Function (`studio-youtube-oauth`, `studio-instagram-oauth`, `studio-tiktok-oauth`) que hace el
 // login y guarda la cuenta en `studio_accounts`; los tokens quedan en una tabla que solo lee el servidor.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -11,6 +11,7 @@ import type { AccountStatus, PlatformId, SocialAccount } from "./types";
 const OAUTH_FUNCTIONS: Partial<Record<PlatformId, string>> = {
   youtube: "studio-youtube-oauth",
   instagram: "studio-instagram-oauth",
+  tiktok: "studio-tiktok-oauth",
 };
 
 // Las tablas del Studio aún no están en los tipos generados de Supabase
@@ -93,6 +94,7 @@ export const OAUTH_PLATFORMS = Object.keys(OAUTH_FUNCTIONS) as PlatformId[];
 export const OAUTH_PROVIDERS: Partial<Record<PlatformId, { name: string; secrets: string }>> = {
   youtube: { name: "Google", secrets: "GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET" },
   instagram: { name: "Instagram", secrets: "INSTAGRAM_APP_ID e INSTAGRAM_APP_SECRET" },
+  tiktok: { name: "TikTok", secrets: "TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET" },
 };
 
 export const OAUTH_ERROR_MESSAGES: Record<string, string> = {
@@ -106,6 +108,7 @@ export const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   sin_canal: "Esa cuenta de Google no tiene un canal de YouTube.",
   google: "Google rechazó la conexión. Vuelve a intentarlo.",
   instagram: "Instagram rechazó la conexión. Vuelve a intentarlo.",
+  tiktok: "TikTok rechazó la conexión. Vuelve a intentarlo.",
   cuenta_personal: "Esa cuenta de Instagram es personal. Cámbiala a cuenta profesional (Empresa o Creador) y vuelve a intentarlo.",
 };
 

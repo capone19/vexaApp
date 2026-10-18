@@ -126,7 +126,13 @@ export function ConnectAccountDialog({ open, onOpenChange, defaultPlatform = "yo
                 Inicio de sesión seguro con {provider}
               </div>
               <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-                {platform === "instagram" ? (
+                {platform === "tiktok" ? (
+                  <>
+                    <li>Inicia sesión en TikTok con la cuenta que quieres conectar.</li>
+                    <li>VEXA pide permiso para ver tu perfil, seguidores y videos, y para subir y publicar videos.</li>
+                    <li>Para sumar otra cuenta, repite el proceso e inicia sesión con ella. Puedes desconectarlas cuando quieras.</li>
+                  </>
+                ) : platform === "instagram" ? (
                   <>
                     <li>Inicia sesión con la cuenta de Instagram que quieres conectar. Debe ser profesional (Empresa o Creador).</li>
                     <li>VEXA pide permiso para ver tu perfil y sus estadísticas, publicar posts y reels y responder comentarios.</li>
