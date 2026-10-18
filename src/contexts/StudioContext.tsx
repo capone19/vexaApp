@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
+import { saveChannelProfile, type ChannelProfile } from "@/lib/studio/ai";
 import { disconnectAccount, fetchConnectedAccounts, setAccountManaged } from "@/lib/studio/connections";
 import { DEFAULT_AUTOMATIONS, DEMO_ACCOUNTS, DEMO_POSTS } from "@/lib/studio/mock";
 import type { PlatformId, SocialAccount, StudioAutomation, StudioPost } from "@/lib/studio/types";
@@ -21,6 +22,8 @@ interface StudioContextValue extends StudioState {
   refreshAccounts: () => Promise<void>;
   accountsLoading: boolean;
   toggleManaged: (id: string) => void;
+  /** Guarda el perfil de estilo del canal (solo cuentas conectadas por OAuth) */
+  updateAccountProfile: (id: string, profile: ChannelProfile) => Promise<void>;
   addPost: (post: Omit<StudioPost, "id" | "createdAt">) => StudioPost;
   removePost: (id: string) => void;
   toggleAutomation: (id: string) => void;
@@ -135,6 +138,11 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
     [remoteAccounts]
   );
 
+  const updateAccountProfile = useCallback(async (id: string, profile: ChannelProfile) => {
+    await saveChannelProfile(id, profile);
+    setRemoteAccounts((list) => list.map((a) => (a.id === id ? { ...a, aiProfile: { ...profile } } : a)));
+  }, []);
+
   const addPost = useCallback((post: Omit<StudioPost, "id" | "createdAt">) => {
     const created: StudioPost = { ...post, id: newId("post"), createdAt: new Date().toISOString() };
     setState((s) => ({ ...s, posts: [created, ...s.posts] }));
@@ -172,13 +180,14 @@ export function StudioProvider({ children }: { children: React.ReactNode }) {
       refreshAccounts,
       accountsLoading,
       toggleManaged,
+      updateAccountProfile,
       addPost,
       removePost,
       toggleAutomation,
       clearDemoData,
       hasDemoData,
     }),
-    [state, accounts, accountsFor, addAccount, removeAccount, refreshAccounts, accountsLoading, toggleManaged, addPost, removePost, toggleAutomation, clearDemoData, hasDemoData]
+    [state, accounts, accountsFor, addAccount, removeAccount, refreshAccounts, accountsLoading, toggleManaged, updateAccountProfile, addPost, removePost, toggleAutomation, clearDemoData, hasDemoData]
   );
 
   return <StudioContext.Provider value={value}>{children}</StudioContext.Provider>;

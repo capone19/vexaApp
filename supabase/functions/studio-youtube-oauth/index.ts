@@ -6,6 +6,7 @@
 // POST {action:"disconnect", account_id}        (JWT del usuario) -> revoca y borra la cuenta
 // POST {action:"token", account_id}             (header x-studio-key, para n8n) -> access_token vigente
 // POST {action:"videos", account_id, page_token?} (JWT del usuario) -> videos publicados del canal
+// POST {action:"upload_token", account_id}       (JWT del usuario) -> access_token para subir directo a YouTube
 //
 // Secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, STUDIO_N8N_KEY (opcional), STUDIO_APP_ORIGINS (opcional)
 // Redirect URI a registrar en Google Cloud: {SUPABASE_URL}/functions/v1/studio-youtube-oauth
@@ -285,6 +286,27 @@ async function handleToken(admin: SupabaseClient, req: Request, body: Record<str
   });
 }
 
+// ---------- POST: upload_token (el navegador sube el archivo directo a YouTube) ----------
+// El video nunca pasa por Supabase: solo se entrega un token de corta duración al usuario del negocio.
+async function handleUploadToken(admin: SupabaseClient, req: Request, body: Record<string, string>) {
+  const user = await getUser(admin, req);
+  if (!user) return json({ ok: false, code: "unauthorized" }, 401);
+
+  const { data: account } = await admin
+    .from("studio_accounts")
+    .select("id, tenant_id, platform")
+    .eq("id", body.account_id ?? "")
+    .maybeSingle();
+  if (!account || account.platform !== "youtube") return json({ ok: false, code: "not_found" }, 404);
+  if (!(await canUseTenant(admin, user.id, user.email, account.tenant_id))) {
+    return json({ ok: false, code: "forbidden" }, 403);
+  }
+
+  const token = await getAccessToken(admin, account.id);
+  if (!token.ok) return json(token, 409);
+  return json({ ok: true, access_token: token.accessToken, expires_at: token.expiresAt });
+}
+
 // ---------- POST: videos (contenido del canal) ----------
 /** "PT1H2M3S" -> 3723 */
 function isoDurationToSeconds(iso: string | undefined): number {
@@ -410,6 +432,8 @@ Deno.serve(async (req) => {
         return await handleToken(admin, req, body);
       case "videos":
         return await handleVideos(admin, req, body);
+      case "upload_token":
+        return await handleUploadToken(admin, req, body);
       default:
         return json({ ok: false, code: "unknown_action" }, 400);
     }

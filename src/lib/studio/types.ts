@@ -21,6 +21,8 @@ export interface SocialAccount {
   demo?: boolean;
   /** Conectada por OAuth y guardada en Supabase (no en localStorage) */
   remote?: boolean;
+  /** Perfil de estilo para "Rellenar con IA" (studio_accounts.ai_profile) */
+  aiProfile?: Record<string, unknown>;
 }
 
 export type PostStatus = "borrador" | "programado" | "procesando" | "publicado" | "error";
@@ -40,6 +42,9 @@ export interface StudioPost {
   scheduledAt?: string;
   createdAt: string;
   demo?: boolean;
+  /** Id del contenido en la plataforma (p. ej. el id del video de YouTube) */
+  externalId?: string;
+  url?: string;
 }
 
 export type ActionAvailability = "disponible" | "proximamente";
