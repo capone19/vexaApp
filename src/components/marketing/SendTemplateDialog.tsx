@@ -3,7 +3,7 @@
 // ============================================
 
 import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import {
   Dialog,
   DialogContent,
@@ -42,7 +42,7 @@ interface SendTemplateDialogProps {
 }
 
 export function SendTemplateDialog({ open, onOpenChange, template }: SendTemplateDialogProps) {
-  const navigate = useNavigate();
+  const router = useRouter();
   const { sendSingle, sendBulk, isSending } = useSendTemplate();
   const { balance, isLoading: isLoadingBalance } = useMessagingCredits();
 
@@ -276,7 +276,8 @@ export function SendTemplateDialog({ open, onOpenChange, template }: SendTemplat
                     variant="outline"
                     onClick={() => {
                       handleOpenChange(false);
-                      navigate('/marketing/comprar-creditos');
+                      // TODO(migracion): /marketing/comprar-creditos ya no existe en esta app; se mantiene el destino original (cae en 404).
+                      router.push('/marketing/comprar-creditos');
                     }}
                   >
                     Agregar créditos

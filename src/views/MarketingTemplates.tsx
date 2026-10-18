@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -52,7 +52,7 @@ const categoryColors: Record<string, string> = {
 };
 
 const MarketingTemplates = () => {
-  const navigate = useNavigate();
+  const router = useRouter();
   const { templates, isLoading, syncTemplates, deleteTemplate, isSyncing, isDeleting } = useYCloudTemplates();
   const { isConfigured, isLoading: isConfigLoading } = useYCloudConfig();
   
@@ -166,7 +166,8 @@ const MarketingTemplates = () => {
                   </p>
                 </div>
               </div>
-              <Button onClick={() => navigate('/configuracion?tab=integraciones')} className="gap-2 shrink-0">
+              {/* TODO(migracion): /configuracion ya no existe en esta app; se mantiene el destino original (cae en 404). */}
+              <Button onClick={() => router.push('/configuracion?tab=integraciones')} className="gap-2 shrink-0">
                 <Settings className="h-4 w-4" />
                 Configurar
               </Button>
