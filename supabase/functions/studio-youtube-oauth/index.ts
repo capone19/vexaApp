@@ -5,6 +5,7 @@
 // GET  ?code&state                              (redirect de Google) -> guarda el canal y vuelve al Studio
 // POST {action:"disconnect", account_id}        (JWT del usuario) -> revoca y borra la cuenta
 // POST {action:"token", account_id}             (header x-studio-key, para n8n) -> access_token vigente
+// POST {action:"videos", account_id, page_token?} (JWT del usuario) -> videos publicados del canal
 //
 // Secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, STUDIO_N8N_KEY (opcional), STUDIO_APP_ORIGINS (opcional)
 // Redirect URI a registrar en Google Cloud: {SUPABASE_URL}/functions/v1/studio-youtube-oauth
@@ -230,6 +231,36 @@ async function handleDisconnect(admin: SupabaseClient, req: Request, body: Recor
   return json({ ok: true });
 }
 
+// ---------- Token vigente (refresca con el refresh_token si está por vencer) ----------
+type TokenResult = { ok: true; accessToken: string; expiresAt: string } | { ok: false; code: string; message?: string };
+
+async function getAccessToken(admin: SupabaseClient, accountId: string): Promise<TokenResult> {
+  const { data: tokens } = await admin
+    .from("studio_account_tokens")
+    .select("access_token, refresh_token, expires_at")
+    .eq("account_id", accountId)
+    .maybeSingle();
+  if (!tokens) return { ok: false, code: "no_tokens" };
+  if (new Date(tokens.expires_at).getTime() - Date.now() > 60_000) {
+    return { ok: true, accessToken: tokens.access_token, expiresAt: tokens.expires_at };
+  }
+  if (!tokens.refresh_token) return { ok: false, code: "no_refresh_token" };
+
+  try {
+    const fresh = await googleToken({ refresh_token: tokens.refresh_token, grant_type: "refresh_token" });
+    const expiresAt = new Date(Date.now() + fresh.expires_in * 1000).toISOString();
+    await admin
+      .from("studio_account_tokens")
+      .update({ access_token: fresh.access_token, expires_at: expiresAt, updated_at: new Date().toISOString() })
+      .eq("account_id", accountId);
+    return { ok: true, accessToken: fresh.access_token, expiresAt };
+  } catch (err) {
+    // invalid_grant: el usuario revocó el acceso o el token caducó
+    await admin.from("studio_accounts").update({ status: "error" }).eq("id", accountId);
+    return { ok: false, code: "refresh_failed", message: String(err) };
+  }
+}
+
 // ---------- POST: token (n8n) ----------
 async function handleToken(admin: SupabaseClient, req: Request, body: Record<string, string>) {
   const key = Deno.env.get("STUDIO_N8N_KEY");
@@ -242,32 +273,121 @@ async function handleToken(admin: SupabaseClient, req: Request, body: Record<str
     .maybeSingle();
   if (!account) return json({ ok: false, code: "not_found" }, 404);
 
-  const { data: tokens } = await admin
-    .from("studio_account_tokens")
-    .select("access_token, refresh_token, expires_at")
-    .eq("account_id", account.id)
+  const token = await getAccessToken(admin, account.id);
+  if (!token.ok) return json(token, token.code === "no_tokens" ? 404 : 409);
+  return json({
+    ok: true,
+    account_id: account.id,
+    channel_id: account.external_id,
+    tenant_id: account.tenant_id,
+    access_token: token.accessToken,
+    expires_at: token.expiresAt,
+  });
+}
+
+// ---------- POST: videos (contenido del canal) ----------
+/** "PT1H2M3S" -> 3723 */
+function isoDurationToSeconds(iso: string | undefined): number {
+  const m = /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso ?? "");
+  if (!m) return 0;
+  const [, d, h, min, sec] = m.map((v) => Number(v ?? 0));
+  return d * 86400 + h * 3600 + min * 60 + sec;
+}
+
+async function youtubeGet(path: string, params: Record<string, string>, accessToken: string) {
+  const url = new URL(`https://www.googleapis.com/youtube/v3/${path}`);
+  url.search = new URLSearchParams(params).toString();
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error?.message ?? `youtube_${res.status}`);
+  return body;
+}
+
+async function handleVideos(admin: SupabaseClient, req: Request, body: Record<string, string>) {
+  const user = await getUser(admin, req);
+  if (!user) return json({ ok: false, code: "unauthorized" }, 401);
+
+  const { data: account } = await admin
+    .from("studio_accounts")
+    .select("id, tenant_id, external_id, platform")
+    .eq("id", body.account_id ?? "")
     .maybeSingle();
-  if (!tokens) return json({ ok: false, code: "no_tokens" }, 404);
-
-  const base = { ok: true, account_id: account.id, channel_id: account.external_id, tenant_id: account.tenant_id };
-  if (new Date(tokens.expires_at).getTime() - Date.now() > 60_000) {
-    return json({ ...base, access_token: tokens.access_token, expires_at: tokens.expires_at });
+  if (!account || account.platform !== "youtube") return json({ ok: false, code: "not_found" }, 404);
+  if (!(await canUseTenant(admin, user.id, user.email, account.tenant_id))) {
+    return json({ ok: false, code: "forbidden" }, 403);
   }
-  if (!tokens.refresh_token) return json({ ok: false, code: "no_refresh_token" }, 409);
 
-  try {
-    const fresh = await googleToken({ refresh_token: tokens.refresh_token, grant_type: "refresh_token" });
-    const expiresAt = new Date(Date.now() + fresh.expires_in * 1000).toISOString();
-    await admin
-      .from("studio_account_tokens")
-      .update({ access_token: fresh.access_token, expires_at: expiresAt, updated_at: new Date().toISOString() })
-      .eq("account_id", account.id);
-    return json({ ...base, access_token: fresh.access_token, expires_at: expiresAt });
-  } catch (err) {
-    // invalid_grant: el usuario revocó el acceso o el token caducó
-    await admin.from("studio_accounts").update({ status: "error" }).eq("id", account.id);
-    return json({ ok: false, code: "refresh_failed", message: String(err) }, 409);
-  }
+  const token = await getAccessToken(admin, account.id);
+  if (!token.ok) return json(token, 409);
+
+  const channelBody = await youtubeGet(
+    "channels",
+    { part: "snippet,statistics,contentDetails", id: account.external_id },
+    token.accessToken
+  );
+  const channel = channelBody.items?.[0];
+  if (!channel) return json({ ok: false, code: "sin_canal" }, 404);
+
+  // Aprovechar para mantener al día suscriptores y foto del canal
+  const subscribers = channel.statistics?.hiddenSubscriberCount ? 0 : Number(channel.statistics?.subscriberCount ?? 0);
+  await admin
+    .from("studio_accounts")
+    .update({
+      followers: subscribers,
+      avatar_url: channel.snippet?.thumbnails?.default?.url ?? null,
+      display_name: channel.snippet?.title,
+      status: "conectada",
+    })
+    .eq("id", account.id);
+
+  const uploads = channel.contentDetails?.relatedPlaylists?.uploads;
+  const stats = {
+    subscribers,
+    views: Number(channel.statistics?.viewCount ?? 0),
+    videos: Number(channel.statistics?.videoCount ?? 0),
+  };
+  if (!uploads) return json({ ok: true, channel: stats, videos: [], next_page_token: null });
+
+  const page = await youtubeGet(
+    "playlistItems",
+    { part: "contentDetails", playlistId: uploads, maxResults: "24", ...(body.page_token ? { pageToken: body.page_token } : {}) },
+    token.accessToken
+  );
+  const ids: string[] = (page.items ?? []).map((i: { contentDetails: { videoId: string } }) => i.contentDetails.videoId);
+  if (ids.length === 0) return json({ ok: true, channel: stats, videos: [], next_page_token: null });
+
+  const details = await youtubeGet(
+    "videos",
+    { part: "snippet,contentDetails,statistics,status", id: ids.join(",") },
+    token.accessToken
+  );
+  // deno-lint-ignore no-explicit-any
+  const byId = new Map<string, any>((details.items ?? []).map((v: { id: string }) => [v.id, v]));
+  const videos = ids
+    .map((id) => byId.get(id))
+    .filter(Boolean)
+    .map((v) => {
+      const duration = isoDurationToSeconds(v.contentDetails?.duration);
+      const thumbs = v.snippet?.thumbnails ?? {};
+      return {
+        id: v.id,
+        title: v.snippet?.title ?? "",
+        description: v.snippet?.description ?? "",
+        published_at: v.snippet?.publishedAt ?? v.status?.publishAt ?? null,
+        thumbnail: (thumbs.maxres ?? thumbs.standard ?? thumbs.high ?? thumbs.medium ?? thumbs.default)?.url ?? null,
+        duration_seconds: duration,
+        // La API no marca los Shorts: se infieren por duración (hasta 3 min)
+        is_short: duration > 0 && duration <= 180,
+        privacy: v.status?.privacyStatus ?? "public",
+        upload_status: v.status?.uploadStatus ?? null,
+        live: v.snippet?.liveBroadcastContent ?? "none",
+        views: Number(v.statistics?.viewCount ?? 0),
+        likes: Number(v.statistics?.likeCount ?? 0),
+        comments: Number(v.statistics?.commentCount ?? 0),
+      };
+    });
+
+  return json({ ok: true, channel: stats, videos, next_page_token: page.nextPageToken ?? null });
 }
 
 Deno.serve(async (req) => {
@@ -288,6 +408,8 @@ Deno.serve(async (req) => {
         return await handleDisconnect(admin, req, body);
       case "token":
         return await handleToken(admin, req, body);
+      case "videos":
+        return await handleVideos(admin, req, body);
       default:
         return json({ ok: false, code: "unknown_action" }, 400);
     }

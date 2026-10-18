@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
 import { ArrowRight, PlugZap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ChannelVideos } from "@/components/studio/ChannelVideos";
 import { PlatformIcon } from "@/components/studio/PlatformIcon";
 import { PostComposerDialog } from "@/components/studio/PostComposerDialog";
 import { PostList } from "@/components/studio/PostList";
@@ -11,6 +12,7 @@ import { AiBadge, EmptyState, SoonBadge, StudioCard, StudioPageHeader } from "@/
 import { useStudio } from "@/contexts/StudioContext";
 import { formatFollowers, isPlatformId, PLATFORMS } from "@/lib/studio/platforms";
 import type { PlatformAction } from "@/lib/studio/types";
+import type { YouTubeChannelStats } from "@/lib/studio/youtube";
 import { cn } from "@/lib/utils";
 
 const ALL = "todas";
@@ -21,7 +23,7 @@ export default function StudioPlataforma() {
   if (!isPlatformId(platform)) notFound();
 
   const meta = PLATFORMS[platform];
-  const { accountsFor, posts } = useStudio();
+  const { accountsFor, posts, refreshAccounts } = useStudio();
   const managedAccounts = accountsFor(platform).filter((a) => a.managed);
 
   const [accountFilter, setAccountFilter] = useState<string>(ALL);
@@ -36,6 +38,24 @@ export default function StudioPlataforma() {
   const followers = managedAccounts
     .filter((a) => visibleAccountIds.includes(a.id))
     .reduce((sum, a) => sum + a.followers, 0);
+  // Canales conectados por OAuth: de ellos se lee el contenido publicado
+  const channelAccounts = useMemo(
+    () => managedAccounts.filter((a) => a.remote && visibleAccountIds.includes(a.id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [managedAccounts.map((a) => a.id).join(), visibleAccountIds.join()]
+  );
+  const accountFollowers = useMemo(
+    () => Object.fromEntries(managedAccounts.map((a) => [a.id, a.followers])),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [managedAccounts.map((a) => `${a.id}:${a.followers}`).join()]
+  );
+  const handleChannelStats = useCallback(
+    (accountId: string, stats: YouTubeChannelStats) => {
+      if (accountFollowers[accountId] !== stats.subscribers) void refreshAccounts();
+    },
+    [accountFollowers, refreshAccounts]
+  );
+
   const scheduled = platformPosts.filter((p) => p.status === "programado").length;
   const drafts = platformPosts.filter((p) => p.status === "borrador").length;
 
@@ -133,6 +153,10 @@ export default function StudioPlataforma() {
               })}
             </div>
           </section>
+
+          {platform === "youtube" && channelAccounts.length > 0 && (
+            <ChannelVideos accounts={channelAccounts} onChannelStats={handleChannelStats} />
+          )}
 
           <StudioCard>
             <div className="mb-2 flex items-center justify-between">
