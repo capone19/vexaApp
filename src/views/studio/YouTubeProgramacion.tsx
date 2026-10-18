@@ -16,6 +16,7 @@ import {
   Eye,
   FileVideo,
   ImageIcon,
+  MessageSquareText,
   Loader2,
   PlugZap,
   Plus,
@@ -49,6 +50,7 @@ import { ChannelProfileDialog } from "@/components/studio/ChannelProfileDialog";
 import { PublishPlanDialog } from "@/components/studio/PublishPlanDialog";
 import { EmptyState, StudioCard, StudioPageHeader } from "@/components/studio/StudioUI";
 import { YouTubeDraftEditor } from "@/components/studio/YouTubeDraftEditor";
+import { PendingTasksPanel, VideoExtrasDialog } from "@/components/studio/VideoTasks";
 import { toLocalInput } from "@/components/studio/YouTubeUploadDialog";
 import { useStudio } from "@/contexts/StudioContext";
 import { useToast } from "@/hooks/use-toast";
@@ -69,6 +71,7 @@ import {
   type SlotFormat,
 } from "@/lib/studio/publish-plan";
 import { formatFollowers } from "@/lib/studio/platforms";
+import { listVideoTasks, type RelatedVideo, type VideoTask } from "@/lib/studio/video-tasks";
 import { fetchYouTubeVideos, YOUTUBE_ERROR_MESSAGES, type YouTubeVideo } from "@/lib/studio/youtube";
 import {
   baseName,
@@ -154,6 +157,8 @@ export default function YouTubeProgramacion() {
   const [aiRun, setAiRun] = useState<{ done: number; total: number; step: string } | null>(null);
   const [upload, setUpload] = useState<UploadState | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [tasks, setTasks] = useState<VideoTask[]>([]);
+  const [extrasVideo, setExtrasVideo] = useState<YouTubeVideo | null>(null);
 
   const draftsRef = useRef(drafts);
   draftsRef.current = drafts;
@@ -200,6 +205,25 @@ export default function YouTubeProgramacion() {
   useEffect(() => {
     void loadYouTube();
   }, [loadYouTube]);
+
+  // Comentarios para fijar y videos relacionados (tabla chica en Supabase)
+  const loadTasks = useCallback(async () => {
+    if (!channelId) return;
+    setTasks(await listVideoTasks(channelId).catch(() => []));
+  }, [channelId]);
+
+  useEffect(() => {
+    void loadTasks();
+  }, [loadTasks]);
+
+  // Videos largos del canal: el destino del "Video relacionado" de los Shorts
+  const longVideos = useMemo<RelatedVideo[]>(
+    () =>
+      ytVideos
+        .filter((v) => !v.isShort && (v.privacy === "public" || (v.privacy === "private" && v.publishAt)))
+        .map((v) => ({ id: v.id, title: v.title })),
+    [ytVideos]
+  );
 
   // Si a esta semana ya no le quedan espacios por delante (p. ej. domingo en la tarde), abrir la siguiente
   const autoWeekFor = useRef<string | null>(null);
@@ -466,6 +490,7 @@ export default function YouTubeProgramacion() {
     }
     setUpload(null);
     void loadYouTube();
+    void loadTasks();
     const pending = ids.length - ok;
     toast({
       title: ok ? `${ok} ${ok === 1 ? "video programado" : "videos programados"} en YouTube` : "No se programó ningún video",
@@ -475,7 +500,7 @@ export default function YouTubeProgramacion() {
           ? warnings.join(" · ")
           : pending
             ? `${pending} quedaron pendientes: revisa sus avisos.`
-            : "YouTube los publicará solos a su hora, aunque este PC esté apagado.",
+            : "YouTube los publicará solos a su hora, aunque este PC esté apagado. Revisa \"Pendientes en YouTube\" para fijar comentarios y elegir videos relacionados.",
       variant: ok ? undefined : "destructive",
     });
   };
@@ -624,6 +649,8 @@ export default function YouTubeProgramacion() {
         </StudioCard>
       )}
 
+      <PendingTasksPanel tasks={tasks} onChanged={() => void loadTasks()} />
+
       {/* Navegación de semanas */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1">
@@ -693,7 +720,12 @@ export default function YouTubeProgramacion() {
                 {entries.length === 0 && <p className="px-0.5 text-[11px] text-muted-foreground/70">Sin publicaciones</p>}
                 {entries.map((entry) =>
                   entry.kind === "youtube" ? (
-                    <YouTubeEntryCard key={entry.key} entry={entry} />
+                    <YouTubeEntryCard
+                      key={entry.key}
+                      entry={entry}
+                      task={tasks.find((t) => t.videoId === entry.video.id) ?? null}
+                      onExtras={() => setExtrasVideo(entry.video)}
+                    />
                   ) : entry.kind === "draft" ? (
                     <DraftCard
                       key={entry.key}
@@ -784,6 +816,7 @@ export default function YouTubeProgramacion() {
         draft={editing}
         profile={profile}
         channelName={channel.displayName}
+        longVideos={longVideos}
         onChange={(patch) => editing && updateDraft(editing.id, patch)}
         onClose={() => setEditingId(null)}
         onDelete={async () => {
@@ -848,6 +881,16 @@ export default function YouTubeProgramacion() {
         </AlertDialogContent>
       </AlertDialog>
 
+      <VideoExtrasDialog
+        video={extrasVideo}
+        task={tasks.find((t) => t.videoId === extrasVideo?.id) ?? null}
+        longVideos={longVideos}
+        accountId={channel.id}
+        language={profile.language}
+        onClose={() => setExtrasVideo(null)}
+        onSaved={() => void loadTasks()}
+      />
+
       <PublishPlanDialog account={channel} open={planOpen} onOpenChange={setPlanOpen} />
       <ChannelProfileDialog account={profileOpen ? channel : null} onOpenChange={(open) => !open && setProfileOpen(false)} />
     </div>
@@ -867,39 +910,67 @@ function FormatChip({ format: f }: { format: SlotFormat }) {
   );
 }
 
-function YouTubeEntryCard({ entry }: { entry: Extract<Entry, { kind: "youtube" }> }) {
+function YouTubeEntryCard({
+  entry,
+  task,
+  onExtras,
+}: {
+  entry: Extract<Entry, { kind: "youtube" }>;
+  task: VideoTask | null;
+  onExtras: () => void;
+}) {
   const { video } = entry;
   const url = video.isShort ? `https://www.youtube.com/shorts/${video.id}` : `https://www.youtube.com/watch?v=${video.id}`;
+  const commentLabel =
+    task?.commentStatus === "pendiente"
+      ? "Comentario en espera"
+      : task?.commentStatus === "publicado"
+        ? "Comentario por fijar"
+        : task?.commentStatus === "fijado"
+          ? "Comentario fijado"
+          : task?.commentStatus === "error"
+            ? "Comentario con error"
+            : video.isShort
+              ? "Video relacionado y comentario"
+              : "Comentario para fijar";
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="group block overflow-hidden rounded-xl border border-border/70 bg-background/40 transition-colors hover:border-primary/40"
-    >
-      {video.thumbnail && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={video.thumbnail} alt="" loading="lazy" className="aspect-video w-full object-cover" />
-      )}
-      <div className="space-y-1 p-2">
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span className="font-semibold tabular-nums text-foreground">{time(entry.at)}</span>
-          <FormatChip format={entry.format} />
-        </div>
-        <p className="line-clamp-2 text-xs font-medium leading-snug">{video.title}</p>
-        {entry.scheduled ? (
-          <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-400">
-            <CalendarCheck className="h-3 w-3" />
-            Programado
-          </p>
-        ) : (
-          <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
-            <Eye className="h-3 w-3" />
-            Publicado · {formatFollowers(video.views)}
-          </p>
+    <div className="overflow-hidden rounded-xl border border-border/70 bg-background/40 transition-colors hover:border-primary/40">
+      <a href={url} target="_blank" rel="noopener noreferrer" className="group block">
+        {video.thumbnail && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={video.thumbnail} alt="" loading="lazy" className="aspect-video w-full object-cover" />
         )}
-      </div>
-    </a>
+        <div className="space-y-1 p-2 pb-1">
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="font-semibold tabular-nums text-foreground">{time(entry.at)}</span>
+            <FormatChip format={entry.format} />
+          </div>
+          <p className="line-clamp-2 text-xs font-medium leading-snug">{video.title}</p>
+          {entry.scheduled ? (
+            <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-400">
+              <CalendarCheck className="h-3 w-3" />
+              Programado
+            </p>
+          ) : (
+            <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              <Eye className="h-3 w-3" />
+              Publicado · {formatFollowers(video.views)}
+            </p>
+          )}
+        </div>
+      </a>
+      <button
+        type="button"
+        onClick={onExtras}
+        className={cn(
+          "flex w-full items-center gap-1 px-2 pb-2 text-left text-[11px] hover:text-foreground",
+          task?.commentStatus === "publicado" || task?.commentStatus === "error" ? "text-amber-400" : "text-muted-foreground"
+        )}
+      >
+        <MessageSquareText className="h-3 w-3 shrink-0" />
+        <span className="truncate">{commentLabel}</span>
+      </button>
+    </div>
   );
 }
 
@@ -1006,6 +1077,7 @@ function DraftDialog({
   draft,
   profile,
   channelName,
+  longVideos,
   onChange,
   onClose,
   onDelete,
@@ -1015,6 +1087,7 @@ function DraftDialog({
   draft: YouTubeDraft | null;
   profile: ReturnType<typeof normalizeProfile>;
   channelName?: string;
+  longVideos: RelatedVideo[];
   onChange: (patch: Partial<YouTubeDraft>) => void;
   onClose: () => void;
   onDelete: () => Promise<void>;
@@ -1061,7 +1134,14 @@ function DraftDialog({
             </div>
           </div>
 
-          <YouTubeDraftEditor draft={draft} onChange={onChange} profile={profile} channelName={channelName} onBusyChange={setBusy} />
+          <YouTubeDraftEditor
+            draft={draft}
+            onChange={onChange}
+            profile={profile}
+            channelName={channelName}
+            onBusyChange={setBusy}
+            longVideos={longVideos}
+          />
 
           {draft.error && (
             <p className="flex items-start gap-2 rounded-xl bg-error-soft p-3 text-sm text-error-soft-foreground">

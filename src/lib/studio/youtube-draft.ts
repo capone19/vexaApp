@@ -15,6 +15,7 @@ import {
 } from "./ai";
 import { captureFrames, extractAudioChunks, getVideoInfo, type VideoInfo } from "./media";
 import { cuesToTranscript, parseSubtitles, type Cue } from "./subtitles";
+import { postCommentsNow, saveVideoTask, withCta, type RelatedVideo, type VideoTask } from "./video-tasks";
 import { getUploadToken, setThumbnail, uploadCaptions, uploadVideo, type Privacy } from "./youtube-upload";
 
 export type DraftFormat = "video" | "short";
@@ -34,6 +35,10 @@ export interface YouTubeDraft {
   /** Separados por coma, tal como se editan */
   tags: string;
   ai: GeneratedMetadata | null;
+  /** Comentario para fijar; sin definir = el que propuso la IA */
+  pinnedComment?: string;
+  /** Shorts: video largo al que lleva (se elige luego en YouTube Studio; aquí agrega el llamado al texto) */
+  relatedVideo?: RelatedVideo | null;
   useLocalizations: boolean;
   /** ISO; null = sin fecha todavía */
   scheduledAt: string | null;
@@ -78,6 +83,9 @@ export const parseTags = (tags: string) =>
     .split(",")
     .map((t) => t.trim().replace(/^#/, ""))
     .filter(Boolean);
+
+/** Comentario que se publicará: el editado o, si no se tocó, el de la IA */
+export const draftComment = (draft: Pick<YouTubeDraft, "pinnedComment" | "ai">) => draft.pinnedComment ?? draft.ai?.pinned_comment ?? "";
 
 export const baseName = (name: string) => name.replace(/\.[^.]+$/, "").replace(/\.(en|es|pt|fr|de|it|hi|id)$/i, "").toLowerCase();
 
@@ -136,10 +144,12 @@ export async function fillDraftWithAi(
     localizeTo: opts.profile.localize_to,
     current: { title: draft.title, description: draft.description },
   });
+  const related = draft.format === "short" && draft.relatedVideo;
   return {
     ai,
     title: ai.titles[0]?.text ?? draft.title,
-    description: ai.description,
+    description: related ? withCta(ai.description, draft.language) : ai.description,
+    pinnedComment: related ? withCta(ai.pinned_comment, draft.language) : ai.pinned_comment,
     tags: ai.tags.join(", "),
     error: undefined,
   };
@@ -186,6 +196,8 @@ export function draftProblems(draft: YouTubeDraft, needsDate: boolean): string[]
 export interface PublishResult {
   videoId: string;
   warnings: string[];
+  /** Comentario para fijar y video relacionado pendientes de este video */
+  task: VideoTask | null;
 }
 
 /** Sube el borrador a YouTube. Con publishAt queda privado y YouTube lo publica solo a esa hora. */
@@ -239,7 +251,33 @@ export async function publishDraft(
       warnings.push(`Subtítulos: ${e.message}`)
     );
   }
-  return { videoId, warnings };
+
+  // Comentario para fijar: se intenta publicar ya (con el video privado YouTube puede no aceptarlo;
+  // en ese caso n8n lo publica a la hora de publicación y avisa por Telegram)
+  let task: VideoTask | null = null;
+  const comment = draftComment(draft).trim();
+  const related = draft.format === "short" ? (draft.relatedVideo ?? null) : null;
+  if (comment || related) {
+    try {
+      task = await saveVideoTask({
+        accountId: draft.accountId,
+        videoId,
+        videoTitle: draft.title.trim(),
+        isShort: draft.format === "short",
+        commentText: comment,
+        postAfter: opts.publishAt ?? new Date().toISOString(),
+        related,
+      });
+      if (comment) {
+        onStatus("Publicando el comentario…");
+        const commentId = (await postCommentsNow([task.id])).get(task.id);
+        if (commentId) task = { ...task, commentStatus: "publicado", commentId };
+      }
+    } catch {
+      warnings.push("Comentario: no se pudo dejar programado; agrégalo desde Programación");
+    }
+  }
+  return { videoId, warnings, task };
 }
 
 // ---------- Guardado local (IndexedDB) ----------

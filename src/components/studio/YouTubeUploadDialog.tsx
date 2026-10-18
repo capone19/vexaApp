@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToastAction } from "@/components/ui/toast";
 import { ChannelProfileDialog } from "@/components/studio/ChannelProfileDialog";
 import { PlatformIcon } from "@/components/studio/PlatformIcon";
 import { YouTubeDraftEditor } from "@/components/studio/YouTubeDraftEditor";
@@ -14,6 +15,8 @@ import { useToast } from "@/hooks/use-toast";
 import { normalizeProfile } from "@/lib/studio/ai";
 import { PLATFORMS } from "@/lib/studio/platforms";
 import type { SocialAccount } from "@/lib/studio/types";
+import { pinUrl, studioEditUrl, type RelatedVideo } from "@/lib/studio/video-tasks";
+import { fetchYouTubeVideos } from "@/lib/studio/youtube";
 import { draftProblems, newDraft, publishDraft, saveDraft, type YouTubeDraft } from "@/lib/studio/youtube-draft";
 import type { Privacy } from "@/lib/studio/youtube-upload";
 import { cn } from "@/lib/utils";
@@ -71,6 +74,24 @@ export function YouTubeUploadDialog({ open, onOpenChange, accountId }: YouTubeUp
   const channel = channels.find((a) => a.id === channelId) ?? null;
   const profile = useMemo(() => normalizeProfile(channel?.aiProfile), [channel]);
 
+  // Videos largos del canal para el "Video relacionado" (solo se leen si el video es un Short)
+  const [longVideos, setLongVideos] = useState<{ channelId: string; videos: RelatedVideo[] } | null>(null);
+  const isShort = draft?.format === "short";
+  useEffect(() => {
+    if (!open || !isShort || !channelId || longVideos?.channelId === channelId) return;
+    let cancelled = false;
+    void fetchYouTubeVideos(channelId).then((result) => {
+      if (cancelled || "code" in result) return;
+      const videos = result.videos
+        .filter((v) => !v.isShort && (v.privacy === "public" || (v.privacy === "private" && v.publishAt)))
+        .map((v) => ({ id: v.id, title: v.title }));
+      setLongVideos({ channelId, videos });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isShort, channelId, longVideos?.channelId]);
+
   useEffect(() => {
     if (!open) return;
     const initial = channels.find((a) => a.id === accountId) ?? channels[0];
@@ -113,7 +134,7 @@ export function YouTubeUploadDialog({ open, onOpenChange, accountId }: YouTubeUp
         return;
       }
       setProgress(0);
-      const { videoId, warnings } = await publishDraft(draft, {
+      const { videoId, warnings, task } = await publishDraft(draft, {
         categoryId: profile.category_id,
         privacy,
         publishAt,
@@ -132,9 +153,31 @@ export function YouTubeUploadDialog({ open, onOpenChange, accountId }: YouTubeUp
         externalId: videoId,
         url: `https://youtu.be/${videoId}`,
       });
+      // Lo que la API no deja hacer: elegir el video relacionado y fijar el comentario
+      const relatedPending = Boolean(task?.relatedVideoId);
+      const pinPending = task?.commentStatus === "publicado" && task.commentId;
+      const next = relatedPending
+        ? { label: "Elegir video relacionado", href: studioEditUrl(videoId) }
+        : pinPending
+          ? { label: "Fijar comentario", href: pinUrl(videoId, task.commentId as string) }
+          : null;
+      const commentNote =
+        task?.commentStatus === "pendiente" ? "El comentario se publica solo a la hora de salida y te avisamos por Telegram." : "";
       toast({
         title: publishAt ? "Video programado en YouTube" : "Video subido a YouTube",
-        description: warnings.length ? warnings.join(" · ") : "YouTube lo está procesando; aparecerá en el canal en unos minutos.",
+        description: [
+          warnings.length ? warnings.join(" · ") : "YouTube lo está procesando; aparecerá en el canal en unos minutos.",
+          commentNote,
+          relatedPending && pinPending ? "El comentario para fijar queda en Programación → Pendientes." : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+        duration: next ? 30_000 : undefined,
+        action: next ? (
+          <ToastAction altText={next.label} onClick={() => window.open(next.href, "_blank", "noopener,noreferrer")}>
+            {next.label}
+          </ToastAction>
+        ) : undefined,
       });
       onOpenChange(false);
     } catch (err) {
@@ -196,6 +239,7 @@ export function YouTubeUploadDialog({ open, onOpenChange, accountId }: YouTubeUp
                 channelName={channel?.displayName}
                 disabled={submitting}
                 onBusyChange={setBusy}
+                longVideos={longVideos?.channelId === channelId ? longVideos.videos : isShort ? [] : undefined}
               />
 
               <div className="space-y-3">

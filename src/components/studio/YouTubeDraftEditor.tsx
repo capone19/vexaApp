@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Captions, Copy, FileVideo, ImageIcon, Languages, Loader2, UploadCloud, WandSparkles, X } from "lucide-react";
+import { Captions, Clapperboard, FileVideo, ImageIcon, Languages, Loader2, MessageSquareText, UploadCloud, WandSparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { TranslateHint } from "@/components/studio/TranslateHint";
 import { useToast } from "@/hooks/use-toast";
 import { ANGLE_LABELS, LANGUAGES, type ChannelProfile } from "@/lib/studio/ai";
-import { fillDraftWithAi, inspectVideo, NeedsTranscription, type DraftFormat, type YouTubeDraft } from "@/lib/studio/youtube-draft";
+import { withCta, withoutCta, type RelatedVideo } from "@/lib/studio/video-tasks";
+import { draftComment, fillDraftWithAi, inspectVideo, NeedsTranscription, type DraftFormat, type YouTubeDraft } from "@/lib/studio/youtube-draft";
 import { formatDuration } from "@/lib/studio/youtube";
 import { cn } from "@/lib/utils";
 
@@ -79,10 +80,12 @@ interface YouTubeDraftEditorProps {
   disabled?: boolean;
   /** Avisa al contenedor mientras la IA trabaja (para no cerrar ni publicar a medias) */
   onBusyChange?: (busy: boolean) => void;
+  /** Videos largos del canal para elegir el "Video relacionado" de un Short */
+  longVideos?: RelatedVideo[];
 }
 
 /** Archivo, subtítulos, miniatura y metadatos de un video de YouTube, con "Rellenar con IA" */
-export function YouTubeDraftEditor({ draft, onChange, profile, channelName, disabled, onBusyChange }: YouTubeDraftEditorProps) {
+export function YouTubeDraftEditor({ draft, onChange, profile, channelName, disabled, onBusyChange, longVideos }: YouTubeDraftEditorProps) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [generating, setGenerating] = useState(false);
@@ -120,6 +123,21 @@ export function YouTubeDraftEditor({ draft, onChange, profile, channelName, disa
     void navigator.clipboard.writeText(text);
     toast({ title: "Copiado" });
   };
+
+  // El llamado "🎬 La historia completa en el video vinculado" va en la descripción y el comentario
+  const setRelated = (id: string) => {
+    const related = longVideos?.find((v) => v.id === id) ?? null;
+    const comment = draftComment(draft);
+    onChange({
+      relatedVideo: related,
+      description: related ? withCta(draft.description, language) : withoutCta(draft.description),
+      pinnedComment: related ? withCta(comment, language) : withoutCta(comment),
+    });
+  };
+  const relatedOptions = [
+    ...(draft.relatedVideo && !longVideos?.some((v) => v.id === draft.relatedVideo?.id) ? [draft.relatedVideo] : []),
+    ...(longVideos ?? []),
+  ];
 
   const shortWarning =
     draft.format === "short" && video && (video.width >= video.height || video.duration > 180)
@@ -341,6 +359,56 @@ export function YouTubeDraftEditor({ draft, onChange, profile, channelName, disa
           <Input id={`tags-${draft.id}`} value={draft.tags} disabled={locked} onChange={(e) => onChange({ tags: e.target.value })} />
         </div>
 
+        {draft.format === "short" && longVideos && (
+          <div className="space-y-2">
+            <Label className="flex items-center gap-1.5">
+              <Clapperboard className="h-3.5 w-3.5 text-primary" />
+              Video largo relacionado
+            </Label>
+            <Select value={draft.relatedVideo?.id ?? "none"} onValueChange={(v) => setRelated(v)} disabled={locked}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Ninguno</SelectItem>
+                {relatedOptions.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    <span className="line-clamp-1">{v.title}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {draft.relatedVideo
+                ? "Se agregó el llamado al video completo en la descripción y el comentario. El botón al video lo pone YouTube en su lugar de siempre: al programar te dejamos el link directo a YouTube Studio para elegirlo (10 segundos)."
+                : "El botón que lleva del Short al video largo. YouTube no deja ponerlo por API: al programar te dejamos el link directo para elegirlo."}
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor={`comment-${draft.id}`} className="flex items-center gap-1.5">
+              <MessageSquareText className="h-3.5 w-3.5 text-primary" />
+              Comentario para fijar
+            </Label>
+            <TranslateHint text={draftComment(draft)} language={language} />
+          </div>
+          <Textarea
+            id={`comment-${draft.id}`}
+            rows={2}
+            value={draftComment(draft)}
+            disabled={locked}
+            placeholder="Una pregunta que invite a comentar (opcional)"
+            onChange={(e) => onChange({ pinnedComment: e.target.value })}
+            maxLength={1000}
+          />
+          <p className="text-xs text-muted-foreground">
+            Se publica solo en el video. Si YouTube no lo acepta mientras está privado, se publica a la hora de salida y te
+            llega el aviso a Telegram para fijarlo.
+          </p>
+        </div>
+
         {ai && (
           <div className="space-y-3 border-t border-border pt-3">
             {ai.thumbnail_text.length > 0 && draft.format === "video" && (
@@ -358,18 +426,6 @@ export function YouTubeDraftEditor({ draft, onChange, profile, channelName, disa
                     </button>
                   ))}
                   <TranslateHint text={ai.thumbnail_text.join("\n")} language={language} />
-                </div>
-              </div>
-            )}
-            {ai.pinned_comment && (
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Comentario para fijar (YouTube no deja fijarlo por API)</Label>
-                <div className="flex items-start gap-2 rounded-lg border border-border p-2 text-sm">
-                  <p className="flex-1">{ai.pinned_comment}</p>
-                  <TranslateHint text={ai.pinned_comment} language={language} className="h-7 w-7" />
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copy(ai.pinned_comment)} aria-label="Copiar comentario">
-                    <Copy className="h-3.5 w-3.5" />
-                  </Button>
                 </div>
               </div>
             )}

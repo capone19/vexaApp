@@ -7,8 +7,10 @@
 // POST {action:"token", account_id}             (header x-studio-key, para n8n) -> access_token vigente
 // POST {action:"videos", account_id, page_token?} (JWT del usuario) -> videos publicados del canal
 // POST {action:"upload_token", account_id}       (JWT del usuario) -> access_token para subir directo a YouTube
+// POST {action:"post_comments", task_ids?}       (JWT con task_ids, o x-studio-key para n8n) -> publica los comentarios para fijar
 //
 // Secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, STUDIO_N8N_KEY (opcional), STUDIO_APP_ORIGINS (opcional)
+// La clave de n8n también puede vivir en la tabla studio_secrets (name = 'n8n_key'): n8n la lee con su conexión Postgres.
 // Redirect URI a registrar en Google Cloud: {SUPABASE_URL}/functions/v1/studio-youtube-oauth
 // ============================================
 
@@ -263,9 +265,18 @@ async function getAccessToken(admin: SupabaseClient, accountId: string): Promise
 }
 
 // ---------- POST: token (n8n) ----------
+/** La clave de n8n: el secret STUDIO_N8N_KEY o la fila 'n8n_key' de studio_secrets */
+async function isN8n(admin: SupabaseClient, req: Request) {
+  const given = req.headers.get("x-studio-key");
+  if (!given) return false;
+  const envKey = Deno.env.get("STUDIO_N8N_KEY");
+  if (envKey && given === envKey) return true;
+  const { data } = await admin.from("studio_secrets").select("value").eq("name", "n8n_key").maybeSingle();
+  return Boolean(data?.value) && given === data!.value;
+}
+
 async function handleToken(admin: SupabaseClient, req: Request, body: Record<string, string>) {
-  const key = Deno.env.get("STUDIO_N8N_KEY");
-  if (!key || req.headers.get("x-studio-key") !== key) return json({ ok: false, code: "unauthorized" }, 401);
+  if (!(await isN8n(admin, req))) return json({ ok: false, code: "unauthorized" }, 401);
 
   const { data: account } = await admin
     .from("studio_accounts")
@@ -305,6 +316,127 @@ async function handleUploadToken(admin: SupabaseClient, req: Request, body: Reco
   const token = await getAccessToken(admin, account.id);
   if (!token.ok) return json(token, 409);
   return json({ ok: true, access_token: token.accessToken, expires_at: token.expiresAt });
+}
+
+// ---------- POST: post_comments (comentario para fijar) ----------
+// El navegador lo intenta apenas programa el video (task_ids); n8n, cada 15 minutos, publica los que ya
+// llegaron a su hora. La API no permite fijar: eso lo hace el creador con el link que llega por Telegram.
+interface VideoTask {
+  id: string;
+  account_id: string;
+  video_id: string;
+  video_title: string;
+  is_short: boolean;
+  comment_text: string | null;
+  attempts: number;
+  related_video_id: string | null;
+  related_done: boolean;
+}
+
+// n8n reintenta cada 15 min: después de ~2 horas sin lograrlo se da por perdido y se avisa
+const MAX_ATTEMPTS = 8;
+
+async function handlePostComments(admin: SupabaseClient, req: Request, body: Record<string, unknown>) {
+  const byN8n = await isN8n(admin, req);
+  let query = admin
+    .from("studio_video_tasks")
+    .select("id, account_id, video_id, video_title, is_short, comment_text, attempts, related_video_id, related_done")
+    .eq("comment_status", "pendiente")
+    .limit(25);
+  let user: Awaited<ReturnType<typeof getUser>> = null;
+  if (byN8n) {
+    query = query.lte("post_after", new Date().toISOString());
+  } else {
+    user = await getUser(admin, req);
+    if (!user) return json({ ok: false, code: "unauthorized" }, 401);
+    const ids = Array.isArray(body.task_ids) ? body.task_ids.filter((x): x is string => typeof x === "string").slice(0, 25) : [];
+    if (!ids.length) return json({ ok: true, posted: [], failed: [] });
+    query = query.in("id", ids);
+  }
+  const { data: rows } = await query;
+  const tasks = (rows ?? []) as VideoTask[];
+
+  const posted: Record<string, unknown>[] = [];
+  const failed: Record<string, unknown>[] = [];
+  const accountIds = [...new Set(tasks.map((t) => t.account_id))];
+  for (const accountId of accountIds) {
+    const { data: account } = await admin
+      .from("studio_accounts")
+      .select("id, external_id, tenant_id, handle")
+      .eq("id", accountId)
+      .maybeSingle();
+    const own = tasks.filter((t) => t.account_id === accountId);
+    if (!account) continue;
+    if (user && !(await canUseTenant(admin, user.id, user.email, account.tenant_id))) continue;
+    const token = await getAccessToken(admin, account.id);
+    if (!token.ok) {
+      own.forEach((t) => failed.push({ id: t.id, video_id: t.video_id, video_title: t.video_title, error: token.code, final: false }));
+      continue;
+    }
+
+    // n8n: solo los que YouTube ya publicó (si cambiaron la fecha en YouTube Studio, se corre la espera)
+    let ready = own;
+    if (byN8n) {
+      const list = await youtubeGet("videos", { part: "status", id: own.map((t) => t.video_id).join(",") }, token.accessToken).catch(() => null);
+      const status = new Map<string, { privacyStatus?: string; publishAt?: string }>(
+        (list?.items ?? []).map((v: { id: string; status?: { privacyStatus?: string; publishAt?: string } }) => [v.id, v.status ?? {}])
+      );
+      ready = [];
+      for (const t of own) {
+        const st = status.get(t.video_id);
+        if (list && !st) {
+          await admin.from("studio_video_tasks").update({ comment_status: "error", last_error: "El video ya no existe en YouTube" }).eq("id", t.id);
+          failed.push({ id: t.id, video_id: t.video_id, video_title: t.video_title, error: "El video ya no existe en YouTube", final: true });
+        } else if (st?.privacyStatus === "private" && st.publishAt && new Date(st.publishAt).getTime() > Date.now()) {
+          await admin.from("studio_video_tasks").update({ post_after: st.publishAt }).eq("id", t.id);
+        } else {
+          ready.push(t);
+        }
+      }
+    }
+
+    for (const t of ready) {
+      const res = await fetch("https://www.googleapis.com/youtube/v3/commentThreads?part=snippet", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token.accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          snippet: {
+            channelId: account.external_id,
+            videoId: t.video_id,
+            topLevelComment: { snippet: { textOriginal: (t.comment_text ?? "").slice(0, 10000) } },
+          },
+        }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (res.ok && out.id) {
+        const commentId = out.snippet?.topLevelComment?.id ?? out.id;
+        await admin
+          .from("studio_video_tasks")
+          .update({ comment_status: "publicado", comment_id: commentId, posted_at: new Date().toISOString(), last_error: null })
+          .eq("id", t.id);
+        posted.push({
+          id: t.id,
+          video_id: t.video_id,
+          video_title: t.video_title,
+          is_short: t.is_short,
+          comment_id: commentId,
+          comment_text: t.comment_text,
+          related_pending: Boolean(t.related_video_id && !t.related_done),
+        });
+      } else {
+        const error = String(out.error?.errors?.[0]?.reason ?? out.error?.message ?? `youtube_${res.status}`).slice(0, 300);
+        // El intento del navegador (video aún privado) no cuenta: n8n lo vuelve a intentar a la hora de publicación
+        const attempts = byN8n ? t.attempts + 1 : t.attempts;
+        const final = attempts >= MAX_ATTEMPTS;
+        await admin
+          .from("studio_video_tasks")
+          .update({ attempts, last_error: error, ...(final ? { comment_status: "error" } : {}) })
+          .eq("id", t.id);
+        failed.push({ id: t.id, video_id: t.video_id, video_title: t.video_title, error, final });
+      }
+    }
+  }
+  return json({ ok: true, posted, failed });
 }
 
 // ---------- POST: videos (contenido del canal) ----------
@@ -436,6 +568,8 @@ Deno.serve(async (req) => {
         return await handleVideos(admin, req, body);
       case "upload_token":
         return await handleUploadToken(admin, req, body);
+      case "post_comments":
+        return await handlePostComments(admin, req, body);
       default:
         return json({ ok: false, code: "unknown_action" }, 400);
     }
