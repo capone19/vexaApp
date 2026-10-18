@@ -8,6 +8,8 @@ interface TranslateHintProps {
   text: string;
   /** Idioma del texto si se conoce; en español no se muestra el botón */
   language?: string;
+  /** Versión en español ya escrita por la IA (la que verán los espectadores); evita la traducción automática */
+  known?: string;
   className?: string;
 }
 
@@ -18,7 +20,7 @@ const SOURCE_LABELS: Record<Translation["source"], string> = {
 };
 
 /** Ícono de traducción: al hacer clic muestra el texto en español; se cierra al hacer clic afuera */
-export function TranslateHint({ text, language, className }: TranslateHintProps) {
+export function TranslateHint({ text, language, known, className }: TranslateHintProps) {
   const [result, setResult] = useState<Translation | null>(null);
   const [translatedText, setTranslatedText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +29,7 @@ export function TranslateHint({ text, language, className }: TranslateHintProps)
   if (!text.trim() || language === "es") return null;
 
   const handleOpen = async (open: boolean) => {
-    if (!open || (result && translatedText === text)) return;
+    if (!open || known || (result && translatedText === text)) return;
     setLoading(true);
     setError(null);
     try {
@@ -57,7 +59,12 @@ export function TranslateHint({ text, language, className }: TranslateHintProps)
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 space-y-2 p-3 text-sm">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">En español</p>
-        {loading ? (
+        {known ? (
+          <>
+            <p className="max-h-72 overflow-y-auto whitespace-pre-wrap">{known}</p>
+            <p className="text-[11px] text-muted-foreground">Traducción hecha por la IA para YouTube (la que se sube)</p>
+          </>
+        ) : loading ? (
           <p className="flex items-center gap-2 text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             Traduciendo…

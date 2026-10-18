@@ -126,6 +126,10 @@ export function YouTubeDraftEditor({ draft, onChange, profile, channelName, disa
       ? "Para que YouTube lo trate como Short, el video debe ser vertical y durar 3 minutos o menos."
       : null;
   const transcribeCost = video ? Math.max(0.01, (video.duration / 60) * TRANSCRIBE_USD_PER_MIN) : null;
+  // Si el texto no se editó, el ícono muestra la versión en español que la IA ya preparó para YouTube
+  const spanish = ai?.localizations.find((l) => l.lang === "es");
+  const spanishTitle = ai?.titles.find((t) => t.text === draft.title.trim())?.localized_titles?.find((x) => x.lang === "es")?.title;
+  const spanishDescription = spanish && draft.description.trim() === ai?.description.trim() ? spanish.description : undefined;
   const localeNames = (ai?.localizations ?? []).map((l) => LANGUAGES[l.lang] ?? l.lang).join(", ");
 
   return (
@@ -292,7 +296,12 @@ export function YouTubeDraftEditor({ draft, onChange, profile, channelName, disa
                       <span className="text-sm font-medium">{option.text}</span>
                       {active && option.why && <p className="mt-1.5 text-xs text-muted-foreground">{option.why}</p>}
                     </button>
-                    <TranslateHint text={option.text} language={language} className="mt-3" />
+                    <TranslateHint
+                      text={option.text}
+                      language={language}
+                      known={option.localized_titles?.find((x) => x.lang === "es")?.title}
+                      className="mt-3"
+                    />
                   </div>
                 );
               })}
@@ -304,7 +313,7 @@ export function YouTubeDraftEditor({ draft, onChange, profile, channelName, disa
           <div className="flex items-center justify-between">
             <Label htmlFor={`title-${draft.id}`}>Título</Label>
             <div className="flex items-center gap-1">
-              <TranslateHint text={draft.title} language={language} />
+              <TranslateHint text={draft.title} language={language} known={spanishTitle} />
               <span className="text-xs text-muted-foreground">{draft.title.length}/100</span>
             </div>
           </div>
@@ -313,7 +322,7 @@ export function YouTubeDraftEditor({ draft, onChange, profile, channelName, disa
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label htmlFor={`desc-${draft.id}`}>Descripción</Label>
-            <TranslateHint text={draft.description} language={language} />
+            <TranslateHint text={draft.description} language={language} known={spanishDescription} />
           </div>
           <Textarea
             id={`desc-${draft.id}`}
