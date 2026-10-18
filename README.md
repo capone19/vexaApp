@@ -52,7 +52,7 @@ La Edge Function `studio-youtube-oauth` (Supabase) hace el login con Google, gua
 
 - `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`: cliente OAuth "Aplicación web" de Google Cloud con YouTube Data API v3 habilitada. URI de redirección autorizada: `https://<proyecto>.supabase.co/functions/v1/studio-youtube-oauth`.
 - `STUDIO_N8N_KEY`: clave que n8n envía en el header `x-studio-key` para pedir un access token vigente (`POST {action:"token", account_id}`).
-- `STUDIO_APP_ORIGINS` (opcional): orígenes extra permitidos para volver al Studio, separados por coma (ya se aceptan `*.vercel.app`, `*.vexalatam.com` y localhost).
+- `STUDIO_APP_ORIGINS` (opcional): orígenes extra permitidos para volver al Studio, separados por coma (ya se aceptan `*.vercel.app`, `whatsai.cl`, `vexalatam.com` y sus subdominios, y localhost).
 
 ## Estructura
 

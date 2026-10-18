@@ -48,7 +48,8 @@ function isAllowedReturn(url: string): boolean {
       .filter(Boolean);
     if (extra.includes(u.origin)) return true;
     if (u.protocol === "https:" && u.hostname.endsWith(".vercel.app")) return true;
-    if (u.protocol === "https:" && (u.hostname === "vexalatam.com" || u.hostname.endsWith(".vexalatam.com"))) return true;
+    const appDomains = ["whatsai.cl", "vexalatam.com"];
+    if (u.protocol === "https:" && appDomains.some((d) => u.hostname === d || u.hostname.endsWith(`.${d}`))) return true;
     if (u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1")) return true;
     return false;
   } catch {
