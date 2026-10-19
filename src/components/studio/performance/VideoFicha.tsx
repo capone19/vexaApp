@@ -226,7 +226,9 @@ export function VideoFicha({
     setShortsWave({
       name: `Ola · ${video.title}`.slice(0, 80),
       notes: [
-        `MODO OLA: "${video.title}" está rindiendo ${ratioLabel(video.ratio)} sobre lo normal. Prioriza los momentos de ese mismo tema.`,
+        video.ratio !== null
+          ? `MODO OLA: "${video.title}" está rindiendo ${ratioLabel(video.ratio)} sobre lo normal. Prioriza los momentos de ese mismo tema.`
+          : `MODO OLA: el tema de "${video.title}" es el que queremos empujar. Prioriza los momentos de ese mismo tema.`,
         r?.shorts_plan.factory_notes ?? "",
         r?.shorts_plan.moments_es.length ? `Momentos a buscar: ${r.shorts_plan.moments_es.join(" · ")}` : "",
         sourceLong ? "" : `El Short "${video.title}" ya mostró su momento: busca OTROS momentos del mismo tema, no el mismo hecho con otro corte.`,

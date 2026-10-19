@@ -217,16 +217,24 @@ export default function YouTubeShorts() {
   }, [channelId]);
 
   const aiContext = useCallback(
-    async (p: ShortsProject, extraNotes = "") => ({
-      language: p.language,
-      profile,
-      cues: p.cues,
-      duration: p.duration,
-      videoTitle: p.relatedVideo?.title ?? p.name,
-      notes: [p.notes, extraNotes].filter(Boolean).join("\n"),
-      learnings: await learnings(),
-    }),
-    [profile, learnings]
+    async (p: ShortsProject, extraNotes = "") => {
+      // Shorts ya hechos en otros proyectos (aunque sigan programados y no publicados): la IA no repite sus momentos
+      const made = projects
+        .filter((x) => x.id !== p.id)
+        .flatMap((x) => x.plans.map((plan) => `"${plan.title}" (abre con: ${plan.hookLine.slice(0, 120)})`))
+        .slice(0, 25);
+      const used = made.length ? `SHORTS YA HECHOS EN OTROS PROYECTOS (no repitas esos momentos ni sus ganchos): ${made.join("; ")}` : "";
+      return {
+        language: p.language,
+        profile,
+        cues: p.cues,
+        duration: p.duration,
+        videoTitle: p.relatedVideo?.title ?? p.name,
+        notes: [p.notes, used, extraNotes].filter(Boolean).join("\n"),
+        learnings: await learnings(),
+      };
+    },
+    [profile, learnings, projects]
   );
 
   // ---------- Análisis con IA (dos pasadas) ----------
