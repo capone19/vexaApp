@@ -22,16 +22,26 @@ App (navegador)                         n8n                                   In
 2. POST multipart del MP4  ───────────► "Instagram: subir video"
                                          valida sesión, sube a R2 (transitorio),
                                          guarda media_url en la fila
-3. (nada más)                            "Instagram: reloj" (cada minuto)
-                                         toma las filas programadas cuya hora llegó
+                                         └► si ya está programada: arma la ALARMA
+3. Cambios de hora sin video nuevo ───► "Instagram: programar" (POST JSON)
+   (reprogramar, reintentar,             valida sesión └► arma la ALARMA
+    publicar ahora, borrador→programado)
+                                         "Instagram: alarma": duerme hasta scheduled_at
                                          └► "Instagram: publicar Reel"
+                                              toma la fila SOLO si sigue programada para esa hora
                                               crea contenedor ───────────────►  procesa
-                                              revisa / publica ──────────────►  Reel publicado
+                                              revisa cada 30 s / publica ────►  Reel publicado
                                               primer comentario, BORRA el video de R2,
                                               marca publicado + permalink, aviso Telegram
+                                         "Instagram: reloj" (cada hora, red de seguridad)
+                                         publica las vencidas que no tuvieron alarma
 ```
-- **La programación vive en la tabla**: la app solo crea o edita filas y sube el video. El reloj de n8n publica a la hora exacta (±1 min).
-- **"Publicar ahora"** = guardar la fila con `status = 'programado'` y `scheduled_at = now()`. El reloj la toma en menos de un minuto.
+- **No hay reloj revisando cada minuto.** Cada Reel tiene su propia alarma en n8n que despierta a la hora exacta. Mientras duerme no gasta nada, y aguanta que la app esté cerrada.
+- La app **avisa a n8n** (contrato 4.4) cada vez que la hora o el estado cambian sin subir video nuevo. Si sube video, no hace falta: la subida arma la alarma sola.
+- **Mover o cancelar no necesita "borrar alarmas"**: la alarma vieja despierta, ve que la fila ya no está programada para esa hora y se apaga sola.
+- **Avisar de más no hace daño**: n8n toma la fila de forma atómica, así que un Reel nunca sale dos veces.
+- Si el aviso falla (sin internet, etc.), el **repaso de cada hora** lo publica igual, con hasta 1 hora de atraso. Por eso un fallo del aviso no bloquea a la usuaria: solo se muestra un aviso suave.
+- **"Publicar ahora"** = guardar la fila con `status = 'programado'` y `scheduled_at = new Date()`, y luego avisar a n8n (4.4). Sale en 1 a 3 minutos.
 - **Los videos en R2 son transitorios**: se borran apenas se publica. Una limpieza diaria borra los huérfanos y suelta los de publicaciones en error (más de 3 días) o borradores abandonados (más de 14 días).
 - Reintentos: si Instagram falla, n8n reintenta hasta 3 veces cada 5 minutos. Después queda `status = 'error'` con `last_error` legible y llega un aviso por Telegram.
 
@@ -95,10 +105,26 @@ También existe `studio_video_tasks.source_ref` (text, nueva) para vincular un S
 ```
 Errores: `401` para sesión inválida y `400` para el resto, con `{ok:false, error}`. Tarda de 10 a 40 s; muestra un estado de carga.
 
+### 4.4 Avisar la hora a n8n: `POST {N8N_BASE_URL}/webhook/vexa-studio/instagram/programar`
+- JSON `{ "access_token": "<sesión supabase>", "publication_id": "<uuid>" }`. Se manda igual que 4.3.
+- **Cuándo llamarlo:** justo después de guardar en la base cualquier cambio que deje la fila en `programado` **sin subir video nuevo**:
+  - programar un borrador que ya tiene video
+  - cambiar `scheduled_at` (reprogramar o arrastrar en el calendario)
+  - **Publicar ahora**
+  - **Reintentar** un Reel en error que conserva su video
+- **Cuándo no hace falta:** después de `uploadReelVideo`, porque la subida arma la alarma sola. Tampoco al pasar a borrador o al borrar: la alarma vieja se apaga sola.
+- Respuestas:
+  - `200 {ok:true, armed:true, publication_id, scheduled_at}`: alarma puesta.
+  - `200 {ok:true, armed:false, publication_id, reason}`: no hacía falta. `reason` es `'no_programada'` o `'sin_video'`; en este último caso la alarma se arma cuando termine la subida.
+  - `404 {ok:false, error}`: la publicación no es de esta cuenta.
+  - `401 {ok:false, error:'unauthorized'}`.
+- Es rápido (< 1 s). **Si falla, no deshagas el cambio**: la fila ya quedó programada y el repaso de cada hora la publica igual. Muestra un aviso suave: "No pudimos avisar la hora exacta a Instagram; saldrá igual, con hasta 1 hora de atraso." Puedes reintentar el aviso una vez.
+
 ## 5. Constantes
 - En `src/lib/studio/instagram.ts` (nuevo), usa el mismo patrón de `ai.ts`:
   - `NEXT_PUBLIC_N8N_WEBHOOK_STUDIO_IG_UPLOAD || "/webhook/vexa-studio/instagram/upload"`
   - `NEXT_PUBLIC_N8N_WEBHOOK_STUDIO_IG_CAPTIONS || "/webhook/vexa-studio/instagram/captions"`
+  - `NEXT_PUBLIC_N8N_WEBHOOK_STUDIO_IG_SCHEDULE || "/webhook/vexa-studio/instagram/programar"`
 - Reutiliza `accessToken()` y `readResponse()` de `ai.ts`: expórtalos en vez de duplicarlos.
 
 ## 6. Lo que hay que construir
@@ -109,8 +135,9 @@ Errores: `401` para sesión inválida y `400` para el resto, con `{ok:false, err
 - `createPublication(input)`: inserta la fila y devuelve el id.
 - `updatePublication(id, patch)`: solo campos editables.
 - `deletePublication(id)`.
-- `schedulePublication(id, date)` y `publishNow(id)`, que es `programado` con `scheduled_at = new Date()`.
-- `unschedule(id)`: vuelve a borrador.
+- `notifySchedule(id)`: llama al contrato 4.4 y devuelve `{ armed, reason? }`. Nunca lanza un error hacia arriba: si falla, devuelve `{ armed: false, reason: 'aviso_fallido' }` para que la UI muestre el aviso suave.
+- `schedulePublication(id, date)`, `publishNow(id)` (que es `programado` con `scheduled_at = new Date()`) y `retryPublication(id, date?)`: guardan en la base y **luego llaman a `notifySchedule(id)`**. Lo mismo vale para `updatePublication` cuando cambia `scheduled_at` o pasa a `programado`. Centraliza esto en un solo lugar para que ningún camino se olvide del aviso.
+- `unschedule(id)`: vuelve a borrador. No avisa a n8n.
 - `uploadReelVideo(publicationId, file, onProgress)`, contra el contrato 4.2. Antes de subir valida en el navegador que el archivo sea MP4/MOV y que pese menos de 300 MB; si es WebM, muestra el mensaje de la sección 7.
 - `generateCaptions(items, profile, language)`, contra el contrato 4.3, con lotes de 10.
 - `subscribePublications(accountId, cb)`: **no uses Realtime** (gasta recursos). Usa polling liviano cada 20 s, y solo mientras haya filas `programado`/`publicando` a menos de 15 min o la pestaña esté visible.
@@ -210,6 +237,7 @@ Toma como referencia visual y de interacción `YouTubeProgramacion.tsx`: misma n
    - programa todo en un clic, con progreso de subida
 2. Un Reel programado aparece en el carril con su estado. Al llegar la hora pasa solo a "Publicando…" y luego a "Publicado" con link, sin recargar la página (polling).
 3. "Publicar ahora" publica en menos de unos 3 minutos.
+3b. Programar, reprogramar, reintentar y "Publicar ahora" llaman al aviso 4.4 (se ve en la pestaña Network). Si el aviso falla, el cambio queda guardado igual y aparece el aviso suave.
 4. Un WebM se rechaza antes de subirse, con el mensaje de la sección 7.
 5. Los Reels en error muestran el motivo y se pueden reintentar.
 6. YouTube sigue funcionando igual (Programación, Shorts, subida).
