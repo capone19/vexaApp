@@ -101,7 +101,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
   STORY: "Historias",
 };
 
-const TRAFFIC_LABELS: Record<string, string> = {
+export const TRAFFIC_LABELS: Record<string, string> = {
   SHORTS: "Feed de Shorts",
   YT_SEARCH: "Búsqueda en YouTube",
   RELATED_VIDEO: "Videos sugeridos",
@@ -150,9 +150,9 @@ function datesBetween(start: string, end: string): string[] {
   return out;
 }
 
-type Row = Record<string, string | number>;
+export type Row = Record<string, string | number>;
 
-async function googleGet(url: string, token: string): Promise<{ columnHeaders?: { name: string }[]; rows?: (string | number)[][]; items?: unknown[] }> {
+export async function googleGet(url: string, token: string): Promise<{ columnHeaders?: { name: string }[]; rows?: (string | number)[][]; items?: unknown[] }> {
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const body = await res.json().catch(() => null);
   if (!res.ok) {
@@ -166,7 +166,7 @@ async function googleGet(url: string, token: string): Promise<{ columnHeaders?: 
   return body;
 }
 
-async function report(token: string, params: Record<string, string>): Promise<Row[]> {
+export async function report(token: string, params: Record<string, string>): Promise<Row[]> {
   const url = new URL(ANALYTICS_URL);
   url.search = new URLSearchParams({ ids: "channel==MINE", ...params }).toString();
   const body = await googleGet(url.toString(), token);
@@ -190,7 +190,7 @@ function toTotals(row: Row | undefined): Totals {
 }
 
 /** "PT1M3S" -> 63 */
-function isoDuration(iso: string | undefined): number {
+export function isoDuration(iso: string | undefined): number {
   const m = /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso ?? "");
   if (!m) return 0;
   const [, d, h, min, sec] = m.map((v) => Number(v ?? 0));

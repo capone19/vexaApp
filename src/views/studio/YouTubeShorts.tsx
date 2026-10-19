@@ -61,6 +61,7 @@ import {
   type ShortsProject,
   type StoredRender,
 } from "@/lib/studio/shorts";
+import { takeShortsWave } from "@/lib/studio/performance-ai";
 import { parseSubtitles, isSubtitleFile, formatTimestamp } from "@/lib/studio/subtitles";
 import type { RelatedVideo } from "@/lib/studio/video-tasks";
 import { fetchYouTubeVideos } from "@/lib/studio/youtube";
@@ -151,6 +152,18 @@ export default function YouTubeShorts() {
       cancelled = true;
     };
   }, [channelId, toast]);
+
+  // Modo ola (viene de Rendimiento): el tema que está funcionando y el video al que deben llevar los Shorts
+  useEffect(() => {
+    const wave = takeShortsWave();
+    if (!wave) return;
+    setName(wave.name);
+    setNotes(wave.notes);
+    if (wave.relatedVideoId) setRelatedId(wave.relatedVideoId);
+    setOpenId(null);
+    setFormOpen(true);
+    toast({ title: "Modo ola", description: "Elige el archivo del video largo: la IA va a priorizar el tema que está despegando." });
+  }, [toast]);
 
   // Al abrir un proyecto: su video y los renders guardados
   useEffect(() => {
