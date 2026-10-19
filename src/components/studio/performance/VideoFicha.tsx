@@ -218,12 +218,20 @@ export function VideoFicha({
   const openFactory = () => {
     const r = replica?.data as Replica | undefined;
     const sourceLong = video.format === "video";
+    // Contra el contenido repetitivo: la IA de la Fábrica conoce los Shorts ya publicados y no repite sus momentos
+    const published = all
+      .filter((v) => v.format === "short")
+      .slice(0, 20)
+      .map((v) => `"${v.title}"`);
     setShortsWave({
       name: `Ola · ${video.title}`.slice(0, 80),
       notes: [
         `MODO OLA: "${video.title}" está rindiendo ${ratioLabel(video.ratio)} sobre lo normal. Prioriza los momentos de ese mismo tema.`,
         r?.shorts_plan.factory_notes ?? "",
         r?.shorts_plan.moments_es.length ? `Momentos a buscar: ${r.shorts_plan.moments_es.join(" · ")}` : "",
+        sourceLong ? "" : `El Short "${video.title}" ya mostró su momento: busca OTROS momentos del mismo tema, no el mismo hecho con otro corte.`,
+        "SIN CONTENIDO REPETIDO: cada Short debe contar algo distinto (otro dato, otro personaje u otra consecuencia) y abrir con un gancho de otro tipo. Mejor 1 Short distinto que 3 parecidos.",
+        published.length ? `Shorts ya publicados en el canal (no elijas momentos que cuenten lo mismo): ${published.join(", ")}` : "",
       ]
         .filter(Boolean)
         .join("\n"),
