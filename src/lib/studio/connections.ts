@@ -113,6 +113,8 @@ export const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   google: "Google rechazó la conexión. Vuelve a intentarlo.",
   instagram: "Instagram rechazó la conexión. Vuelve a intentarlo.",
   tiktok: "TikTok rechazó la conexión. Vuelve a intentarlo.",
+  ig_sin_acceso:
+    "Instagram dejó iniciar sesión pero no deja leer esa cuenta. Si la app de Meta está en modo desarrollo, agrega la cuenta como Instagram Tester y acepta la invitación; si es una cuenta nueva, confírmala (correo o teléfono), déjala como Creador o Empresa y prueba de nuevo en 24 a 48 horas.",
   cuenta_personal: "Esa cuenta de Instagram es personal. Cámbiala a cuenta profesional (Empresa o Creador) y vuelve a intentarlo.",
 };
 

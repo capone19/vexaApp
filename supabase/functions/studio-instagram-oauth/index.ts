@@ -143,15 +143,17 @@ async function exchangeCode(code: string) {
   const shortData = short.data?.[0] ?? short;
   const permissions = Array.isArray(shortData.permissions) ? shortData.permissions.join(",") : shortData.permissions;
 
+  const userId = shortData.user_id ? String(shortData.user_id) : null;
   try {
     const long = await toLongToken(shortData.access_token);
-    return { ...long, scope: permissions ?? null };
+    return { ...long, scope: permissions ?? null, user_id: userId };
   } catch (err) {
     console.error("[studio-instagram-oauth] no se pudo obtener el token largo, se guarda el corto:", String(err));
     return {
       access_token: shortData.access_token as string,
       expires_in: Number(shortData.expires_in ?? 3600),
       scope: permissions ?? null,
+      user_id: userId,
     };
   }
 }
@@ -166,6 +168,18 @@ async function refreshLongToken(accessToken: string) {
     )
   );
   return { access_token: body.access_token as string, expires_in: Number(body.expires_in) };
+}
+
+/** Perfil de la cuenta. Si los campos completos fallan, reintenta con los mínimos (algunas cuentas nuevas no exponen todo). */
+async function fetchProfile(accessToken: string) {
+  const get = (base: string, fields: string) =>
+    fetch(`${base}/me?${new URLSearchParams({ fields, access_token: accessToken })}`).then(getJson);
+  try {
+    return await get(GRAPH, "user_id,username,name,profile_picture_url,followers_count,account_type");
+  } catch (err) {
+    console.warn("[studio-instagram-oauth] perfil completo falló, se reintenta con campos mínimos:", String(err));
+    return await get("https://graph.instagram.com", "user_id,username,account_type");
+  }
 }
 
 // ---------- GET: callback de Instagram ----------
@@ -186,14 +200,18 @@ async function handleCallback(admin: SupabaseClient, url: URL) {
   try {
     const tokens = await exchangeCode(code);
 
-    const profile = await getJson(
-      await fetch(
-        `${GRAPH}/me?${new URLSearchParams({
-          fields: "user_id,username,name,profile_picture_url,followers_count,account_type",
-          access_token: tokens.access_token,
-        })}`
-      )
-    );
+    let profile;
+    try {
+      profile = await fetchProfile(tokens.access_token);
+    } catch (err) {
+      // Meta responde "Unsupported request" cuando la app no puede leer esa cuenta: en modo desarrollo la cuenta
+      // no es tester aceptada, o es una cuenta nueva/restringida que aún no habilita la API
+      if (String(err).includes("Unsupported request")) {
+        console.error("[studio-instagram-oauth] cuenta sin acceso a la API:", String(err), tokens.user_id, tokens.scope);
+        return back({ studio_error: "ig_sin_acceso" });
+      }
+      throw err;
+    }
     if (profile.account_type && !["BUSINESS", "MEDIA_CREATOR"].includes(profile.account_type)) {
       return back({ studio_error: "cuenta_personal" });
     }
