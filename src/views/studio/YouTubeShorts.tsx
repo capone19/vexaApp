@@ -77,6 +77,10 @@ type StepKey = (typeof STEPS)[number]["key"];
 
 const NO_RELATED = "none";
 
+// Contra el contenido repetitivo: cada Short del lote cumple un papel distinto y deja una conclusión distinta
+const ONE_IDEA_RULE =
+  "UN SHORT = UNA IDEA, UN ÁNGULO Y UN GANCHO. Cada Short del lote debe dejar una conclusión distinta: no repitas la misma tesis (por ejemplo, 'los ricos se salvaban y tú no') con otro ejemplo. Reparte papeles distintos: el error común sobre el tema, el dato que cambia la conclusión, una comparación rápida, lo que nadie te cuenta, un caso concreto, una pregunta directa a la audiencia o el clip gancho que lleva al video largo. Si dos candidatos dicen lo mismo, quédate solo con el mejor.";
+
 export default function YouTubeShorts() {
   const params = useParams<{ plataforma: string }>();
   if (params?.plataforma !== "youtube") notFound();
@@ -230,7 +234,7 @@ export default function YouTubeShorts() {
         cues: p.cues,
         duration: p.duration,
         videoTitle: p.relatedVideo?.title ?? p.name,
-        notes: [p.notes, used, extraNotes].filter(Boolean).join("\n"),
+        notes: [p.notes, used, ONE_IDEA_RULE, extraNotes].filter(Boolean).join("\n"),
         learnings: await learnings(),
       };
     },

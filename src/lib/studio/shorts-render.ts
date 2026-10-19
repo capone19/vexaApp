@@ -95,6 +95,9 @@ export class ShortEngine {
   private ctx: CanvasRenderingContext2D;
   private bg: HTMLCanvasElement;
   private bgCtx: CanvasRenderingContext2D;
+  private bgBlur: boolean;
+  private bgTiny: HTMLCanvasElement;
+  private bgTinyCtx: CanvasRenderingContext2D;
   private video: HTMLVideoElement;
   private url: string;
   private audio: AudioContext | null = null;
@@ -118,10 +121,18 @@ export class ShortEngine {
     const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) throw new Error("Este navegador no permite dibujar video.");
     this.ctx = ctx;
+    // Fondo difuminado: un cuadro chico con blur real. Agrandar un cuadro diminuto sin blur se ve pixelado.
     this.bg = document.createElement("canvas");
-    this.bg.width = 54;
-    this.bg.height = 96;
+    this.bg.width = 216;
+    this.bg.height = 384;
     this.bgCtx = this.bg.getContext("2d")!;
+    this.bgBlur = typeof this.bgCtx.filter === "string";
+    if (this.bgBlur) this.bgCtx.filter = "blur(10px)";
+    // Sin ctx.filter (Safari): se achica a 27×48 y se agranda en dos pasos con suavizado
+    this.bgTiny = document.createElement("canvas");
+    this.bgTiny.width = 27;
+    this.bgTiny.height = 48;
+    this.bgTinyCtx = this.bgTiny.getContext("2d")!;
     this.url = URL.createObjectURL(file);
     this.video = document.createElement("video");
     this.video.preload = "auto";
@@ -572,7 +583,14 @@ export class ShortEngine {
       const vw = this.video.videoWidth || 1920;
       const vh = this.video.videoHeight || 1080;
       const sw = vh * (9 / 16);
-      this.bgCtx.drawImage(this.video, (vw - sw) / 2, 0, sw, vh, 0, 0, this.bg.width, this.bg.height);
+      if (this.bgBlur) {
+        // Se dibuja más grande que el lienzo para que el blur no deje bordes transparentes
+        this.bgCtx.drawImage(this.video, (vw - sw) / 2, 0, sw, vh, -24, -24, this.bg.width + 48, this.bg.height + 48);
+      } else {
+        this.bgTinyCtx.drawImage(this.video, (vw - sw) / 2, 0, sw, vh, 0, 0, this.bgTiny.width, this.bgTiny.height);
+        this.bgCtx.imageSmoothingQuality = "high";
+        this.bgCtx.drawImage(this.bgTiny, 0, 0, this.bg.width, this.bg.height);
+      }
       c.imageSmoothingQuality = "high";
       c.drawImage(this.bg, -40, -40, OUT_W + 80, OUT_H + 80);
       c.fillStyle = "rgba(6,6,10,0.72)";
