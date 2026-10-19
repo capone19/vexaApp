@@ -40,6 +40,8 @@ export interface YouTubeDraft {
   /** Shorts: video largo al que lleva (se elige luego en YouTube Studio; aquí agrega el llamado al texto) */
   relatedVideo?: RelatedVideo | null;
   useLocalizations: boolean;
+  /** Short nacido en la Fábrica: 'shorts:<projectId>:<planId>' (Instagram lo usa para encontrar el archivo) */
+  sourceRef?: string;
   /** ISO; null = sin fecha todavía */
   scheduledAt: string | null;
   error?: string;
@@ -257,7 +259,7 @@ export async function publishDraft(
   let task: VideoTask | null = null;
   const comment = draftComment(draft).trim();
   const related = draft.format === "short" ? (draft.relatedVideo ?? null) : null;
-  if (comment || related) {
+  if (comment || related || draft.sourceRef) {
     try {
       task = await saveVideoTask({
         accountId: draft.accountId,
@@ -267,6 +269,7 @@ export async function publishDraft(
         commentText: comment,
         postAfter: opts.publishAt ?? new Date().toISOString(),
         related,
+        sourceRef: draft.sourceRef,
       });
       if (comment) {
         onStatus("Publicando el comentario…");

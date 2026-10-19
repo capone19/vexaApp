@@ -72,7 +72,7 @@ import {
 } from "@/lib/studio/publish-plan";
 import { formatFollowers } from "@/lib/studio/platforms";
 import { listVideoTasks, type RelatedVideo, type VideoTask } from "@/lib/studio/video-tasks";
-import { fetchYouTubeVideos, YOUTUBE_ERROR_MESSAGES, type YouTubeVideo } from "@/lib/studio/youtube";
+import { fetchYouTubeVideos, scheduleTimes, YOUTUBE_ERROR_MESSAGES, type YouTubeVideo } from "@/lib/studio/youtube";
 import {
   baseName,
   DAILY_QUOTA,
@@ -110,13 +110,14 @@ const time = (d: Date) => format(d, "HH:mm");
 
 /** Contenido del canal que ocupa el calendario: programados (privados con fecha) y publicados */
 function youtubeEntries(videos: YouTubeVideo[]): Extract<Entry, { kind: "youtube" }>[] {
-  return videos.flatMap((video) => {
-    const scheduled = video.privacy === "private" && Boolean(video.publishAt);
-    const iso = scheduled ? video.publishAt : video.privacy === "private" ? null : video.publishedAt;
-    if (!iso) return [];
-    const at = new Date(iso);
-    return [{ kind: "youtube" as const, key: `yt-${video.id}`, at, format: video.isShort ? "short" : "video", video, scheduled }];
-  });
+  return scheduleTimes(videos).map(({ video, at, scheduled }) => ({
+    kind: "youtube" as const,
+    key: `yt-${video.id}`,
+    at,
+    format: video.isShort ? "short" : "video",
+    video,
+    scheduled,
+  }));
 }
 
 function sortDrafts(list: YouTubeDraft[]) {
@@ -342,7 +343,7 @@ export default function YouTubeProgramacion() {
     const created: YouTubeDraft[] = [];
     for (const file of videos) {
       const info = await inspectVideo(file);
-      const formatOf: SlotFormat = slot?.format ?? info.format;
+      const formatOf = (slot?.format ?? info.format) as YouTubeDraft["format"];
       const key = baseName(file.name);
       const only = videos.length === 1;
       const subtitleFile = subs.find((s) => baseName(s.name) === key) ?? (only && subs.length === 1 ? subs[0] : null);

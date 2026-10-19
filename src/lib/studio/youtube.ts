@@ -80,6 +80,16 @@ export async function fetchYouTubeVideos(accountId: string, pageToken?: string):
   };
 }
 
+/** Contenido del canal que ocupa el calendario: programados (privados con fecha) y publicados */
+export function scheduleTimes(videos: YouTubeVideo[]): { video: YouTubeVideo; at: Date; scheduled: boolean }[] {
+  return videos.flatMap((video) => {
+    const scheduled = video.privacy === "private" && Boolean(video.publishAt);
+    const iso = scheduled ? video.publishAt : video.privacy === "private" ? null : video.publishedAt;
+    if (!iso) return [];
+    return [{ video, at: new Date(iso), scheduled }];
+  });
+}
+
 /** 3723 -> "1:02:03" */
 export function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);

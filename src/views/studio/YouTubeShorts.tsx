@@ -27,12 +27,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ReelComposerDialog } from "@/components/studio/instagram/ReelComposerDialog";
 import { ShortPlanCard, scoreTone } from "@/components/studio/ShortPlanCard";
 import { ShortsSoundsDialog } from "@/components/studio/ShortsSoundsDialog";
 import { EmptyState, StudioCard, StudioPageHeader } from "@/components/studio/StudioUI";
+import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
+import { useInstagramAccount } from "@/hooks/use-instagram-account";
 import { useToast } from "@/hooks/use-toast";
 import { useYouTubeChannel } from "@/hooks/use-youtube-channel";
 import { LANGUAGES, normalizeProfile, transcribeAudio } from "@/lib/studio/ai";
+import { factoryShortFrom, listAccountPublications, reelOccupants, type FactoryShort } from "@/lib/studio/instagram";
+import { hasPublishPlan, normalizePlan, type Occupant } from "@/lib/studio/publish-plan";
 import { extractAudioChunks, getVideoInfo } from "@/lib/studio/media";
 import {
   ANGLE_LABELS,
@@ -86,9 +91,28 @@ export default function YouTubeShorts() {
   if (params?.plataforma !== "youtube") notFound();
 
   const { channels, channel, select } = useYouTubeChannel();
+  const { account: igAccount } = useInstagramAccount();
+  const { tenantId } = useEffectiveTenant();
   const { toast } = useToast();
   const profile = useMemo(() => normalizeProfile(channel?.aiProfile), [channel]);
   const channelId = channel?.id;
+  // "También a Instagram": el compositor de Reels con este render ya elegido
+  const [reelShort, setReelShort] = useState<FactoryShort | null>(null);
+  const [igOccupants, setIgOccupants] = useState<Occupant[]>([]);
+  const igPlan = useMemo(() => (hasPublishPlan(igAccount?.publishPlan) ? normalizePlan(igAccount?.publishPlan) : null), [igAccount]);
+  const igAccountId = igAccount?.id;
+  const reelOpen = reelShort !== null;
+
+  useEffect(() => {
+    if (!reelOpen || !igAccountId) return;
+    let cancelled = false;
+    listAccountPublications(igAccountId)
+      .then((list) => !cancelled && setIgOccupants(reelOccupants(list)))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [reelOpen, igAccountId]);
 
   const [projects, setProjects] = useState<ShortsProject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -625,6 +649,9 @@ export default function YouTubeShorts() {
                 onBeforeRender={beforeRender}
                 onRendered={rendered}
                 onSend={() => send(plan)}
+                onSendInstagram={
+                  igAccount && renders[plan.id] ? () => setReelShort(factoryShortFrom(project, plan, renders[plan.id])) : undefined
+                }
                 onDelete={() => commit({ ...project, plans: project.plans.filter((x) => x.id !== plan.id) }, true)}
                 onActive={(active) => setActivePlan(active ? plan.id : null)}
               />
@@ -681,6 +708,21 @@ export default function YouTubeShorts() {
         )}
 
         <ShortsSoundsDialog open={soundsOpen} onOpenChange={setSoundsOpen} />
+
+        {igAccount && (
+          <ReelComposerDialog
+            open={reelShort !== null}
+            onOpenChange={(open) => !open && setReelShort(null)}
+            account={igAccount}
+            youtubeChannel={channel}
+            tenantId={tenantId}
+            publication={null}
+            initialShort={reelShort}
+            plan={igPlan}
+            occupants={igOccupants}
+            onSaved={() => undefined}
+          />
+        )}
       </div>
     );
   }

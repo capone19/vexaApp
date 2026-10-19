@@ -110,14 +110,14 @@ export const ANGLE_LABELS: Record<TitleOption["angle"], string> = {
   stakes: "Impacto",
 };
 
-async function accessToken(): Promise<string> {
+export async function accessToken(): Promise<string> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   if (!token) throw new Error("Tu sesión expiró. Vuelve a iniciar sesión.");
   return token;
 }
 
-async function readResponse<T>(res: Response): Promise<T> {
+export async function readResponse<T>(res: Response): Promise<T> {
   const body = await res.json().catch(() => null);
   if (res.status === 401) throw new Error("Tu sesión expiró. Vuelve a iniciar sesión.");
   if (!res.ok || !body?.ok) throw new Error(body?.error ?? `n8n respondió ${res.status}`);

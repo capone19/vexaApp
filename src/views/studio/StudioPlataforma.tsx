@@ -1,16 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
 import { ArrowRight, PlugZap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChannelVideos } from "@/components/studio/ChannelVideos";
+import { InstagramHome, type InstagramHomeHandle } from "@/components/studio/instagram/InstagramHome";
 import { PlatformIcon } from "@/components/studio/PlatformIcon";
 import { PostComposerDialog } from "@/components/studio/PostComposerDialog";
 import { PostList } from "@/components/studio/PostList";
 import { YouTubeUploadDialog } from "@/components/studio/YouTubeUploadDialog";
 import { AiBadge, EmptyState, SoonBadge, StudioCard, StudioPageHeader } from "@/components/studio/StudioUI";
 import { useStudio } from "@/contexts/StudioContext";
+import { useInstagramAccount } from "@/hooks/use-instagram-account";
+import { useToast } from "@/hooks/use-toast";
 import { formatFollowers, isPlatformId, PLATFORMS } from "@/lib/studio/platforms";
 import type { PlatformAction } from "@/lib/studio/types";
 import type { YouTubeChannelStats, YouTubeVideo } from "@/lib/studio/youtube";
@@ -83,6 +86,29 @@ export default function StudioPlataforma() {
     : platformPosts.filter((p) => p.status === "programado").length;
   const drafts = isYouTube ? ytDrafts : platformPosts.filter((p) => p.status === "borrador").length;
 
+  // Instagram: datos reales de studio_publications (Inicio + compositor de Reels)
+  const isInstagram = platform === "instagram";
+  const { toast } = useToast();
+  const { accounts: igAccounts, account: igSelected } = useInstagramAccount();
+  const igAccount = accountFilter === ALL ? igSelected : (igAccounts.find((a) => a.id === accountFilter) ?? null);
+  const igHomeRef = useRef<InstagramHomeHandle>(null);
+
+  const runAction = (action: PlatformAction) => {
+    if (!isInstagram) {
+      setActiveAction(action);
+      return;
+    }
+    if (action.id === "carrusel") {
+      toast({ title: "Carruseles: próximamente", description: "Por ahora el Studio publica Reels en Instagram." });
+      return;
+    }
+    if (!igAccount) {
+      toast({ title: "Conecta tu cuenta de Instagram", description: "Para publicar Reels, conéctala en Cuentas conectadas.", variant: "destructive" });
+      return;
+    }
+    igHomeRef.current?.newReel();
+  };
+
   return (
     <div className="mx-auto max-w-7xl space-y-8">
       <StudioPageHeader
@@ -126,18 +152,35 @@ export default function StudioPlataforma() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: "Seguidores", value: formatFollowers(followers) },
-              { label: "Programadas", value: String(scheduled) },
-              { label: "Borradores", value: String(drafts) },
-            ].map((s) => (
-              <StudioCard key={s.label} className="p-4">
-                <p className="text-xs text-muted-foreground">{s.label}</p>
-                <p className="mt-1 text-2xl font-semibold tracking-tight">{s.value}</p>
-              </StudioCard>
-            ))}
-          </div>
+          {isInstagram ? (
+            igAccount ? (
+              <InstagramHome key={igAccount.id} ref={igHomeRef} account={igAccount} />
+            ) : (
+              <EmptyState
+                icon={<PlugZap className="h-6 w-6" />}
+                title="Esta cuenta no está conectada a Instagram"
+                description="Para programar y publicar Reels, conecta la cuenta por Instagram en Cuentas conectadas."
+                action={
+                  <Button asChild>
+                    <Link href="/studio/cuentas">Ir a cuentas conectadas</Link>
+                  </Button>
+                }
+              />
+            )
+          ) : (
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "Seguidores", value: formatFollowers(followers) },
+                { label: "Programadas", value: String(scheduled) },
+                { label: "Borradores", value: String(drafts) },
+              ].map((s) => (
+                <StudioCard key={s.label} className="p-4">
+                  <p className="text-xs text-muted-foreground">{s.label}</p>
+                  <p className="mt-1 text-2xl font-semibold tracking-tight">{s.value}</p>
+                </StudioCard>
+              ))}
+            </div>
+          )}
 
           <section className="space-y-4">
             <h2 className="text-lg font-semibold">Acciones</h2>
@@ -174,7 +217,7 @@ export default function StudioPlataforma() {
                     {body}
                   </Link>
                 ) : (
-                  <button key={action.id} type="button" disabled={!available} onClick={() => setActiveAction(action)} className={cardClass}>
+                  <button key={action.id} type="button" disabled={!available} onClick={() => runAction(action)} className={cardClass}>
                     {body}
                   </button>
                 );
@@ -186,7 +229,7 @@ export default function StudioPlataforma() {
             <ChannelVideos accounts={channelAccounts} onChannelStats={handleChannelStats} onVideos={handleVideos} />
           )}
 
-          {!isYouTube && (
+          {!isYouTube && !isInstagram && (
           <StudioCard>
             <div className="mb-2 flex items-center justify-between">
               <h2 className="font-semibold">Publicaciones</h2>
@@ -204,7 +247,7 @@ export default function StudioPlataforma() {
         accountId={accountFilter === ALL ? undefined : accountFilter}
       />
       <PostComposerDialog
-        open={activeAction !== null && !isYouTube}
+        open={activeAction !== null && !isYouTube && !isInstagram}
         onOpenChange={(open) => !open && setActiveAction(null)}
         platform={platform}
         action={activeAction}

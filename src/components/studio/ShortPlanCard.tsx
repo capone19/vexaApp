@@ -8,6 +8,7 @@ import {
   Clapperboard,
   Download,
   FolderOpen,
+  Instagram,
   Loader2,
   Music2,
   Play,
@@ -77,6 +78,8 @@ interface Props {
   onBeforeRender?: () => Promise<void>;
   onRendered: (render: StoredRender) => Promise<void>;
   onSend: () => Promise<void>;
+  /** Abre el compositor de Instagram con este render (solo si hay una cuenta de Instagram gestionada) */
+  onSendInstagram?: () => void;
   onDelete: () => void;
   onActive: (active: boolean) => void;
 }
@@ -94,6 +97,7 @@ export function ShortPlanCard({
   onBeforeRender,
   onRendered,
   onSend,
+  onSendInstagram,
   onDelete,
   onActive,
 }: Props) {
@@ -291,6 +295,12 @@ export function ShortPlanCard({
                   </Button>
                 )}
               </div>
+              {onSendInstagram && (
+                <Button variant="ghost" size="sm" className="h-8 w-full gap-1.5 text-pink-300 hover:text-pink-200" onClick={onSendInstagram}>
+                  <Instagram className="h-4 w-4" />
+                  También a Instagram
+                </Button>
+              )}
             </div>
           )}
         </div>

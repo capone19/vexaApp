@@ -92,6 +92,18 @@ export async function listVideoTasks(accountId: string): Promise<VideoTask[]> {
   return (data as TaskRow[]).map(toTask);
 }
 
+/** Origen de cada Short subido desde la Fábrica (id del video de YouTube → 'shorts:<projectId>:<planId>') */
+export async function listSourceRefs(accountId: string): Promise<Map<string, string>> {
+  const { data, error } = await db
+    .from("studio_video_tasks")
+    .select("video_id, source_ref")
+    .eq("account_id", accountId)
+    .not("source_ref", "is", null)
+    .limit(500);
+  if (error) throw error;
+  return new Map((data as { video_id: string; source_ref: string }[]).map((r) => [r.video_id, r.source_ref]));
+}
+
 export interface SaveTaskInput {
   accountId: string;
   videoId: string;
@@ -101,6 +113,8 @@ export interface SaveTaskInput {
   /** Hora de publicación del video (desde ahí n8n intenta publicar el comentario) */
   postAfter: string;
   related: RelatedVideo | null;
+  /** Origen en la Fábrica ('shorts:<projectId>:<planId>'); si no viene, no se toca el guardado */
+  sourceRef?: string;
 }
 
 /** Crea o reemplaza las tareas del video. Un comentario nuevo queda pendiente (aún no se publicó). */
@@ -123,6 +137,7 @@ export async function saveVideoTask(input: SaveTaskInput): Promise<VideoTask> {
         related_video_id: input.related?.id ?? null,
         related_video_title: input.related?.title ?? null,
         related_done: false,
+        ...(input.sourceRef ? { source_ref: input.sourceRef } : {}),
       },
       { onConflict: "account_id,video_id" }
     )

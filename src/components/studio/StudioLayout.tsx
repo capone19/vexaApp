@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarDays, ChartLine, ChevronDown, Clapperboard, LayoutDashboard, LogOut, Menu, PlugZap, Rocket, Scissors, Workflow } from "lucide-react";
+import { CalendarDays, ChartLine, ChevronDown, Clapperboard, Home, LayoutDashboard, LogOut, Menu, PlugZap, Rocket, Scissors, Workflow } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { ModeSwitchButton } from "@/components/shared/ModeSwitchButton";
 import { PlatformIcon } from "@/components/studio/PlatformIcon";
@@ -29,6 +29,9 @@ const pageTitles: Record<string, string> = {
   "/studio/youtube/shorts": "YouTube · Shorts",
   "/studio/youtube/rendimiento": "YouTube · Rendimiento",
   "/studio/instagram": "Instagram",
+  "/studio/instagram/programar": "Instagram · Programación",
+  "/studio/instagram/analisis": "Instagram · Análisis",
+  "/studio/instagram/rendimiento": "Instagram · Rendimiento",
   "/studio/tiktok": "TikTok",
 };
 
@@ -40,6 +43,12 @@ const platformSubNav: Partial<Record<string, { title: string; href: string; icon
     { title: "Rendimiento", href: "/studio/youtube/rendimiento", icon: Rocket },
     { title: "Programación", href: "/studio/youtube/programar", icon: CalendarDays },
     { title: "Shorts", href: "/studio/youtube/shorts", icon: Scissors },
+  ],
+  instagram: [
+    { title: "Inicio", href: "/studio/instagram", icon: Home, end: true },
+    { title: "Programación", href: "/studio/instagram/programar", icon: CalendarDays },
+    { title: "Análisis", href: "/studio/instagram/analisis", icon: ChartLine },
+    { title: "Rendimiento", href: "/studio/instagram/rendimiento", icon: Rocket },
   ],
 };
 

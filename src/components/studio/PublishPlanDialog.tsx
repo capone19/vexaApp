@@ -7,10 +7,12 @@ import { Label } from "@/components/ui/label";
 import { useStudio } from "@/contexts/StudioContext";
 import { useToast } from "@/hooks/use-toast";
 import {
+  hasPublishPlan,
   newRule,
   normalizePlan,
   PLAN_PRESETS,
   presetRules,
+  REEL_PLAN_PRESETS,
   SLOT_FORMAT_LABELS,
   WEEK_DAYS,
   type PlanRule,
@@ -31,10 +33,15 @@ export function PublishPlanDialog({ account, open, onOpenChange }: PublishPlanDi
   const { toast } = useToast();
   const [rules, setRules] = useState<PlanRule[]>([]);
   const [saving, setSaving] = useState(false);
+  // Instagram solo publica Reels: un formato y sus propias plantillas
+  const isReels = account?.platform === "instagram";
+  const presets = isReels ? REEL_PLAN_PRESETS : PLAN_PRESETS;
 
   useEffect(() => {
-    if (open) setRules(normalizePlan(account?.publishPlan).rules);
-  }, [open, account]);
+    if (!open) return;
+    if (isReels) setRules(hasPublishPlan(account?.publishPlan) ? normalizePlan(account?.publishPlan).rules : presetRules("reel-recomendado"));
+    else setRules(normalizePlan(account?.publishPlan).rules);
+  }, [open, account, isReels]);
 
   const update = (id: string, patch: Partial<PlanRule>) => setRules((list) => list.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const toggleDay = (rule: PlanRule, day: number) =>
@@ -43,6 +50,7 @@ export function PublishPlanDialog({ account, open, onOpenChange }: PublishPlanDi
   const perWeek = (format: SlotFormat) => rules.filter((r) => r.format === format).reduce((n, r) => n + r.days.length, 0);
   const shorts = perWeek("short");
   const videos = perWeek("video");
+  const reels = perWeek("reel");
 
   const handleSave = async () => {
     if (!account) return;
@@ -64,7 +72,9 @@ export function PublishPlanDialog({ account, open, onOpenChange }: PublishPlanDi
         <DialogHeader>
           <DialogTitle>Frecuencia de publicación</DialogTitle>
           <DialogDescription>
-            Define qué días y a qué hora sale cada formato. El calendario arma los espacios de cada semana y reparte tus videos solo.
+            {isReels
+              ? "Define qué días y a qué hora sale cada Reel. El calendario arma los espacios de cada semana y los usa al replicar desde YouTube."
+              : "Define qué días y a qué hora sale cada formato. El calendario arma los espacios de cada semana y reparte tus videos solo."}
           </DialogDescription>
         </DialogHeader>
 
@@ -72,7 +82,7 @@ export function PublishPlanDialog({ account, open, onOpenChange }: PublishPlanDi
           <div className="space-y-2">
             <Label>Empezar desde una plantilla</Label>
             <div className="grid gap-2 sm:grid-cols-3">
-              {PLAN_PRESETS.map((preset) => (
+              {presets.map((preset) => (
                 <button
                   key={preset.id}
                   type="button"
@@ -90,7 +100,9 @@ export function PublishPlanDialog({ account, open, onOpenChange }: PublishPlanDi
             <div className="flex items-center justify-between">
               <Label>Horarios</Label>
               <span className="text-xs text-muted-foreground">
-                {shorts} Shorts y {videos} {videos === 1 ? "video" : "videos"} por semana
+                {isReels
+                  ? `${reels} ${reels === 1 ? "Reel" : "Reels"} por semana`
+                  : `${shorts} Shorts y ${videos} ${videos === 1 ? "video" : "videos"} por semana`}
               </span>
             </div>
             {rules.length === 0 && (
@@ -99,21 +111,25 @@ export function PublishPlanDialog({ account, open, onOpenChange }: PublishPlanDi
             {rules.map((rule) => (
               <div key={rule.id} className="space-y-3 rounded-xl border border-border p-3">
                 <div className="flex items-center gap-2">
-                  <div className="flex rounded-lg bg-secondary/60 p-0.5">
-                    {(["short", "video"] as SlotFormat[]).map((f) => (
-                      <button
-                        key={f}
-                        type="button"
-                        onClick={() => update(rule.id, { format: f })}
-                        className={cn(
-                          "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-                          rule.format === f ? "bg-primary/20 text-foreground" : "text-muted-foreground hover:text-foreground"
-                        )}
-                      >
-                        {SLOT_FORMAT_LABELS[f]}
-                      </button>
-                    ))}
-                  </div>
+                  {isReels ? (
+                    <span className="rounded-md bg-pink-500/15 px-2.5 py-1 text-xs font-medium text-pink-300">{SLOT_FORMAT_LABELS.reel}</span>
+                  ) : (
+                    <div className="flex rounded-lg bg-secondary/60 p-0.5">
+                      {(["short", "video"] as SlotFormat[]).map((f) => (
+                        <button
+                          key={f}
+                          type="button"
+                          onClick={() => update(rule.id, { format: f })}
+                          className={cn(
+                            "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                            rule.format === f ? "bg-primary/20 text-foreground" : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {SLOT_FORMAT_LABELS[f]}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <Input
                     type="time"
                     value={rule.time}
@@ -152,20 +168,30 @@ export function PublishPlanDialog({ account, open, onOpenChange }: PublishPlanDi
               </div>
             ))}
             <div className="flex gap-2">
-              <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setRules((l) => [...l, newRule("short")])}>
-                <Plus className="h-3.5 w-3.5" />
-                Horario de Shorts
-              </Button>
-              <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setRules((l) => [...l, { ...newRule("video"), days: [6] }])}>
-                <Plus className="h-3.5 w-3.5" />
-                Horario de videos
-              </Button>
+              {isReels ? (
+                <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setRules((l) => [...l, newRule("reel")])}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Horario de Reels
+                </Button>
+              ) : (
+                <>
+                  <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setRules((l) => [...l, newRule("short")])}>
+                    <Plus className="h-3.5 w-3.5" />
+                    Horario de Shorts
+                  </Button>
+                  <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setRules((l) => [...l, { ...newRule("video"), days: [6] }])}>
+                    <Plus className="h-3.5 w-3.5" />
+                    Horario de videos
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Las horas son las de este computador. Cada subida gasta cuota de la API de YouTube (~1.600 unidades de 10.000 diarias):
-            una semana completa se programa en 1 o 2 días.
+            {isReels
+              ? "Las horas son las de este computador. Instagram publica cada Reel solo a su hora, aunque este PC esté apagado."
+              : "Las horas son las de este computador. Cada subida gasta cuota de la API de YouTube (~1.600 unidades de 10.000 diarias): una semana completa se programa en 1 o 2 días."}
           </p>
         </div>
 

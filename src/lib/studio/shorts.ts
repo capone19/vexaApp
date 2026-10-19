@@ -957,6 +957,14 @@ export async function deleteAudio(id: string): Promise<void> {
 
 // ---------- Enviar a Programación ----------
 
+/** Vínculo entre un Short publicado (YouTube o Instagram) y su archivo de la Fábrica */
+export const shortsSourceRef = (projectId: string, planId: string) => `shorts:${projectId}:${planId}`;
+
+export function parseShortsSourceRef(ref: string | null | undefined): { projectId: string; planId: string } | null {
+  const match = /^shorts:([^:]+):(.+)$/.exec(ref ?? "");
+  return match ? { projectId: match[1], planId: match[2] } : null;
+}
+
 /** Crea el borrador del Short en Programación con el video, sus subtítulos y los textos de la IA */
 export async function sendShortToSchedule(
   project: ShortsProject,
@@ -985,6 +993,7 @@ export async function sendShortToSchedule(
     pinnedComment: comment ? (related ? withCta(comment, project.language) : comment) : undefined,
     relatedVideo: related,
     notes: `Short de "${project.name}" (Fábrica de Shorts · puntaje ${totalScore(plan.score)}). Gancho: ${plan.hookLine}`,
+    sourceRef: shortsSourceRef(project.id, plan.id),
   });
   await saveDraft(draft);
   return draft.id;
