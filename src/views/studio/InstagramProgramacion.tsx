@@ -30,6 +30,7 @@ import { ReelComposerDialog } from "@/components/studio/instagram/ReelComposerDi
 import { ReelStatusChip, useScheduleNotice, whenLabel } from "@/components/studio/instagram/ReelParts";
 import { ReplicateFromYouTubeSheet, type ShortEntry } from "@/components/studio/instagram/ReplicateFromYouTubeSheet";
 import { PublishPlanDialog } from "@/components/studio/PublishPlanDialog";
+import { RescheduleDialog } from "@/components/studio/RescheduleDialog";
 import { EmptyState, StudioCard, StudioPageHeader } from "@/components/studio/StudioUI";
 import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
 import { useInstagramAccount } from "@/hooks/use-instagram-account";
@@ -52,7 +53,9 @@ import {
   type PublicationSubscription,
 } from "@/lib/studio/instagram";
 import { addDays, freeSlots, hasPublishPlan, normalizePlan, sameDay, slotsBetween, startOfWeek, type PlanSlot } from "@/lib/studio/publish-plan";
+import { rescheduleVideoTask } from "@/lib/studio/video-tasks";
 import { fetchYouTubeVideos, scheduleTimes, YOUTUBE_ERROR_MESSAGES, type YouTubeVideo } from "@/lib/studio/youtube";
+import { rescheduleYouTubeVideo, YOUTUBE_MIN_LEAD_MS } from "@/lib/studio/youtube-upload";
 import { cn } from "@/lib/utils";
 
 const time = (d: Date) => format(d, "HH:mm");
@@ -61,6 +64,16 @@ interface ComposerState {
   publication: InstagramPublication | null;
   at?: Date | null;
 }
+
+type RescheduleTarget =
+  | { kind: "reel"; publication: InstagramPublication }
+  | { kind: "short"; entry: ShortEntry; twin: InstagramPublication | null };
+
+/** Choca con otro Reel si quedan a menos de 15 minutos */
+const CLASH_MS = 15 * 60_000;
+
+const canReschedule = (p: InstagramPublication) =>
+  p.status === "programado" && Boolean(p.scheduledAt) && new Date(p.scheduledAt as string).getTime() > Date.now();
 
 export default function InstagramProgramacion() {
   const params = useParams<{ plataforma: string }>();
@@ -90,6 +103,7 @@ export default function InstagramProgramacion() {
   );
   const [planOpen, setPlanOpen] = useState(false);
   const [working, setWorking] = useState<string | null>(null);
+  const [rescheduling, setRescheduling] = useState<RescheduleTarget | null>(null);
 
   const subRef = useRef<PublicationSubscription | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -256,6 +270,43 @@ export default function InstagramProgramacion() {
     } finally {
       setWorking(null);
     }
+  };
+
+  const rescheduleReel = async (p: InstagramPublication, at: Date) => {
+    const { notice } = await schedulePublication(p.id, at);
+    announce(p.id, notice, "Reel reprogramado", hasVideo(p) ? `Sale el ${whenLabel(at)}.` : MISSING_VIDEO_MESSAGE);
+    setWeekStart(startOfWeek(at));
+    refresh();
+  };
+
+  /** Mueve el Short en YouTube y, si se pidió, el Reel gemelo la misma cantidad de tiempo */
+  const rescheduleShort = async (entry: ShortEntry, twin: InstagramPublication | null, at: Date, moveTwin: boolean) => {
+    if (!ytId) throw new Error("Conecta tu canal de YouTube.");
+    const publishAt = await rescheduleYouTubeVideo(ytId, entry.video.id, at);
+    const confirmed = new Date(publishAt);
+    setYtVideos((list) => list.map((v) => (v.id === entry.video.id ? { ...v, publishAt } : v)));
+    await rescheduleVideoTask(ytId, entry.video.id, publishAt).catch(() => undefined);
+    setWeekStart(startOfWeek(confirmed));
+
+    const twinAt = moveTwin && twin?.scheduledAt ? new Date(new Date(twin.scheduledAt).getTime() + confirmed.getTime() - entry.at.getTime()) : null;
+    if (twin && twinAt && twinAt.getTime() > Date.now() + REEL_MIN_LEAD_MS) {
+      try {
+        const { notice } = await schedulePublication(twin.id, twinAt);
+        announce(twin.id, notice, "Short y Reel reprogramados", `YouTube: ${whenLabel(confirmed)} · Instagram: ${whenLabel(twinAt)}.`);
+      } catch (err) {
+        toast({
+          title: "El Short cambió de fecha, pero el Reel no",
+          description: err instanceof Error ? err.message : undefined,
+          variant: "destructive",
+        });
+      }
+    } else {
+      toast({
+        title: "Short reprogramado",
+        description: `YouTube lo publica el ${whenLabel(confirmed)}.${twinAt ? " El Reel no se movió: su nueva hora quedaba en el pasado." : ""}`,
+      });
+    }
+    refresh();
   };
 
   const askUpload = (p: InstagramPublication) => {
@@ -521,6 +572,7 @@ export default function InstagramProgramacion() {
                         twin={twins.get(s.video.id) ?? null}
                         onReplicate={() => openReplicate([s.video.id])}
                         onOpenTwin={(p) => setComposer({ publication: p })}
+                        onReschedule={() => setRescheduling({ kind: "short", entry: s, twin: twins.get(s.video.id) ?? null })}
                       />
                     ))}
                   </div>
@@ -539,6 +591,7 @@ export default function InstagramProgramacion() {
                       onOpen={() => setComposer({ publication: p })}
                       onRetry={() => void retry(p)}
                       onUpload={() => askUpload(p)}
+                      onReschedule={() => setRescheduling({ kind: "reel", publication: p })}
                     />
                   ))}
                   {free.map((slot) => (
@@ -641,6 +694,40 @@ export default function InstagramProgramacion() {
       />
 
       <PublishPlanDialog account={account} open={planOpen} onOpenChange={setPlanOpen} />
+
+      {rescheduling?.kind === "reel" && (
+        <RescheduleDialog
+          open
+          onOpenChange={(open) => !open && setRescheduling(null)}
+          title="Cambiar fecha del Reel"
+          itemTitle={rescheduling.publication.title || "Reel sin nombre"}
+          current={new Date(rescheduling.publication.scheduledAt as string)}
+          minLeadMs={REEL_MIN_LEAD_MS}
+          suggest={() => nextFreeReelSlot(plan, reelOccupants(publications, rescheduling.publication.id), new Date(Date.now() + REEL_MIN_LEAD_MS))}
+          warning={(at) =>
+            reelOccupants(publications, rescheduling.publication.id).some((o) => Math.abs(o.at.getTime() - at.getTime()) < CLASH_MS)
+              ? "Hay otro Reel a menos de 15 minutos de esa hora."
+              : null
+          }
+          onConfirm={(at) => rescheduleReel(rescheduling.publication, at)}
+        />
+      )}
+      {rescheduling?.kind === "short" && (
+        <RescheduleDialog
+          open
+          onOpenChange={(open) => !open && setRescheduling(null)}
+          title="Cambiar fecha del Short"
+          itemTitle={rescheduling.entry.video.title}
+          current={rescheduling.entry.at}
+          minLeadMs={YOUTUBE_MIN_LEAD_MS}
+          twinLabel={
+            rescheduling.twin && canReschedule(rescheduling.twin)
+              ? `Mover también su Reel de Instagram (${whenLabel(rescheduling.twin.scheduledAt as string)}) la misma cantidad de tiempo`
+              : null
+          }
+          onConfirm={(at, moveTwin) => rescheduleShort(rescheduling.entry, rescheduling.twin, at, moveTwin)}
+        />
+      )}
     </div>
   );
 }
@@ -650,13 +737,16 @@ function YouTubeShortCard({
   twin,
   onReplicate,
   onOpenTwin,
+  onReschedule,
 }: {
   entry: ShortEntry;
   twin: InstagramPublication | null;
   onReplicate: () => void;
   onOpenTwin: (p: InstagramPublication) => void;
+  onReschedule: () => void;
 }) {
   const { video } = entry;
+  const editable = entry.scheduled && entry.at.getTime() > Date.now();
   return (
     <div className="space-y-1 rounded-xl border border-border/50 bg-background/30 p-2 opacity-75 transition-opacity hover:opacity-100">
       <a href={`https://www.youtube.com/shorts/${video.id}`} target="_blank" rel="noopener noreferrer" className="block space-y-0.5">
@@ -667,6 +757,12 @@ function YouTubeShortCard({
         </div>
         <p className="line-clamp-2 text-xs leading-snug">{video.title}</p>
       </a>
+      {editable && (
+        <button type="button" onClick={onReschedule} className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground">
+          <CalendarClock className="h-3 w-3" />
+          Cambiar fecha
+        </button>
+      )}
       {twin ? (
         <button type="button" onClick={() => onOpenTwin(twin)} className="flex w-full items-center gap-1 text-left text-[11px] text-muted-foreground hover:text-foreground">
           <Link2 className="h-3 w-3 shrink-0 text-pink-300" />
@@ -693,6 +789,7 @@ function ReelCard({
   onOpen,
   onRetry,
   onUpload,
+  onReschedule,
 }: {
   publication: InstagramPublication;
   uploading: number | null;
@@ -700,6 +797,7 @@ function ReelCard({
   onOpen: () => void;
   onRetry: () => void;
   onUpload: () => void;
+  onReschedule: () => void;
 }) {
   const warn = p.status === "error" || (p.status === "programado" && !hasVideo(p) && uploading === null);
   return (
@@ -739,6 +837,19 @@ function ReelCard({
         >
           <UploadCloud className="h-3 w-3" />
           Subir video
+        </button>
+      )}
+      {canReschedule(p) && uploading === null && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onReschedule();
+          }}
+          className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+        >
+          <CalendarClock className="h-3 w-3" />
+          Cambiar hora
         </button>
       )}
       {p.status === "error" && (

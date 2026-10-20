@@ -6,6 +6,7 @@ import { es } from "date-fns/locale";
 import {
   AlertCircle,
   CalendarCheck,
+  CalendarClock,
   CalendarDays,
   CalendarPlus,
   Captions,
@@ -48,6 +49,7 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChannelProfileDialog } from "@/components/studio/ChannelProfileDialog";
 import { PublishPlanDialog } from "@/components/studio/PublishPlanDialog";
+import { RescheduleDialog } from "@/components/studio/RescheduleDialog";
 import { EmptyState, StudioCard, StudioPageHeader } from "@/components/studio/StudioUI";
 import { YouTubeDraftEditor } from "@/components/studio/YouTubeDraftEditor";
 import { PendingTasksPanel, VideoExtrasDialog } from "@/components/studio/VideoTasks";
@@ -71,7 +73,7 @@ import {
   type SlotFormat,
 } from "@/lib/studio/publish-plan";
 import { formatFollowers } from "@/lib/studio/platforms";
-import { listVideoTasks, type RelatedVideo, type VideoTask } from "@/lib/studio/video-tasks";
+import { listVideoTasks, rescheduleVideoTask, type RelatedVideo, type VideoTask } from "@/lib/studio/video-tasks";
 import { fetchYouTubeVideos, scheduleTimes, YOUTUBE_ERROR_MESSAGES, type YouTubeVideo } from "@/lib/studio/youtube";
 import {
   baseName,
@@ -88,6 +90,7 @@ import {
   type DraftFileKey,
   type YouTubeDraft,
 } from "@/lib/studio/youtube-draft";
+import { rescheduleYouTubeVideo, YOUTUBE_MIN_LEAD_MS } from "@/lib/studio/youtube-upload";
 import { cn } from "@/lib/utils";
 
 type Entry =
@@ -160,6 +163,7 @@ export default function YouTubeProgramacion() {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [tasks, setTasks] = useState<VideoTask[]>([]);
   const [extrasVideo, setExtrasVideo] = useState<YouTubeVideo | null>(null);
+  const [rescheduling, setRescheduling] = useState<Extract<Entry, { kind: "youtube" }> | null>(null);
 
   const draftsRef = useRef(drafts);
   draftsRef.current = drafts;
@@ -295,6 +299,19 @@ export default function YouTubeProgramacion() {
     ],
     [ytItems]
   );
+
+  const rescheduleVideo = async (entry: Extract<Entry, { kind: "youtube" }>, at: Date) => {
+    if (!channelId) return;
+    const publishAt = await rescheduleYouTubeVideo(channelId, entry.video.id, at);
+    setYtVideos((list) => list.map((v) => (v.id === entry.video.id ? { ...v, publishAt } : v)));
+    await rescheduleVideoTask(channelId, entry.video.id, publishAt).catch(() => undefined);
+    void loadTasks();
+    setWeekStart(startOfWeek(new Date(publishAt)));
+    toast({
+      title: entry.video.isShort ? "Short reprogramado" : "Video reprogramado",
+      description: `YouTube lo publica el ${format(new Date(publishAt), "EEE d MMM · HH:mm", { locale: es })}.`,
+    });
+  };
 
   const weekEnd = addDays(weekStart, 7);
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
@@ -726,6 +743,7 @@ export default function YouTubeProgramacion() {
                       entry={entry}
                       task={tasks.find((t) => t.videoId === entry.video.id) ?? null}
                       onExtras={() => setExtrasVideo(entry.video)}
+                      onReschedule={() => setRescheduling(entry)}
                     />
                   ) : entry.kind === "draft" ? (
                     <DraftCard
@@ -894,6 +912,25 @@ export default function YouTubeProgramacion() {
 
       <PublishPlanDialog account={channel} open={planOpen} onOpenChange={setPlanOpen} />
       <ChannelProfileDialog account={profileOpen ? channel : null} onOpenChange={(open) => !open && setProfileOpen(false)} />
+
+      {rescheduling && (
+        <RescheduleDialog
+          open
+          onOpenChange={(open) => !open && setRescheduling(null)}
+          title={rescheduling.video.isShort ? "Cambiar fecha del Short" : "Cambiar fecha del video"}
+          itemTitle={rescheduling.video.title}
+          current={rescheduling.at}
+          minLeadMs={YOUTUBE_MIN_LEAD_MS}
+          suggest={() =>
+            findFreeSlot(
+              plan,
+              rescheduling.format,
+              occupants().filter((o) => !(o.format === rescheduling.format && o.at.getTime() === rescheduling.at.getTime()))
+            )?.at ?? null
+          }
+          onConfirm={(at) => rescheduleVideo(rescheduling, at)}
+        />
+      )}
     </div>
   );
 }
@@ -915,12 +952,15 @@ function YouTubeEntryCard({
   entry,
   task,
   onExtras,
+  onReschedule,
 }: {
   entry: Extract<Entry, { kind: "youtube" }>;
   task: VideoTask | null;
   onExtras: () => void;
+  onReschedule: () => void;
 }) {
   const { video } = entry;
+  const editable = entry.scheduled && entry.at.getTime() > Date.now();
   const url = video.isShort ? `https://www.youtube.com/shorts/${video.id}` : `https://www.youtube.com/watch?v=${video.id}`;
   const commentLabel =
     task?.commentStatus === "pendiente"
@@ -960,6 +1000,16 @@ function YouTubeEntryCard({
           )}
         </div>
       </a>
+      {editable && (
+        <button
+          type="button"
+          onClick={onReschedule}
+          className="flex w-full items-center gap-1 px-2 pb-1 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground"
+        >
+          <CalendarClock className="h-3 w-3 shrink-0" />
+          Cambiar fecha
+        </button>
+      )}
       <button
         type="button"
         onClick={onExtras}

@@ -165,6 +165,17 @@ export async function updateVideoTask(
   if (error) throw error;
 }
 
+/** El video cambió de fecha: el comentario pendiente espera la nueva hora (si no hay tarea, no hace nada) */
+export async function rescheduleVideoTask(accountId: string, videoId: string, postAfter: string) {
+  const { error } = await db
+    .from("studio_video_tasks")
+    .update({ post_after: postAfter })
+    .eq("account_id", accountId)
+    .eq("video_id", videoId)
+    .eq("comment_status", "pendiente");
+  if (error) throw error;
+}
+
 /** Intenta publicar ya los comentarios indicados (id de tarea → id del comentario publicado). Los que YouTube no acepte los publica n8n a su hora. */
 export async function postCommentsNow(taskIds: string[]): Promise<Map<string, string>> {
   const posted = new Map<string, string>();

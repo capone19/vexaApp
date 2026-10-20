@@ -51,8 +51,58 @@ export async function googleError(res: Response, fallback: string): Promise<Erro
     invalidTags: "YouTube rechazó los tags (máximo 500 caracteres en total).",
     invalidPublishAt: "La fecha de publicación tiene que ser futura.",
     forbidden: "Este canal no permite esa acción.",
+    insufficientPermissions: "Vuelve a conectar el canal desde Cuentas conectadas para poder editar videos.",
+    videoNotFound: "El video ya no existe en YouTube.",
   };
   return new Error((reason && messages[reason]) ?? body?.error?.message ?? fallback);
+}
+
+/** YouTube exige que la fecha de publicación sea futura; se deja margen para que alcance a guardarse */
+export const YOUTUBE_MIN_LEAD_MS = 15 * 60_000;
+
+interface VideoStatus {
+  privacyStatus?: string;
+  publishAt?: string;
+  embeddable?: boolean;
+  license?: string;
+  publicStatsViewable?: boolean;
+  selfDeclaredMadeForKids?: boolean;
+  containsSyntheticMedia?: boolean;
+}
+
+/**
+ * Cambia la hora de un video programado (privado con publishAt) y devuelve la hora que guardó YouTube.
+ * El PUT reemplaza todo `status`, así que se reenvían los campos actuales. Cuesta ~51 unidades de la cuota diaria.
+ */
+export async function rescheduleYouTubeVideo(accountId: string, videoId: string, at: Date): Promise<string> {
+  const token = await getUploadToken(accountId);
+  const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=status&id=${encodeURIComponent(videoId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await googleError(res, "No se pudo leer el video en YouTube.");
+  const status = (await res.json()).items?.[0]?.status as VideoStatus | undefined;
+  if (!status) throw new Error("El video ya no existe en YouTube.");
+  if (status.privacyStatus !== "private" || !status.publishAt || new Date(status.publishAt).getTime() <= Date.now()) {
+    throw new Error("Este video ya se publicó: YouTube no deja cambiarle la fecha.");
+  }
+
+  const next: VideoStatus = {
+    privacyStatus: "private",
+    publishAt: at.toISOString(),
+    embeddable: status.embeddable,
+    license: status.license,
+    publicStatsViewable: status.publicStatsViewable,
+    selfDeclaredMadeForKids: status.selfDeclaredMadeForKids,
+    containsSyntheticMedia: status.containsSyntheticMedia,
+  };
+  const update = await fetch("https://www.googleapis.com/youtube/v3/videos?part=status", {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ id: videoId, status: next }),
+  });
+  if (!update.ok) throw await googleError(update, "YouTube no aceptó la nueva fecha.");
+  const saved = (await update.json().catch(() => null))?.status as VideoStatus | undefined;
+  return saved?.publishAt ?? next.publishAt!;
 }
 
 function putChunk(
