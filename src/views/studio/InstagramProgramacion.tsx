@@ -53,6 +53,7 @@ import {
   type PublicationSubscription,
 } from "@/lib/studio/instagram";
 import { addDays, freeSlots, hasPublishPlan, normalizePlan, sameDay, slotsBetween, startOfWeek, type PlanSlot } from "@/lib/studio/publish-plan";
+import { listIdeas, spacingWarnings, type ShortIdea } from "@/lib/studio/short-ideas";
 import { rescheduleVideoTask } from "@/lib/studio/video-tasks";
 import { fetchYouTubeVideos, scheduleTimes, YOUTUBE_ERROR_MESSAGES, type YouTubeVideo } from "@/lib/studio/youtube";
 import { rescheduleYouTubeVideo, YOUTUBE_MIN_LEAD_MS } from "@/lib/studio/youtube-upload";
@@ -104,6 +105,7 @@ export default function InstagramProgramacion() {
   const [planOpen, setPlanOpen] = useState(false);
   const [working, setWorking] = useState<string | null>(null);
   const [rescheduling, setRescheduling] = useState<RescheduleTarget | null>(null);
+  const [ideas, setIdeas] = useState<ShortIdea[]>([]);
 
   const subRef = useRef<PublicationSubscription | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -171,6 +173,30 @@ export default function InstagramProgramacion() {
   }, [accountId, weekStart.getTime(), rangeKey]);
 
   const refresh = useCallback(() => void subRef.current?.refresh(), []);
+
+  // Registro de ideas de la Fábrica (canal de YouTube): una lectura al abrir, para la regla de 3 días
+  useEffect(() => {
+    setIdeas([]);
+    if (!ytId) return;
+    let cancelled = false;
+    listIdeas(ytId)
+      .then((list) => !cancelled && setIdeas(list))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [ytId]);
+
+  const spacing = useMemo(
+    () =>
+      spacingWarnings(
+        publications
+          .filter((p) => p.status !== "publicado")
+          .map((p) => ({ key: p.id, sourceRef: p.sourceRef, at: p.scheduledAt ? new Date(p.scheduledAt) : null })),
+        ideas
+      ),
+    [publications, ideas]
+  );
 
   // Avisar antes de cerrar la pestaña con una subida en curso
   const uploading = Object.keys(uploads).length > 0;
@@ -588,6 +614,7 @@ export default function InstagramProgramacion() {
                       publication={p}
                       uploading={uploads[p.id] ?? null}
                       working={working === p.id}
+                      spacingWarning={spacing.get(p.id)}
                       onOpen={() => setComposer({ publication: p })}
                       onRetry={() => void retry(p)}
                       onUpload={() => askUpload(p)}
@@ -786,6 +813,7 @@ function ReelCard({
   publication: p,
   uploading,
   working,
+  spacingWarning,
   onOpen,
   onRetry,
   onUpload,
@@ -794,6 +822,7 @@ function ReelCard({
   publication: InstagramPublication;
   uploading: number | null;
   working: boolean;
+  spacingWarning?: string;
   onOpen: () => void;
   onRetry: () => void;
   onUpload: () => void;
@@ -825,6 +854,9 @@ function ReelCard({
       <p className="line-clamp-2 text-xs font-medium leading-snug">{p.title || "Reel sin nombre"}</p>
       <ReelStatusChip publication={p} uploading={uploading} />
       {p.status === "publicando" && <p className="text-[10px] text-muted-foreground">{PUBLISHING_MESSAGE}</p>}
+      {spacingWarning && (
+        <p className="rounded-md bg-amber-500/10 px-1.5 py-1 text-[11px] leading-snug text-amber-300">{spacingWarning}</p>
+      )}
       {p.status === "programado" && !hasVideo(p) && uploading === null && (
         <button
           type="button"

@@ -10,6 +10,7 @@
 
 import { supabase } from "@/integrations/supabase/client";
 import type { ChannelProfile } from "./ai";
+import { sourceForAi, toIdeaCheck, toSourceStatus, type IdeaCheck, type IdeaSource, type SourceStatus } from "./short-ideas";
 import type { Cue } from "./subtitles";
 import type { RelatedVideo } from "./video-tasks";
 
@@ -168,6 +169,8 @@ export interface ShortPlan {
   captionsOn: boolean;
   /** Cambia cuando se edita el plan: invalida el render guardado */
   revision: number;
+  /** Registro de ideas: parecido con lo ya hecho y lista de control (lo arma n8n) */
+  idea?: IdeaCheck;
 }
 
 export interface ShortCandidate {
@@ -179,6 +182,7 @@ export interface ShortCandidate {
   hookStrength: number;
   summary: string;
   why: string;
+  topic?: string;
 }
 
 export interface Discarded {
@@ -309,6 +313,7 @@ export function normalizePlan(raw: Partial<ShortPlan>, cues: Cue[], videoDuratio
     effectsOn: raw.effectsOn ?? true,
     captionsOn: raw.captionsOn ?? true,
     revision: Number(raw.revision ?? 0),
+    ...(raw.idea ? { idea: raw.idea } : {}),
   };
 }
 
@@ -331,6 +336,8 @@ interface AiShort {
   description: string;
   hashtags: string[];
   pinned_comment: string;
+  /** Registro de ideas: lo agrega n8n cuando la app manda account_id, project_id y source */
+  idea?: Parameters<typeof toIdeaCheck>[0];
 }
 
 export interface ChannelLearning {
@@ -340,7 +347,7 @@ export interface ChannelLearning {
   duration: number;
 }
 
-interface AiContext {
+export interface AiContext {
   language: string;
   profile: ChannelProfile;
   cues: Cue[];
@@ -348,6 +355,24 @@ interface AiContext {
   videoTitle: string;
   notes: string;
   learnings: ChannelLearning[];
+  /** Con estos tres n8n lee el historial del canal y anota cada idea en el registro */
+  accountId?: string;
+  projectId?: string;
+  source?: IdeaSource;
+  /** Momento elegido a mano: n8n no lo descarta solo, solo avisa */
+  manual?: boolean;
+  /** "Sacar igual" en un episodio agotado */
+  overrideBudget?: boolean;
+}
+
+/** El episodio ya dio todos los Shorts recomendados: n8n no gastó IA */
+export class SaturatedError extends Error {
+  sourceStatus: SourceStatus | null;
+  constructor(message: string, sourceStatus: SourceStatus | null) {
+    super(message);
+    this.name = "SaturatedError";
+    this.sourceStatus = sourceStatus;
+  }
 }
 
 async function accessToken(): Promise<string> {
@@ -362,37 +387,60 @@ export function cuesForAi(cues: Cue[]): string {
   return cues.map((c) => `[${c.start.toFixed(2)}-${c.end.toFixed(2)}] ${c.text}`).join("\n");
 }
 
-async function callShortsAi<T>(stage: "scout" | "edit", ctx: AiContext, extra: Record<string, unknown>): Promise<T> {
+/** POST al webhook de Shorts con el token de la sesión. Episodio agotado = SaturatedError */
+export async function postShorts<T>(payload: Record<string, unknown>): Promise<T> {
   const res = await fetch(`${N8N_BASE_URL}${SHORTS_PATH}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      access_token: await accessToken(),
-      stage,
-      language: ctx.language,
-      profile: ctx.profile,
-      transcript: cuesForAi(ctx.cues),
-      duration_seconds: ctx.duration,
-      video_title: ctx.videoTitle,
-      notes: ctx.notes,
-      learnings: ctx.learnings,
-      ...extra,
-    }),
+    body: JSON.stringify({ access_token: await accessToken(), ...payload }),
   });
   const body = await res.json().catch(() => null);
   if (res.status === 401) throw new Error("Tu sesión expiró. Vuelve a iniciar sesión.");
+  if (body?.saturated) throw new SaturatedError(body.error ?? "Este episodio ya dio todos los Shorts recomendados.", toSourceStatus(body.source_status));
   if (!res.ok || !body?.ok) throw new Error(body?.error ?? `n8n respondió ${res.status}`);
   return body as T;
 }
 
-/** Pasada 1: el explorador propone los momentos candidatos */
-export async function scoutMoments(ctx: AiContext): Promise<{ candidates: ShortCandidate[]; overview: string }> {
+async function callShortsAi<T>(stage: "scout" | "edit", ctx: AiContext, extra: Record<string, unknown>): Promise<T> {
+  // Sin cuenta, proyecto y episodio n8n trabaja como antes, sin registro
+  const registry =
+    ctx.accountId && ctx.projectId && ctx.source?.key
+      ? {
+          account_id: ctx.accountId,
+          project_id: ctx.projectId,
+          source: sourceForAi(ctx.source),
+          ...(ctx.manual ? { manual: true } : {}),
+          ...(ctx.overrideBudget ? { override_budget: true } : {}),
+        }
+      : {};
+  return postShorts<T>({
+    stage,
+    language: ctx.language,
+    profile: ctx.profile,
+    transcript: cuesForAi(ctx.cues),
+    duration_seconds: ctx.duration,
+    video_title: ctx.videoTitle,
+    notes: ctx.notes,
+    learnings: ctx.learnings,
+    ...registry,
+    ...extra,
+  });
+}
+
+/** Pasada 1: el explorador propone los momentos candidatos (sin los tramos ya usados del episodio) */
+export async function scoutMoments(
+  ctx: AiContext
+): Promise<{ candidates: ShortCandidate[]; overview: string; sourceStatus: SourceStatus | null; removedOverlap: number }> {
   const body = await callShortsAi<{
-    candidates: { start: number; end: number; hook_line: string; angle: string; hook_strength: number; summary_es: string; why_es: string }[];
+    candidates: { start: number; end: number; hook_line: string; angle: string; hook_strength: number; summary_es: string; why_es: string; topic?: string }[];
     overview_es: string;
+    source_status?: Parameters<typeof toSourceStatus>[0];
+    removed_overlap?: number;
   }>("scout", ctx, {});
   return {
     overview: body.overview_es,
+    sourceStatus: toSourceStatus(body.source_status),
+    removedOverlap: Number(body.removed_overlap ?? 0) || 0,
     candidates: body.candidates.map((c, index) => ({
       index,
       start: round2(clamp(c.start, 0, ctx.duration)),
@@ -402,14 +450,19 @@ export async function scoutMoments(ctx: AiContext): Promise<{ candidates: ShortC
       hookStrength: clamp(c.hook_strength, 0, 10),
       summary: c.summary_es,
       why: c.why_es,
+      ...(c.topic ? { topic: c.topic } : {}),
     })),
   };
 }
 
 function fromAi(s: AiShort, ctx: AiContext, keep?: Partial<ShortPlan>): ShortPlan {
+  const idea = toIdeaCheck(s.idea) ?? keep?.idea;
   return normalizePlan(
     {
       ...keep,
+      // Las ideas nuevas usan su propio id como plan.id: así source_ref enlaza solo (en la revisión se conserva el id)
+      id: keep?.id ?? idea?.planId ?? undefined,
+      idea,
       candidateIndex: s.candidate_index,
       title: s.title,
       hookText: s.hook_text,
@@ -438,20 +491,48 @@ export async function editShorts(
   ctx: AiContext,
   candidates: ShortCandidate[],
   count: number
-): Promise<{ plans: ShortPlan[]; discarded: Discarded[]; notes: string }> {
-  const body = await callShortsAi<{ shorts: AiShort[]; discarded: { candidate_index: number; reason_es: string }[]; notes_es: string }>(
-    "edit",
-    ctx,
-    { count, candidates: candidates.map((c) => ({ index: c.index, start: c.start, end: c.end, angle: c.angle, hook_line: c.hookLine, summary_es: c.summary })) }
-  );
+): Promise<{
+  plans: ShortPlan[];
+  discarded: Discarded[];
+  notes: string;
+  sourceStatus: SourceStatus | null;
+  budgetNotice: string;
+  registryError: string;
+  /** Los que n8n descartó solo por repetir algo ya hecho */
+  autoDiscarded: number;
+}> {
+  const body = await callShortsAi<{
+    shorts: AiShort[];
+    discarded: { candidate_index: number; reason_es: string; auto?: boolean }[];
+    notes_es: string;
+    source_status?: Parameters<typeof toSourceStatus>[0];
+    budget_notice?: string;
+    registry_error?: string;
+  }>("edit", ctx, {
+    count,
+    candidates: candidates.map((c) => ({
+      index: c.index,
+      start: c.start,
+      end: c.end,
+      angle: c.angle,
+      hook_line: c.hookLine,
+      summary_es: c.summary,
+      ...(c.topic ? { topic: c.topic } : {}),
+    })),
+  });
   const plans = body.shorts
     .map((s) => fromAi(s, ctx))
     .filter((p) => p.segments.length)
     .sort((a, b) => totalScore(b.score) - totalScore(a.score));
+  const discarded = body.discarded ?? [];
   return {
     plans,
-    discarded: body.discarded.map((d) => ({ candidateIndex: d.candidate_index, reason: d.reason_es })),
+    discarded: discarded.map((d) => ({ candidateIndex: d.candidate_index, reason: d.reason_es })),
     notes: body.notes_es,
+    sourceStatus: toSourceStatus(body.source_status),
+    budgetNotice: body.budget_notice ?? "",
+    registryError: body.registry_error ?? "",
+    autoDiscarded: discarded.filter((d) => d.auto === true).length,
   };
 }
 
@@ -467,6 +548,7 @@ export async function reviseShort(ctx: AiContext, plan: ShortPlan, candidates: S
     sfx: plan.sfx.map(({ type, at }) => ({ type, at })),
     music: plan.music,
     keywords: plan.keywords,
+    plan_id: plan.id,
   };
   const candidate = candidates.find((c) => c.index === plan.candidateIndex);
   // El crítico ve el rango original ampliado para poder alargar el Short si se lo piden
@@ -476,8 +558,8 @@ export async function reviseShort(ctx: AiContext, plan: ShortPlan, candidates: S
   const body = await callShortsAi<{ shorts: AiShort[] }>("edit", ctx, { count: 1, candidates: pool, instruction, current_plan: current });
   const revised = body.shorts[0];
   if (!revised) throw new Error("La IA no devolvió el Short corregido.");
-  const { layout, focusX, videoZoom, effectsOn, captionsOn, id, revision } = plan;
-  return fromAi(revised, ctx, { layout, focusX, videoZoom, effectsOn, captionsOn, id, revision });
+  const { layout, focusX, videoZoom, effectsOn, captionsOn, id, revision, idea } = plan;
+  return fromAi(revised, ctx, { layout, focusX, videoZoom, effectsOn, captionsOn, id, revision, idea });
 }
 
 // ---------- Línea de tiempo del Short ----------
@@ -675,6 +757,12 @@ export interface ShortsProject {
   relatedVideo: RelatedVideo | null;
   /** Shorts ya enviados a Programación: planId -> id del borrador */
   sentToSchedule: Record<string, string>;
+  /** Episodio en el registro de ideas: 'yt:<id>' o 'file:<huella>' */
+  sourceKey?: string;
+  /** Los Shorts de antes del registro ya se anotaron (se hace una sola vez) */
+  registeredAt?: string;
+  /** Último estado del episodio que mandó n8n */
+  sourceStatus?: SourceStatus | null;
   createdAt: string;
   updatedAt: string;
 }

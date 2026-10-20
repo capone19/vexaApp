@@ -73,6 +73,7 @@ import {
   type SlotFormat,
 } from "@/lib/studio/publish-plan";
 import { formatFollowers } from "@/lib/studio/platforms";
+import { listIdeas, spacingWarnings, type ShortIdea } from "@/lib/studio/short-ideas";
 import { listVideoTasks, rescheduleVideoTask, type RelatedVideo, type VideoTask } from "@/lib/studio/video-tasks";
 import { fetchYouTubeVideos, scheduleTimes, YOUTUBE_ERROR_MESSAGES, type YouTubeVideo } from "@/lib/studio/youtube";
 import {
@@ -164,6 +165,7 @@ export default function YouTubeProgramacion() {
   const [tasks, setTasks] = useState<VideoTask[]>([]);
   const [extrasVideo, setExtrasVideo] = useState<YouTubeVideo | null>(null);
   const [rescheduling, setRescheduling] = useState<Extract<Entry, { kind: "youtube" }> | null>(null);
+  const [ideas, setIdeas] = useState<ShortIdea[]>([]);
 
   const draftsRef = useRef(drafts);
   draftsRef.current = drafts;
@@ -190,6 +192,28 @@ export default function YouTubeProgramacion() {
       cancelled = true;
     };
   }, [channelId, toast]);
+
+  // Registro de ideas de la Fábrica: una lectura al abrir, para la regla de 3 días
+  useEffect(() => {
+    setIdeas([]);
+    if (!channelId) return;
+    let cancelled = false;
+    listIdeas(channelId)
+      .then((list) => !cancelled && setIdeas(list))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [channelId]);
+
+  const spacing = useMemo(
+    () =>
+      spacingWarnings(
+        drafts.map((d) => ({ key: d.id, sourceRef: d.sourceRef, at: d.scheduledAt ? new Date(d.scheduledAt) : null })),
+        ideas
+      ),
+    [drafts, ideas]
+  );
 
   const loadYouTube = useCallback(async () => {
     if (!channelId) return;
@@ -750,6 +774,7 @@ export default function YouTubeProgramacion() {
                       key={entry.key}
                       draft={entry.draft}
                       uploading={upload?.id === entry.draft.id ? upload.progress : null}
+                      spacingWarning={spacing.get(entry.draft.id)}
                       onClick={() => !busy && setEditingId(entry.draft.id)}
                     />
                   ) : (
@@ -1025,7 +1050,17 @@ function YouTubeEntryCard({
   );
 }
 
-function DraftCard({ draft, uploading, onClick }: { draft: YouTubeDraft; uploading: number | null; onClick: () => void }) {
+function DraftCard({
+  draft,
+  uploading,
+  spacingWarning,
+  onClick,
+}: {
+  draft: YouTubeDraft;
+  uploading: number | null;
+  spacingWarning?: string;
+  onClick: () => void;
+}) {
   const problems = draftProblems(draft, true);
   return (
     <button
@@ -1060,6 +1095,9 @@ function DraftCard({ draft, uploading, onClick }: { draft: YouTubeDraft; uploadi
           <Clock className="h-3 w-3" />
           Listo para subir
         </p>
+      )}
+      {spacingWarning && (
+        <p className="rounded-md bg-amber-500/10 px-1.5 py-1 text-[11px] leading-snug text-amber-300">{spacingWarning}</p>
       )}
     </button>
   );
