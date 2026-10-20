@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Captions, Clapperboard, FileVideo, ImageIcon, Languages, Loader2, MessageSquareText, UploadCloud, WandSparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,6 +69,16 @@ export function SmallFilePicker({
         </button>
       )}
     </div>
+  );
+}
+
+/** Vista previa chica de la miniatura vertical de un Short */
+function VerticalThumbPreview({ file }: { file: File }) {
+  const url = useMemo(() => URL.createObjectURL(file), [file]);
+  useEffect(() => () => URL.revokeObjectURL(url), [url]);
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={url} alt="Miniatura del Short" className="aspect-[9/16] w-24 rounded-lg border border-border object-cover" />
   );
 }
 
@@ -214,7 +224,7 @@ export function YouTubeDraftEditor({ draft, onChange, profile, channelName, disa
           </button>
         )}
         {shortWarning && <p className="text-xs text-amber-400">{shortWarning}</p>}
-        <div className={cn("grid gap-2", draft.format === "video" && "sm:grid-cols-2")}>
+        <div className="grid gap-2 sm:grid-cols-2">
           <SmallFilePicker
             icon={Captions}
             label="Subtítulos (.srt o .vtt)"
@@ -226,17 +236,16 @@ export function YouTubeDraftEditor({ draft, onChange, profile, channelName, disa
               setNeedsTranscribe(false);
             }}
           />
-          {draft.format === "video" && (
-            <SmallFilePicker
-              icon={ImageIcon}
-              label="Miniatura (JPG o PNG, máx. 2 MB)"
-              accept="image/jpeg,image/png"
-              file={draft.thumbnailFile}
-              disabled={locked}
-              onChange={(f) => onChange({ thumbnailFile: f })}
-            />
-          )}
+          <SmallFilePicker
+            icon={ImageIcon}
+            label={draft.format === "short" ? "Miniatura (JPG vertical 1080×1920, máx. 2 MB)" : "Miniatura (JPG o PNG, máx. 2 MB)"}
+            accept="image/jpeg,image/png"
+            file={draft.thumbnailFile}
+            disabled={locked}
+            onChange={(f) => onChange({ thumbnailFile: f })}
+          />
         </div>
+        {draft.format === "short" && draft.thumbnailFile && <VerticalThumbPreview file={draft.thumbnailFile} />}
         <p className="text-xs text-muted-foreground">
           Los subtítulos le dicen a la IA de qué trata el video sin transcribir nada, y se suben a YouTube junto al video.
         </p>

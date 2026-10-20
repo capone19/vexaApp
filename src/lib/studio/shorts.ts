@@ -781,7 +781,7 @@ type RenderRecord = Omit<StoredRender, "file"> & { file?: File };
 
 const DB_NAME = "vexa-studio-shorts";
 const PROJECTS = "projects";
-const FILES = "files";
+export const FILES = "files";
 const AUDIO = "audio-library";
 const SETTINGS = "settings";
 
@@ -800,7 +800,7 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-async function tx<T>(stores: string[], mode: IDBTransactionMode, run: (t: IDBTransaction) => () => T): Promise<T> {
+export async function tx<T>(stores: string[], mode: IDBTransactionMode, run: (t: IDBTransaction) => () => T): Promise<T> {
   const db = await openDb();
   try {
     return await new Promise<T>((resolve, reject) => {
@@ -868,9 +868,9 @@ export async function pickVideoFile(): Promise<{ file: File; handle: FileSystemF
   }
 }
 
-const safeName = (name: string) => name.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 80) || "Shorts";
+export const safeName = (name: string) => name.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 80) || "Shorts";
 
-async function writeFile(dir: FileSystemDirectoryHandle, name: string, data: Blob | string) {
+export async function writeFile(dir: FileSystemDirectoryHandle, name: string, data: Blob | string) {
   const handle = await dir.getFileHandle(name, { create: true });
   const writable = await handle.createWritable();
   await writable.write(data);
@@ -953,13 +953,16 @@ export async function loadProjectVideo(projectId: string, request = false): Prom
   return { file: null, handle };
 }
 
-/** Borra el proyecto del navegador (los Shorts ya guardados en la carpeta del PC se quedan ahí) */
+/** Borra el proyecto del navegador (los Shorts y miniaturas ya guardados en la carpeta del PC se quedan ahí) */
 export async function deleteProject(project: ShortsProject): Promise<void> {
   await tx([PROJECTS, FILES], "readwrite", (t) => {
     t.objectStore(PROJECTS).delete(project.id);
     t.objectStore(FILES).delete(`${project.id}:video`);
     t.objectStore(FILES).delete(`${project.id}:videoHandle`);
-    for (const plan of project.plans) t.objectStore(FILES).delete(`${project.id}:render:${plan.id}`);
+    for (const plan of project.plans) {
+      t.objectStore(FILES).delete(`${project.id}:render:${plan.id}`);
+      t.objectStore(FILES).delete(`${project.id}:thumb:${plan.id}`);
+    }
     return () => undefined;
   });
 }
@@ -1053,12 +1056,13 @@ export function parseShortsSourceRef(ref: string | null | undefined): { projectI
   return match ? { projectId: match[1], planId: match[2] } : null;
 }
 
-/** Crea el borrador del Short en Programación con el video, sus subtítulos y los textos de la IA */
+/** Crea el borrador del Short en Programación con el video, sus subtítulos, la miniatura (si hay) y los textos de la IA */
 export async function sendShortToSchedule(
   project: ShortsProject,
   plan: ShortPlan,
   render: StoredRender,
-  profile: ChannelProfile
+  profile: ChannelProfile,
+  thumbnail: File | null = null
 ): Promise<string> {
   const { newDraft, saveDraft } = await import("./youtube-draft");
   const { withCta } = await import("./video-tasks");
@@ -1071,6 +1075,7 @@ export async function sendShortToSchedule(
   const draft = newDraft(project.accountId, profile, {
     file: render.file,
     subtitleFile: new File([render.srt], render.file.name.replace(/\.[^.]+$/, ".srt"), { type: "application/x-subrip" }),
+    thumbnailFile: thumbnail,
     format: "short",
     // La duración se conoce del plan: los .webm grabados en el navegador no la traen en el archivo
     video: { duration: timeline.duration, width: 1080, height: 1920 },

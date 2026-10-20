@@ -1,5 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, CalendarClock, CalendarPlus, ExternalLink, FileVideo, FolderOpen, Loader2, Rocket, Save, Scissors, Trash2, TriangleAlert, Undo2, WandSparkles } from "lucide-react";
+import {
+  AlertCircle,
+  CalendarClock,
+  CalendarPlus,
+  ExternalLink,
+  FileVideo,
+  FolderOpen,
+  ImageUp,
+  Loader2,
+  Rocket,
+  Save,
+  Scissors,
+  Trash2,
+  TriangleAlert,
+  Undo2,
+  WandSparkles,
+  X,
+} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,6 +28,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +40,7 @@ import { toLocalInput } from "@/components/studio/YouTubeUploadDialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   composeCaption,
+  COVER_RETRY_NOTE,
   createPublication,
   deletePublication,
   generateCaptions,
@@ -38,13 +57,16 @@ import {
   publishNow,
   PUBLISHING_MESSAGE,
   REEL_MIN_LEAD_MS,
+  removeReelCover,
   RETRY_HELP,
   schedulePublication,
   splitCaption,
   unlockShortsFolder,
   unschedule,
   updatePublication,
+  uploadReelCover,
   uploadReelVideo,
+  validateReelCover,
   validateReelFile,
   type FactoryShort,
   type InstagramPublication,
@@ -114,7 +136,12 @@ export function ReelComposerDialog({
   const [fraction, setFraction] = useState<number | null>(null);
   const [confirmNow, setConfirmNow] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Portada propia: la miniatura del Short de la Fábrica, un JPG elegido a mano o quitar la guardada
+  const [useThumbCover, setUseThumbCover] = useState(true);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [removeCover, setRemoveCover] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const coverRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const busy = step !== null || aiBusy;
@@ -143,6 +170,9 @@ export function ReelComposerDialog({
     setFraction(null);
     setConfirmDelete(false);
     setDuration(0);
+    setUseThumbCover(true);
+    setCoverFile(null);
+    setRemoveCover(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, publication?.id]);
 
@@ -168,6 +198,18 @@ export function ReelComposerDialog({
   const videoSrc = previewUrl ?? publication?.mediaUrl ?? null;
   const videoReady = Boolean(newFile && !fileProblem) || (publication ? hasVideo(publication) : false);
 
+  const thumbCover = source?.kind === "factory" ? (source.short.thumbnail ?? null) : null;
+  const pendingCover = coverFile ?? (thumbCover && useThumbCover ? thumbCover : null);
+  const pendingCoverUrl = useMemo(() => (pendingCover ? URL.createObjectURL(pendingCover) : null), [pendingCover]);
+  useEffect(() => () => void (pendingCoverUrl && URL.revokeObjectURL(pendingCoverUrl)), [pendingCoverUrl]);
+  const shownCover = pendingCoverUrl ?? (removeCover ? null : (publication?.coverUrl ?? null));
+
+  const dropCover = () => {
+    if (coverFile) setCoverFile(null);
+    else if (thumbCover && useThumbCover) setUseThumbCover(false);
+    else setRemoveCover(true);
+  };
+
   const caption = composeCaption(text, hashtags);
   const tagsLength = hashtags.length ? hashtags.join(" ").length + 2 : 0;
   const when = whenLocal ? new Date(whenLocal) : null;
@@ -176,6 +218,7 @@ export function ReelComposerDialog({
 
   const chooseShort = (short: FactoryShort) => {
     setSource({ kind: "factory", short });
+    setUseThumbCover(true);
     if (!title.trim()) setTitle(short.title);
     if (!text.trim() && short.description) setText(splitCaption(short.description).text);
     if (!hashtags.length) setHashtags(normalizeHashtags(short.hashtags));
@@ -220,7 +263,7 @@ export function ReelComposerDialog({
   };
 
   // ---------- Guardar ----------
-  // Orden fijo: 1) texto, 2) video, 3) hora. Así el aviso a n8n sale cuando el Reel ya está completo.
+  // Orden fijo: 1) texto, 2) video y portada, 3) hora. Así el aviso a n8n sale cuando el Reel ya está completo.
   const submit = async (kind: SubmitKind) => {
     if (kind === "schedule" && (!when || whenInPast)) {
       toast({ title: "Elige una fecha futura", variant: "destructive" });
@@ -261,22 +304,42 @@ export function ReelComposerDialog({
     }
 
     let uploadError: string | null = null;
-    if (newFile && !fileProblem) {
-      setStep("Subiendo el video…");
+    const withVideo = Boolean(newFile && !fileProblem);
+    if (newFile && withVideo) {
+      setStep(pendingCover ? "Subiendo el video y la portada…" : "Subiendo el video…");
       setFraction(0);
       onUploading?.(saved.id, 0);
       try {
-        const media = await uploadReelVideo(saved.id, newFile, (f) => {
-          setFraction(f);
-          onUploading?.(saved.id, f);
-        });
-        saved = { ...saved, mediaUrl: media.mediaUrl, mediaSize: media.mediaSize };
+        const media = await uploadReelVideo(
+          saved.id,
+          newFile,
+          (f) => {
+            setFraction(f);
+            onUploading?.(saved.id, f);
+          },
+          pendingCover
+        );
+        saved = { ...saved, mediaUrl: media.mediaUrl, mediaSize: media.mediaSize, coverUrl: media.coverUrl };
       } catch (err) {
         uploadError = err instanceof Error ? err.message : "No se pudo subir el video.";
       } finally {
         onUploading?.(saved.id, null);
         setFraction(null);
       }
+    }
+
+    // Cambios solo de portada: no tocan el video ni la hora
+    let coverError: string | null = null;
+    try {
+      if (pendingCover && !withVideo) {
+        setStep("Subiendo la portada…");
+        saved = { ...saved, coverUrl: (await uploadReelCover(saved.id, pendingCover)).coverUrl };
+      } else if (!pendingCover && removeCover && saved.coverUrl) {
+        setStep("Quitando la portada…");
+        saved = { ...saved, coverUrl: (await removeReelCover(saved.id)).coverUrl };
+      }
+    } catch (err) {
+      coverError = err instanceof Error ? err.message : "No se pudo cambiar la portada.";
     }
 
     try {
@@ -308,8 +371,11 @@ export function ReelComposerDialog({
     } finally {
       setStep(null);
     }
+    if (coverError && !uploadError) {
+      toast({ title: "Guardado, pero la portada no cambió", description: `${coverError} Vuelve a intentarlo desde esta ficha.`, variant: "destructive" });
+    }
     onSaved(saved);
-    if (!uploadError) onOpenChange(false);
+    if (!uploadError && !coverError) onOpenChange(false);
   };
 
   const runAction = async (action: () => Promise<unknown>, done: string) => {
@@ -348,6 +414,24 @@ export function ReelComposerDialog({
             }
             setSource({ kind: "file", file });
             if (!title.trim()) setTitle(file.name.replace(/\.[^.]+$/, ""));
+          }}
+        />
+        <input
+          ref={coverRef}
+          type="file"
+          accept="image/jpeg,.jpg,.jpeg"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (!file) return;
+            const problem = validateReelCover(file);
+            if (problem) {
+              toast({ title: "Esa imagen no sirve de portada", description: problem, variant: "destructive" });
+              return;
+            }
+            setCoverFile(file);
+            setRemoveCover(false);
           }}
         />
         <DialogHeader>
@@ -407,7 +491,33 @@ export function ReelComposerDialog({
                 </div>
               )}
             </div>
-            {videoSrc && duration > 0 && !readOnly && (
+            {!readOnly && thumbCover && (
+              <label className="flex items-center gap-2 text-xs">
+                <Checkbox checked={useThumbCover} disabled={busy} onCheckedChange={(v) => setUseThumbCover(v === true)} />
+                Usar la miniatura como portada
+              </label>
+            )}
+            {!readOnly && shownCover && (
+              <div className="space-y-2 rounded-xl border border-border p-2">
+                <div className="flex items-start gap-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={shownCover} alt="Portada del Reel" className="aspect-[9/16] w-16 shrink-0 rounded-md object-cover" />
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <p className="text-xs font-medium">Portada</p>
+                    <Button variant="secondary" size="sm" className="h-7 w-full gap-1.5 text-xs" disabled={busy} onClick={() => coverRef.current?.click()}>
+                      <ImageUp className="h-3.5 w-3.5" />
+                      Cambiar portada (JPG)
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 w-full gap-1.5 text-xs text-muted-foreground" disabled={busy} onClick={dropCover}>
+                      <X className="h-3.5 w-3.5" />
+                      Quitar portada
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground">{COVER_RETRY_NOTE}</p>
+              </div>
+            )}
+            {videoSrc && duration > 0 && !readOnly && !shownCover && (
               <div className="space-y-1.5">
                 <Label className="text-xs">Portada · segundo {((thumbMs ?? 0) / 1000).toFixed(1)}</Label>
                 <Slider
@@ -419,6 +529,12 @@ export function ReelComposerDialog({
                   disabled={busy}
                 />
               </div>
+            )}
+            {!readOnly && !shownCover && (
+              <Button variant="ghost" size="sm" className="h-7 w-full gap-1.5 text-xs" disabled={busy} onClick={() => coverRef.current?.click()}>
+                <ImageUp className="h-3.5 w-3.5" />
+                Subir portada (JPG)
+              </Button>
             )}
             {fileProblem && (
               <p className="flex items-start gap-1.5 text-xs text-red-400">

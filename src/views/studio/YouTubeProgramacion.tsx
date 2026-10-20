@@ -50,6 +50,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ChannelProfileDialog } from "@/components/studio/ChannelProfileDialog";
 import { PublishPlanDialog } from "@/components/studio/PublishPlanDialog";
 import { RescheduleDialog } from "@/components/studio/RescheduleDialog";
+import { ThumbnailRejectedNotice } from "@/components/studio/ThumbnailRejectedNotice";
 import { EmptyState, StudioCard, StudioPageHeader } from "@/components/studio/StudioUI";
 import { YouTubeDraftEditor } from "@/components/studio/YouTubeDraftEditor";
 import { PendingTasksPanel, VideoExtrasDialog } from "@/components/studio/VideoTasks";
@@ -166,6 +167,7 @@ export default function YouTubeProgramacion() {
   const [extrasVideo, setExtrasVideo] = useState<YouTubeVideo | null>(null);
   const [rescheduling, setRescheduling] = useState<Extract<Entry, { kind: "youtube" }> | null>(null);
   const [ideas, setIdeas] = useState<ShortIdea[]>([]);
+  const [thumbRejected, setThumbRejected] = useState<{ videoId: string; title: string; file: File }[]>([]);
 
   const draftsRef = useRef(drafts);
   draftsRef.current = drafts;
@@ -483,7 +485,7 @@ export default function YouTubeProgramacion() {
       if (!draft || draftProblems(draft, true).length > 0 || !draft.scheduledAt) continue;
       setUpload({ id, title: draft.title, status: "Preparando…", progress: 0, done: i, total: ids.length });
       try {
-        const { videoId, warnings: w } = await publishDraft(draft, {
+        const { videoId, warnings: w, thumbnailRejected } = await publishDraft(draft, {
           categoryId: profile.category_id,
           privacy: "private",
           publishAt: draft.scheduledAt,
@@ -491,6 +493,8 @@ export default function YouTubeProgramacion() {
           onProgress: (progress) => setUpload((u) => (u ? { ...u, progress } : u)),
         });
         warnings.push(...w.map((x) => `${draft.title.slice(0, 40)}: ${x}`));
+        // El borrador se borra al subir: la miniatura queda en memoria para bajarla y subirla a mano
+        if (thumbnailRejected) setThumbRejected((list) => [...list, { ...thumbnailRejected, title: draft.title.trim() }]);
         addPost({
           platform: "youtube",
           accountId: draft.accountId,
@@ -690,6 +694,16 @@ export default function YouTubeProgramacion() {
           <p className="text-xs text-muted-foreground">No cierres esta pestaña mientras sube. Lo que falte queda guardado para después.</p>
         </StudioCard>
       )}
+
+      {thumbRejected.map((r) => (
+        <ThumbnailRejectedNotice
+          key={r.videoId}
+          videoId={r.videoId}
+          file={r.file}
+          title={r.title}
+          onDismiss={() => setThumbRejected((list) => list.filter((x) => x.videoId !== r.videoId))}
+        />
+      ))}
 
       <PendingTasksPanel tasks={tasks} onChanged={() => void loadTasks()} />
 

@@ -116,6 +116,8 @@ interface Props {
   onActive: (active: boolean) => void;
   /** Ítems de la lista de control que calcula la app (video relacionado y cuadro de apertura) */
   appChecks?: IdeaCheckItem[];
+  /** Sección "Miniatura" (editor con IA), armada por la Fábrica */
+  thumbnailSection?: React.ReactNode;
 }
 
 export function ShortPlanCard({
@@ -135,6 +137,7 @@ export function ShortPlanCard({
   onDelete,
   onActive,
   appChecks = [],
+  thumbnailSection,
 }: Props) {
   const { toast } = useToast();
   const idea = plan.idea;
@@ -411,6 +414,8 @@ export function ShortPlanCard({
               </CollapsibleContent>
             </Collapsible>
           )}
+
+          {thumbnailSection}
 
           <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
             {(Object.keys(SCORE_LABELS) as (keyof ShortScore)[]).map((k) => (

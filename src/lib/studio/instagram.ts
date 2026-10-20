@@ -24,6 +24,7 @@ import {
   type ShortsProject,
   type StoredRender,
 } from "./shorts";
+import { loadThumbnails, type StoredThumbnail } from "./thumbnails";
 
 const N8N_BASE_URL = process.env.NEXT_PUBLIC_N8N_BASE_URL || "https://n8ninnovatec-n8n.t0bgq1.easypanel.host";
 const UPLOAD_PATH = process.env.NEXT_PUBLIC_N8N_WEBHOOK_STUDIO_IG_UPLOAD || "/webhook/vexa-studio/instagram/upload";
@@ -85,6 +86,8 @@ export interface InstagramPublication {
   /** Lo llena n8n: no nulo = video listo */
   mediaUrl: string | null;
   mediaSize: number | null;
+  /** Portada propia (JPG en R2, transitorio). La escribe n8n; null = se usa el segundo elegido */
+  coverUrl: string | null;
   permalink: string | null;
   publishedAt: string | null;
   attempts: number;
@@ -115,6 +118,7 @@ interface PublicationRow {
   scheduled_at: string | null;
   media_url: string | null;
   media_size: number | null;
+  cover_url: string | null;
   permalink: string | null;
   published_at: string | null;
   attempts: number;
@@ -124,7 +128,7 @@ interface PublicationRow {
 }
 
 const COLUMNS =
-  "id, tenant_id, account_id, title, caption, settings, source_ref, youtube_video_id, status, scheduled_at, media_url, media_size, permalink, published_at, attempts, last_error, created_at, updated_at";
+  "id, tenant_id, account_id, title, caption, settings, source_ref, youtube_video_id, status, scheduled_at, media_url, media_size, cover_url, permalink, published_at, attempts, last_error, created_at, updated_at";
 
 export const DEFAULT_SETTINGS: PublicationSettings = { shareToFeed: true, collaborators: [] };
 
@@ -167,6 +171,7 @@ export const toPublication = (r: PublicationRow): InstagramPublication => ({
   scheduledAt: r.scheduled_at,
   mediaUrl: r.media_url,
   mediaSize: r.media_size === null ? null : Number(r.media_size),
+  coverUrl: r.cover_url ?? null,
   permalink: r.permalink,
   publishedAt: r.published_at,
   attempts: Number(r.attempts ?? 0),
@@ -341,22 +346,35 @@ export function validateReelFile(file: Pick<File, "name" | "type" | "size">): st
   return null;
 }
 
-/**
- * Sube el MP4 a n8n (multipart sin headers propios: así no hay preflight de CORS).
- * La fila ya debe existir. Si está programada, la subida arma la alarma sola.
- */
-export async function uploadReelVideo(
+export const MAX_COVER_BYTES = 8 * 1024 * 1024;
+export const COVER_INVALID_MESSAGE = "La portada tiene que ser JPG de hasta 8 MB.";
+export const COVER_RETRY_NOTE = "Si Instagram rechaza la portada, el último reintento sale sin ella (con el segundo elegido).";
+
+/** null si sirve; si no, el mensaje para mostrar */
+export function validateReelCover(file: Pick<File, "name" | "type" | "size">): string | null {
+  const jpg = file.type === "image/jpeg" || (!file.type && /\.jpe?g$/i.test(file.name));
+  return jpg && file.size > 0 && file.size <= MAX_COVER_BYTES ? null : COVER_INVALID_MESSAGE;
+}
+
+interface UploadBody {
+  ok?: boolean;
+  error?: string;
+  media_url?: string | null;
+  media_size?: number | null;
+  cover_url?: string | null;
+}
+
+/** Multipart al webhook de subida (sin headers propios: así no hay preflight de CORS) */
+async function postUpload(
   publicationId: string,
-  file: File,
-  onProgress?: (fraction: number) => void
-): Promise<{ mediaUrl: string; mediaSize: number }> {
-  const problem = validateReelFile(file);
-  if (problem) throw new Error(problem);
+  fill: (form: FormData) => void,
+  onProgress?: (fraction: number) => void,
+  offlineMessage = "No se pudo subir el video. Revisa tu conexión y vuelve a intentarlo."
+): Promise<UploadBody> {
   const form = new FormData();
   form.append("publication_id", publicationId);
   form.append("access_token", await accessToken());
-  form.append("size", String(file.size));
-  form.append("video", file, file.name);
+  fill(form);
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${N8N_BASE_URL}${UPLOAD_PATH}`);
@@ -364,22 +382,65 @@ export async function uploadReelVideo(
       if (e.lengthComputable) onProgress?.(e.loaded / e.total);
     };
     xhr.onload = () => {
-      let body: { ok?: boolean; error?: string; media_url?: string; media_size?: number } | null = null;
+      let body: UploadBody | null = null;
       try {
         body = JSON.parse(xhr.responseText);
       } catch {
         body = null;
       }
       if (xhr.status === 401) return reject(new Error("Tu sesión expiró. Vuelve a iniciar sesión."));
-      if (xhr.status < 200 || xhr.status >= 300 || !body?.ok || !body.media_url) {
+      if (xhr.status < 200 || xhr.status >= 300 || !body?.ok) {
         return reject(new Error(body?.error ?? `La subida falló (n8n respondió ${xhr.status}).`));
       }
       onProgress?.(1);
-      resolve({ mediaUrl: body.media_url, mediaSize: Number(body.media_size ?? file.size) });
+      resolve(body);
     };
-    xhr.onerror = () => reject(new Error("No se pudo subir el video. Revisa tu conexión y vuelve a intentarlo."));
+    xhr.onerror = () => reject(new Error(offlineMessage));
     xhr.send(form);
   });
+}
+
+/** La portada siempre va como portada.jpg (image/jpeg), como espera n8n */
+const appendCover = (form: FormData, cover: File) =>
+  form.append("cover", cover.type === "image/jpeg" ? cover : new File([cover], "portada.jpg", { type: "image/jpeg" }), "portada.jpg");
+
+/**
+ * Sube el MP4 (y si viene, la portada JPG) a n8n.
+ * La fila ya debe existir. Si está programada, la subida arma la alarma sola.
+ */
+export async function uploadReelVideo(
+  publicationId: string,
+  file: File,
+  onProgress?: (fraction: number) => void,
+  cover?: File | null
+): Promise<{ mediaUrl: string; mediaSize: number; coverUrl: string | null }> {
+  const problem = validateReelFile(file) ?? (cover ? validateReelCover(cover) : null);
+  if (problem) throw new Error(problem);
+  const body = await postUpload(
+    publicationId,
+    (form) => {
+      form.append("size", String(file.size));
+      form.append("video", file, file.name);
+      if (cover) appendCover(form, cover);
+    },
+    onProgress
+  );
+  if (!body.media_url) throw new Error(body.error ?? "La subida falló: n8n no devolvió el video.");
+  return { mediaUrl: body.media_url, mediaSize: Number(body.media_size ?? file.size), coverUrl: body.cover_url ?? null };
+}
+
+/** Solo cambia la portada: no toca el video ni la hora programada */
+export async function uploadReelCover(publicationId: string, cover: File): Promise<{ coverUrl: string | null }> {
+  const problem = validateReelCover(cover);
+  if (problem) throw new Error(problem);
+  const body = await postUpload(publicationId, (form) => appendCover(form, cover), undefined, "No se pudo subir la portada. Revisa tu conexión y vuelve a intentarlo.");
+  return { coverUrl: body.cover_url ?? null };
+}
+
+/** Quita la portada propia: Instagram vuelve a usar el segundo elegido */
+export async function removeReelCover(publicationId: string): Promise<{ coverUrl: string | null }> {
+  const body = await postUpload(publicationId, (form) => form.append("remove_cover", "1"), undefined, "No se pudo quitar la portada. Revisa tu conexión y vuelve a intentarlo.");
+  return { coverUrl: body.cover_url ?? null };
 }
 
 // ---------- Textos con IA ----------
@@ -682,9 +743,11 @@ export interface FactoryShort {
   durationSeconds: number;
   /** Ya se envió a Programación de YouTube */
   sentToSchedule: boolean;
+  /** Miniatura con IA guardada en la carpeta: sirve de portada del Reel */
+  thumbnail?: File;
 }
 
-export function factoryShortFrom(project: ShortsProject, plan: ShortPlan, render: StoredRender): FactoryShort {
+export function factoryShortFrom(project: ShortsProject, plan: ShortPlan, render: StoredRender, thumbnail?: File): FactoryShort {
   const timeline = buildTimeline(plan, project.cues);
   return {
     sourceRef: shortsSourceRef(project.id, plan.id),
@@ -699,6 +762,7 @@ export function factoryShortFrom(project: ShortsProject, plan: ShortPlan, render
     srt: render.srt || timelineToSrt(timeline),
     durationSeconds: Math.round(timeline.duration),
     sentToSchedule: Boolean(project.sentToSchedule[plan.id]),
+    ...(thumbnail ? { thumbnail } : {}),
   };
 }
 
@@ -708,10 +772,13 @@ export async function loadFactoryShorts(youtubeAccountId: string): Promise<{ sho
   const folderLocked = folder ? !(await hasAccess(folder, "readwrite").catch(() => false)) : false;
   const shorts: FactoryShort[] = [];
   for (const project of projects) {
-    const renders = await loadRenders(project, folder).catch(() => ({}) as Record<string, StoredRender>);
+    const [renders, thumbs] = await Promise.all([
+      loadRenders(project, folder).catch(() => ({}) as Record<string, StoredRender>),
+      loadThumbnails(project, folder).catch(() => ({}) as Record<string, StoredThumbnail>),
+    ]);
     for (const plan of project.plans) {
       const render = renders[plan.id];
-      if (render) shorts.push(factoryShortFrom(project, plan, render));
+      if (render) shorts.push(factoryShortFrom(project, plan, render, thumbs[plan.id]?.file ?? undefined));
     }
   }
   return { shorts, folderLocked };

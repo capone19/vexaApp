@@ -134,7 +134,7 @@ export function YouTubeUploadDialog({ open, onOpenChange, accountId }: YouTubeUp
         return;
       }
       setProgress(0);
-      const { videoId, warnings, task } = await publishDraft(draft, {
+      const { videoId, warnings, task, thumbnailRejected } = await publishDraft(draft, {
         categoryId: profile.category_id,
         privacy,
         publishAt,
@@ -156,7 +156,9 @@ export function YouTubeUploadDialog({ open, onOpenChange, accountId }: YouTubeUp
       // Lo que la API no deja hacer: elegir el video relacionado y fijar el comentario
       const relatedPending = Boolean(task?.relatedVideoId);
       const pinPending = task?.commentStatus === "publicado" && task.commentId;
-      const next = relatedPending
+      const next = thumbnailRejected
+        ? { label: "Abrir en YouTube Studio", href: studioEditUrl(videoId) }
+        : relatedPending
         ? { label: "Elegir video relacionado", href: studioEditUrl(videoId) }
         : pinPending
           ? { label: "Fijar comentario", href: pinUrl(videoId, task.commentId as string) }

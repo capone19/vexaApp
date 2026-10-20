@@ -32,6 +32,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ReelComposerDialog } from "@/components/studio/instagram/ReelComposerDialog";
 import { ShortIdeasSheet, SourceLevelChip } from "@/components/studio/ShortIdeasSheet";
 import { ShortPlanCard, scoreTone } from "@/components/studio/ShortPlanCard";
+import { ShortThumbnailEditor } from "@/components/studio/ShortThumbnailEditor";
 import { ShortsSoundsDialog } from "@/components/studio/ShortsSoundsDialog";
 import { EmptyState, StudioCard, StudioPageHeader } from "@/components/studio/StudioUI";
 import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
@@ -87,6 +88,8 @@ import {
   type SourceStatus,
 } from "@/lib/studio/short-ideas";
 import { takeShortsWave } from "@/lib/studio/performance-ai";
+import { loadThumbnails, phraseText, type StoredThumbnail } from "@/lib/studio/thumbnails";
+import { setDraftThumbnail } from "@/lib/studio/youtube-draft";
 import { parseSubtitles, isSubtitleFile, formatTimestamp } from "@/lib/studio/subtitles";
 import { listSourceRefs, type RelatedVideo } from "@/lib/studio/video-tasks";
 import { fetchYouTubeVideos } from "@/lib/studio/youtube";
@@ -143,6 +146,8 @@ export default function YouTubeShorts() {
   const [folder, setFolder] = useState<FileSystemDirectoryHandle | null>(null);
   const [folderReady, setFolderReady] = useState(false);
   const [renders, setRenders] = useState<Record<string, StoredRender>>({});
+  // Miniaturas con IA: en el navegador solo la ficha; los JPG se leen de la carpeta del PC
+  const [thumbs, setThumbs] = useState<Record<string, StoredThumbnail>>({});
   const [activePlan, setActivePlan] = useState<string | null>(null);
   const [step, setStep] = useState<{ key: StepKey; detail?: string } | null>(null);
   const [soundsOpen, setSoundsOpen] = useState(false);
@@ -255,6 +260,7 @@ export default function YouTubeShorts() {
     setVideoMissing(false);
     setVideoLocked(false);
     setRenders({});
+    setThumbs({});
     loadProjectVideo(openId).then(({ file, handle }) => {
       if (cancelled) return;
       setVideo(file);
@@ -262,7 +268,10 @@ export default function YouTubeShorts() {
       setVideoMissing(!file && !handle);
     });
     const p = projects.find((x) => x.id === openId);
-    if (p) void loadRenders(p, folder).then((r) => !cancelled && setRenders(r)).catch(() => undefined);
+    if (p) {
+      void loadRenders(p, folder).then((r) => !cancelled && setRenders(r)).catch(() => undefined);
+      void loadThumbnails(p, folder).then((t) => !cancelled && setThumbs(t)).catch(() => undefined);
+    }
     return () => {
       cancelled = true;
     };
@@ -563,11 +572,9 @@ export default function YouTubeShorts() {
     if (!project.sentToSchedule[plan.id]) void markIdeas([plan.idea?.id], "descartada");
   };
 
-  // Antes de renderizar (dentro del clic): pedir la carpeta o su permiso. Si no se da, se guarda en el navegador.
-  const folderForRender = useRef<FileSystemDirectoryHandle | null>(null);
-  const beforeRender = async () => {
-    folderForRender.current = null;
-    if (!localFiles) return;
+  // Pide la carpeta del PC o su permiso (tiene que ser dentro de un clic). null si no se da
+  const askFolder = async (): Promise<FileSystemDirectoryHandle | null> => {
+    if (!localFiles) return null;
     try {
       let dir = folder;
       if (!dir) {
@@ -575,12 +582,28 @@ export default function YouTubeShorts() {
         setFolder(dir);
       }
       if (await hasAccess(dir, "readwrite", true)) {
-        folderForRender.current = dir;
         setFolderReady(true);
+        return dir;
       }
     } catch {
-      // Canceló el selector: queda en el navegador
+      // Canceló el selector
     }
+    return null;
+  };
+
+  // Antes de renderizar (dentro del clic): pedir la carpeta o su permiso. Si no se da, se guarda en el navegador.
+  const folderForRender = useRef<FileSystemDirectoryHandle | null>(null);
+  const beforeRender = async () => {
+    folderForRender.current = await askFolder();
+  };
+
+  /** Miniatura guardada en la carpeta: si el Short ya está en Programación y sin subir, también va a su borrador */
+  const thumbnailSaved = async (plan: ShortPlan, stored: StoredThumbnail): Promise<string | void> => {
+    setThumbs((t) => ({ ...t, [plan.id]: stored }));
+    const draftId = project?.sentToSchedule[plan.id];
+    if (!draftId || !stored.file) return;
+    const updated = await setDraftThumbnail(draftId, stored.file).catch(() => false);
+    if (updated) return "También quedó en su borrador de Programación.";
   };
 
   const rendered = async (render: StoredRender) => {
@@ -670,7 +693,7 @@ export default function YouTubeShorts() {
     const render = renders[plan.id];
     if (!project || !render) return;
     try {
-      const draftId = await sendShortToSchedule(project, plan, render, profile);
+      const draftId = await sendShortToSchedule(project, plan, render, profile, thumbs[plan.id]?.file ?? null);
       commit({ ...project, sentToSchedule: { ...project.sentToSchedule, [plan.id]: draftId } }, true);
       toast({
         title: "Short enviado a Programación",
@@ -910,6 +933,24 @@ export default function YouTubeShorts() {
                 locked={Boolean(activePlan && activePlan !== plan.id) || busy}
                 scheduledDraftId={project.sentToSchedule[plan.id]}
                 appChecks={appChecksFor(project, plan)}
+                thumbnailSection={
+                  <ShortThumbnailEditor
+                    project={project}
+                    plan={plan}
+                    video={video}
+                    render={renders[plan.id] ?? null}
+                    profile={profile}
+                    thumbnail={thumbs[plan.id] ?? null}
+                    otherPhrases={Object.values(thumbs)
+                      .filter((t) => t.planId !== plan.id)
+                      .map((t) => phraseText(t.phrase))}
+                    locked={Boolean(activePlan && activePlan !== plan.id) || busy}
+                    hasFolder={Boolean(folder && folderReady)}
+                    onActive={(active) => setActivePlan(active ? plan.id : null)}
+                    onBeforeThumbnail={askFolder}
+                    onSaved={(stored) => thumbnailSaved(plan, stored)}
+                  />
+                }
                 onChange={setPlan}
                 onRevise={(instruction) => revise(plan, instruction)}
                 onBeforeRender={beforeRender}
@@ -919,7 +960,7 @@ export default function YouTubeShorts() {
                   igAccount && renders[plan.id]
                     ? () => {
                         setReelIdeaId(plan.idea?.id ?? null);
-                        setReelShort(factoryShortFrom(project, plan, renders[plan.id]));
+                        setReelShort(factoryShortFrom(project, plan, renders[plan.id], thumbs[plan.id]?.file ?? undefined));
                       }
                     : undefined
                 }

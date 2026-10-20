@@ -15,6 +15,7 @@ import { toLocalInput } from "@/components/studio/YouTubeUploadDialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   composeCaption,
+  COVER_RETRY_NOTE,
   createPublication,
   generateCaptions,
   loadFactoryShorts,
@@ -51,6 +52,8 @@ interface ItemEdit {
   firstComment: string;
   /** Segundo de la portada; null = el que elija Instagram */
   thumbSeconds: number | null;
+  /** Subir la miniatura del Short (si tiene) como portada del Reel */
+  useCover: boolean;
   notesEs: string;
   aiError?: string;
   /** Hora elegida a mano (datetime-local) */
@@ -79,6 +82,7 @@ const defaultEdit = (match: FactoryShort | null): ItemEdit => ({
   hashtags: normalizeHashtags(match?.hashtags ?? []),
   firstComment: "",
   thumbSeconds: null,
+  useCover: Boolean(match?.thumbnail),
   notesEs: "",
 });
 
@@ -154,6 +158,14 @@ export function ReplicateFromYouTubeSheet({
       setResolving(false);
     }
   }, [ytId]);
+
+  // Vista previa de las miniaturas de la Fábrica (los JPG viven en la carpeta del PC)
+  const coverUrls = useMemo(() => {
+    const urls = new Map<string, string>();
+    for (const s of factory) if (s.thumbnail) urls.set(s.sourceRef, URL.createObjectURL(s.thumbnail));
+    return urls;
+  }, [factory]);
+  useEffect(() => () => coverUrls.forEach((url) => URL.revokeObjectURL(url)), [coverUrls]);
 
   useEffect(() => {
     if (!open) return;
@@ -322,13 +334,19 @@ export function ReplicateFromYouTubeSheet({
         failures.push(`${title.slice(0, 40)}: ${err instanceof Error ? err.message : "no se pudo crear"}`);
         continue;
       }
-      setRun({ done: i, total: queue.length, title, step: "Subiendo el video…", fraction: 0 });
+      const cover = edit.useCover ? (it.match?.thumbnail ?? null) : null;
+      setRun({ done: i, total: queue.length, title, step: cover ? "Subiendo el video y la portada…" : "Subiendo el video…", fraction: 0 });
       onUploading(publication.id, 0);
       try {
-        await uploadReelVideo(publication.id, it.file, (fraction) => {
-          setRun((r) => (r ? { ...r, fraction } : r));
-          onUploading(publication.id, fraction);
-        });
+        await uploadReelVideo(
+          publication.id,
+          it.file,
+          (fraction) => {
+            setRun((r) => (r ? { ...r, fraction } : r));
+            onUploading(publication.id, fraction);
+          },
+          cover
+        );
         uploaded++;
       } catch (err) {
         failures.push(`${title.slice(0, 40)}: ${err instanceof Error ? err.message : "no se pudo subir"}. Quedó programado sin video: usa "Subir video" en el calendario.`);
@@ -504,6 +522,7 @@ export function ReplicateFromYouTubeSheet({
                   const edit = editFor(it);
                   const slot = times.get(id);
                   const tags = edit.hashtags.join(" ");
+                  const coverUrl = it.match ? coverUrls.get(it.match.sourceRef) : undefined;
                   return (
                     <li key={id} className={cn("space-y-3 rounded-2xl border p-3 transition-opacity", on ? "border-border" : "border-border/50 opacity-60")}>
                       <div className="flex items-start gap-3">
@@ -585,7 +604,18 @@ export function ReplicateFromYouTubeSheet({
                             <Label className="text-xs">Hashtags</Label>
                             <HashtagInput value={edit.hashtags} disabled={busy} onChange={(hashtags) => patchEdit(it, { hashtags })} />
                           </div>
-                          <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
+                          {coverUrl && (
+                            <label className="flex items-center gap-3 rounded-xl border border-border/70 p-2 text-sm">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={coverUrl} alt="" className="h-16 w-9 shrink-0 rounded-md object-cover" />
+                              <span className="min-w-0 flex-1">
+                                Usar la miniatura como portada
+                                <span className="block text-[11px] text-muted-foreground">{COVER_RETRY_NOTE}</span>
+                              </span>
+                              <Checkbox checked={edit.useCover} disabled={busy} onCheckedChange={(v) => patchEdit(it, { useCover: v === true })} />
+                            </label>
+                          )}
+                          <div className={cn("grid gap-3", !(coverUrl && edit.useCover) && "sm:grid-cols-[1fr_140px]")}>
                             <div className="space-y-1">
                               <Label className="text-xs">Primer comentario</Label>
                               <Input
@@ -596,19 +626,21 @@ export function ReplicateFromYouTubeSheet({
                                 className="h-8 text-sm"
                               />
                             </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Portada (segundo)</Label>
-                              <Input
-                                type="number"
-                                min={0}
-                                step={0.5}
-                                value={edit.thumbSeconds ?? ""}
-                                disabled={busy}
-                                placeholder="Auto"
-                                onChange={(e) => patchEdit(it, { thumbSeconds: e.target.value === "" ? null : Math.max(0, Number(e.target.value)) })}
-                                className="h-8 text-sm"
-                              />
-                            </div>
+                            {!(coverUrl && edit.useCover) && (
+                              <div className="space-y-1">
+                                <Label className="text-xs">Portada (segundo)</Label>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  step={0.5}
+                                  value={edit.thumbSeconds ?? ""}
+                                  disabled={busy}
+                                  placeholder="Auto"
+                                  onChange={(e) => patchEdit(it, { thumbSeconds: e.target.value === "" ? null : Math.max(0, Number(e.target.value)) })}
+                                  className="h-8 text-sm"
+                                />
+                              </div>
+                            )}
                           </div>
                           {edit.notesEs && <p className="rounded-lg bg-primary/5 p-2 text-[11px] text-muted-foreground">IA: {edit.notesEs}</p>}
                           {edit.aiError && <p className="text-[11px] text-red-400">{edit.aiError}</p>}

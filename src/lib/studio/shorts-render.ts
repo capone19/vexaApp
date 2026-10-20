@@ -15,8 +15,9 @@ export const OUT_W = 1080;
 export const OUT_H = 1920;
 
 const TITLE_FONT = '"Montserrat", "Arial Black", "Helvetica Neue", sans-serif';
-const POP_FONT = '"Anton", "Impact", "Arial Black", sans-serif';
-const YELLOW = "#FFE14D";
+export const POP_FONT = '"Anton", "Impact", "Arial Black", sans-serif';
+/** Amarillo de los Shorts (cajas de texto y remates); la miniatura usa el mismo */
+export const YELLOW = "#FFE14D";
 
 // Cuánto antes de su marca empieza cada sonido (los que "suben" terminan justo en la marca)
 const SFX_LEAD: Partial<Record<SfxKind, number | "end">> = { whoosh: 0.3, riser: "end", reverse: "end" };
