@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ToastAction } from "@/components/ui/toast";
 import { ChannelProfileDialog } from "@/components/studio/ChannelProfileDialog";
 import { PlatformIcon } from "@/components/studio/PlatformIcon";
+import { ThumbnailRejectedNotice } from "@/components/studio/ThumbnailRejectedNotice";
 import { YouTubeDraftEditor } from "@/components/studio/YouTubeDraftEditor";
 import { useStudio } from "@/contexts/StudioContext";
 import { useToast } from "@/hooks/use-toast";
@@ -70,6 +71,8 @@ export function YouTubeUploadDialog({ open, onOpenChange, accountId }: YouTubeUp
   const [status, setStatus] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [profileAccount, setProfileAccount] = useState<SocialAccount | null>(null);
+  // YouTube no aceptó la miniatura del Short: el video ya subió, queda el aviso con la imagen lista
+  const [rejected, setRejected] = useState<{ videoId: string; title: string; file: File } | null>(null);
 
   const channel = channels.find((a) => a.id === channelId) ?? null;
   const profile = useMemo(() => normalizeProfile(channel?.aiProfile), [channel]);
@@ -102,6 +105,7 @@ export function YouTubeUploadDialog({ open, onOpenChange, accountId }: YouTubeUp
     setPrivacy("public");
     setStatus(null);
     setProgress(0);
+    setRejected(null);
     // Solo al abrir
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -156,9 +160,7 @@ export function YouTubeUploadDialog({ open, onOpenChange, accountId }: YouTubeUp
       // Lo que la API no deja hacer: elegir el video relacionado y fijar el comentario
       const relatedPending = Boolean(task?.relatedVideoId);
       const pinPending = task?.commentStatus === "publicado" && task.commentId;
-      const next = thumbnailRejected
-        ? { label: "Abrir en YouTube Studio", href: studioEditUrl(videoId) }
-        : relatedPending
+      const next = relatedPending
         ? { label: "Elegir video relacionado", href: studioEditUrl(videoId) }
         : pinPending
           ? { label: "Fijar comentario", href: pinUrl(videoId, task.commentId as string) }
@@ -181,7 +183,8 @@ export function YouTubeUploadDialog({ open, onOpenChange, accountId }: YouTubeUp
           </ToastAction>
         ) : undefined,
       });
-      onOpenChange(false);
+      if (thumbnailRejected) setRejected({ ...thumbnailRejected, title: draft.title.trim() });
+      else onOpenChange(false);
     } catch (err) {
       toast({ title: "No se pudo subir", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
     } finally {
@@ -204,7 +207,9 @@ export function YouTubeUploadDialog({ open, onOpenChange, accountId }: YouTubeUp
             <DialogDescription>El archivo va directo de tu PC a YouTube, con título, descripción, subtítulos y miniatura.</DialogDescription>
           </DialogHeader>
 
-          {channels.length === 0 || !draft ? (
+          {rejected ? (
+            <ThumbnailRejectedNotice videoId={rejected.videoId} file={rejected.file} title={rejected.title} />
+          ) : channels.length === 0 || !draft ? (
             <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
               Conecta un canal de YouTube en "Cuentas conectadas" para subir videos.
             </p>
@@ -307,14 +312,20 @@ export function YouTubeUploadDialog({ open, onOpenChange, accountId }: YouTubeUp
           )}
 
           <DialogFooter className="items-center gap-2">
-            {problems.length > 0 && draft?.file && <p className="mr-auto text-xs text-muted-foreground">{problems.join(" · ")}</p>}
-            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting || busy}>
-              Cancelar
-            </Button>
-            <Button onClick={() => void handleSubmit()} disabled={!canSubmit} className="gap-2">
-              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              {modeLabels[mode].label}
-            </Button>
+            {rejected ? (
+              <Button onClick={() => onOpenChange(false)}>Listo</Button>
+            ) : (
+              <>
+                {problems.length > 0 && draft?.file && <p className="mr-auto text-xs text-muted-foreground">{problems.join(" · ")}</p>}
+                <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting || busy}>
+                  Cancelar
+                </Button>
+                <Button onClick={() => void handleSubmit()} disabled={!canSubmit} className="gap-2">
+                  {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {modeLabels[mode].label}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

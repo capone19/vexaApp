@@ -190,6 +190,7 @@ export function ShortThumbnailEditor({
     setPhrase(thumbnail.phrase);
     setSceneDraft(thumbnail.scene);
     setBackground(thumbnail.background);
+    setImageError("");
     setPreview(thumbnail.file);
     setDirty(false);
     setOpen(true);
@@ -246,6 +247,8 @@ export function ShortThumbnailEditor({
   };
 
   const current = preview ?? thumbnail?.file ?? null;
+  // Sin fondo no se puede cambiar la frase: la ficha quedó, pero el archivo no está en la carpeta (o falta el permiso)
+  const missingBackground = !background && !working && !imageError && Boolean(session?.scene);
   const pickPhrase = (p: ThumbnailPhrase) => setPhrase({ top: p.top.toUpperCase(), highlight: p.highlight.toUpperCase() });
 
   // ---------- Cerrado: botón o la miniatura guardada ----------
@@ -339,6 +342,12 @@ export function ShortThumbnailEditor({
               {imageError} Usa &quot;Otra imagen&quot;.
             </p>
           )}
+          {missingBackground && (
+            <p className="flex items-start gap-1.5 text-xs text-amber-300">
+              <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
+              No encuentro el fondo en tu carpeta: usa &quot;Otra imagen&quot; para volver a dibujarlo (o devuélvelo a la carpeta).
+            </p>
+          )}
           {noFrames && <p className="text-xs text-amber-300">Sin fotogramas del episodio los personajes pueden salir distintos.</p>}
 
           {session && session.phrases.length > 0 && (
@@ -350,7 +359,7 @@ export function ShortThumbnailEditor({
                     key={`${p.top}-${p.highlight}-${i}`}
                     type="button"
                     onClick={() => pickPhrase(p)}
-                    disabled={working}
+                    disabled={working || missingBackground}
                     className={cn(
                       "w-full rounded-lg px-3 py-2 text-left ring-1 transition-colors",
                       selected ? "bg-primary/10 ring-primary/50" : "bg-background/40 ring-border hover:ring-primary/40"
@@ -381,7 +390,7 @@ export function ShortThumbnailEditor({
                   setDirty(true);
                 }}
                 placeholder="Opcional"
-                disabled={working}
+                disabled={working || missingBackground}
                 className="h-8 text-sm"
               />
             </div>
@@ -393,7 +402,7 @@ export function ShortThumbnailEditor({
                   setPhrase((p) => ({ ...p, highlight: e.target.value.toUpperCase() }));
                   setDirty(true);
                 }}
-                disabled={working}
+                disabled={working || missingBackground}
                 className="h-8 text-sm"
               />
             </div>
