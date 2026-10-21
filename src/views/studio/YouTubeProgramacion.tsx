@@ -50,10 +50,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ChannelProfileDialog } from "@/components/studio/ChannelProfileDialog";
 import { PublishPlanDialog } from "@/components/studio/PublishPlanDialog";
 import { RescheduleDialog } from "@/components/studio/RescheduleDialog";
-import { ThumbnailRejectedNotice } from "@/components/studio/ThumbnailRejectedNotice";
 import { EmptyState, StudioCard, StudioPageHeader } from "@/components/studio/StudioUI";
 import { YouTubeDraftEditor } from "@/components/studio/YouTubeDraftEditor";
-import { PendingTasksPanel, VideoExtrasDialog } from "@/components/studio/VideoTasks";
+import { PendingTasksPanel, useThumbnailUpload, VideoExtrasDialog } from "@/components/studio/VideoTasks";
 import { toLocalInput } from "@/components/studio/YouTubeUploadDialog";
 import { useStudio } from "@/contexts/StudioContext";
 import { useToast } from "@/hooks/use-toast";
@@ -167,7 +166,7 @@ export default function YouTubeProgramacion() {
   const [extrasVideo, setExtrasVideo] = useState<YouTubeVideo | null>(null);
   const [rescheduling, setRescheduling] = useState<Extract<Entry, { kind: "youtube" }> | null>(null);
   const [ideas, setIdeas] = useState<ShortIdea[]>([]);
-  const [thumbRejected, setThumbRejected] = useState<{ videoId: string; title: string; file: File }[]>([]);
+  const { upload: uploadThumbnail, loadingId: thumbLoadingId } = useThumbnailUpload(channel?.id ?? "");
 
   const draftsRef = useRef(drafts);
   draftsRef.current = drafts;
@@ -477,6 +476,7 @@ export default function YouTubeProgramacion() {
   const runPublish = async (ids: string[]) => {
     stopRef.current = false;
     let ok = 0;
+    let thumbsPending = 0;
     let stoppedByQuota = false;
     const warnings: string[] = [];
     for (const [i, id] of ids.entries()) {
@@ -485,7 +485,7 @@ export default function YouTubeProgramacion() {
       if (!draft || draftProblems(draft, true).length > 0 || !draft.scheduledAt) continue;
       setUpload({ id, title: draft.title, status: "Preparando…", progress: 0, done: i, total: ids.length });
       try {
-        const { videoId, warnings: w, thumbnailRejected } = await publishDraft(draft, {
+        const { videoId, warnings: w, thumbnailPending } = await publishDraft(draft, {
           categoryId: profile.category_id,
           privacy: "private",
           publishAt: draft.scheduledAt,
@@ -493,8 +493,7 @@ export default function YouTubeProgramacion() {
           onProgress: (progress) => setUpload((u) => (u ? { ...u, progress } : u)),
         });
         warnings.push(...w.map((x) => `${draft.title.slice(0, 40)}: ${x}`));
-        // El borrador se borra al subir: la miniatura queda en memoria para bajarla y subirla a mano
-        if (thumbnailRejected) setThumbRejected((list) => [...list, { ...thumbnailRejected, title: draft.title.trim() }]);
+        if (thumbnailPending) thumbsPending++;
         addPost({
           platform: "youtube",
           accountId: draft.accountId,
@@ -538,15 +537,23 @@ export default function YouTubeProgramacion() {
     void loadYouTube();
     void loadTasks();
     const pending = ids.length - ok;
+    const thumbsNote = thumbsPending
+      ? `${thumbsPending} ${thumbsPending === 1 ? "Short quedó" : "Shorts quedaron"} con la miniatura pendiente: súbela desde «Pendientes en YouTube».`
+      : "";
     toast({
       title: ok ? `${ok} ${ok === 1 ? "video programado" : "videos programados"} en YouTube` : "No se programó ningún video",
-      description: stoppedByQuota
-        ? `Se agotó la cuota diaria de YouTube. Los ${pending} restantes siguen guardados aquí: vuelve mañana y presiona "Programar en YouTube".`
-        : warnings.length
-          ? warnings.join(" · ")
-          : pending
-            ? `${pending} quedaron pendientes: revisa sus avisos.`
-            : "YouTube los publicará solos a su hora, aunque este PC esté apagado. Revisa \"Pendientes en YouTube\" para fijar comentarios y elegir videos relacionados.",
+      description: [
+        stoppedByQuota
+          ? `Se agotó la cuota diaria de YouTube. Los ${pending} restantes siguen guardados aquí: vuelve mañana y presiona "Programar en YouTube".`
+          : warnings.length
+            ? warnings.join(" · ")
+            : pending
+              ? `${pending} quedaron pendientes: revisa sus avisos.`
+              : "YouTube los publicará solos a su hora, aunque este PC esté apagado. Revisa \"Pendientes en YouTube\" para fijar comentarios y elegir videos relacionados.",
+        thumbsNote,
+      ]
+        .filter(Boolean)
+        .join(" "),
       variant: ok ? undefined : "destructive",
     });
   };
@@ -695,17 +702,7 @@ export default function YouTubeProgramacion() {
         </StudioCard>
       )}
 
-      {thumbRejected.map((r) => (
-        <ThumbnailRejectedNotice
-          key={r.videoId}
-          videoId={r.videoId}
-          file={r.file}
-          title={r.title}
-          onDismiss={() => setThumbRejected((list) => list.filter((x) => x.videoId !== r.videoId))}
-        />
-      ))}
-
-      <PendingTasksPanel tasks={tasks} onChanged={() => void loadTasks()} />
+      <PendingTasksPanel tasks={tasks} accountId={channel.id} onChanged={() => void loadTasks()} />
 
       {/* Navegación de semanas */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -780,8 +777,10 @@ export default function YouTubeProgramacion() {
                       key={entry.key}
                       entry={entry}
                       task={tasks.find((t) => t.videoId === entry.video.id) ?? null}
+                      thumbnailLoading={thumbLoadingId === entry.video.id}
                       onExtras={() => setExtrasVideo(entry.video)}
                       onReschedule={() => setRescheduling(entry)}
+                      onThumbnail={() => void uploadThumbnail(entry.video.id)}
                     />
                   ) : entry.kind === "draft" ? (
                     <DraftCard
@@ -990,13 +989,17 @@ function FormatChip({ format: f }: { format: SlotFormat }) {
 function YouTubeEntryCard({
   entry,
   task,
+  thumbnailLoading,
   onExtras,
   onReschedule,
+  onThumbnail,
 }: {
   entry: Extract<Entry, { kind: "youtube" }>;
   task: VideoTask | null;
+  thumbnailLoading: boolean;
   onExtras: () => void;
   onReschedule: () => void;
+  onThumbnail: () => void;
 }) {
   const { video } = entry;
   const editable = entry.scheduled && entry.at.getTime() > Date.now();
@@ -1047,6 +1050,17 @@ function YouTubeEntryCard({
         >
           <CalendarClock className="h-3 w-3 shrink-0" />
           Cambiar fecha
+        </button>
+      )}
+      {video.isShort && task?.thumbnailPending && (
+        <button
+          type="button"
+          onClick={onThumbnail}
+          disabled={thumbnailLoading}
+          className="mx-2 mb-1 flex items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-left text-[11px] font-medium text-amber-400 hover:bg-amber-500/20 disabled:opacity-60"
+        >
+          {thumbnailLoading ? <Loader2 className="h-3 w-3 shrink-0 animate-spin" /> : <ImageIcon className="h-3 w-3 shrink-0" />}
+          Miniatura pendiente
         </button>
       )}
       <button

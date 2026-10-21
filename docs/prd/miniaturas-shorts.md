@@ -9,7 +9,7 @@ En la Fábrica de Shorts, cada Short tiene un botón **"Generar miniatura"**:
 2. gpt-image-2 dibuja el **fondo vertical** (1088×1920) en el mismo estilo de monitos de palo de los videos. Usa **fotogramas del episodio** para que salgan los mismos personajes.
 3. La app pone la frase encima (canvas, tipografía Anton como los Shorts) y arma un **JPG 1080×1920**.
 4. El JPG se guarda **solo en la carpeta del PC** (la misma de los Shorts, que el usuario tiene en el disco D). **No se guarda en la nube.**
-5. **YouTube:** al subir el Short, la app intenta ponerle la miniatura con la API (`thumbnails.set`). Si YouTube la rechaza, el Short se sube igual y la app muestra la imagen lista con el link directo a YouTube Studio para subirla a mano.
+5. **YouTube:** los Shorts no aceptan miniatura por API; queda como pendiente para subirla en Studio con un clic.
 6. **Instagram:** al replicar el Short como Reel, la misma imagen va como **portada** (`cover_url`). Sube a R2 junto con el video y n8n la borra al publicar.
 
 Decisión del canal: la miniatura del Short **no lleva número de episodio**. El vínculo con el episodio ya lo dan el video relacionado y el comentario fijado.
@@ -34,7 +34,7 @@ canvas: fondo + frase → JPG 1080×1920
 guarda en <carpeta>/<proyecto>/ (PC, disco D)
 
 Programación YouTube (subida desde el navegador, como hoy)
-  uploadVideo → setThumbnail(JPG)  ← ahora también para Shorts; si falla: aviso + link a YouTube Studio
+  uploadVideo → setThumbnail(JPG)  ← solo videos largos; en Shorts queda thumbnail_pending para subirla en Studio
 
 Instagram "subir video" (mismo webhook de hoy, multipart)
   video + cover(JPG) → R2 vexa-studio/ig-temp/ → studio_publications.cover_url
@@ -161,14 +161,12 @@ Agrégala a `COLUMNS`, `PublicationRow` (`cover_url: string | null`) y `Instagra
 - Si el Short **ya se envió** y el borrador sigue sin subir, "Guardar miniatura" también actualiza `thumbnailFile` de ese borrador (`sentToSchedule[plan.id]` = id del borrador; usa las funciones de borradores de `youtube-draft.ts`).
 
 ### 5.4 Subida a YouTube (`youtube-draft.ts`)
-- Quita la condición `draft.format === "video"` de la miniatura: ahora va también para `"short"`. Lo mismo en `quotaUnits` (+50 si hay miniatura, cualquier formato).
-- Si `setThumbnail` falla en un Short, el Short **igual queda subido**. La advertencia dice: "YouTube no aceptó la miniatura del Short. Súbela a mano en YouTube Studio → Detalles → Miniatura → Subir archivo." En la pantalla de resultado, muestra un botón **"Abrir en YouTube Studio"** (`https://studio.youtube.com/video/${videoId}/edit`) y otro **"Bajar miniatura"**.
+- **Actualizado:** YouTube responde OK a `thumbnails.set` en los Shorts pero no aplica la imagen. En los Shorts ya no se llama a `setThumbnail`: la tarea queda con `thumbnail_pending = true` y una copia temporal del JPG en IndexedDB (`yt-thumb:<videoId>`). En "Pendientes en YouTube", **"Subir miniatura"** baja el JPG y abre YouTube Studio; **"Ya la subí"** quita el pendiente y borra la copia. `quotaUnits` suma 50 solo en videos largos.
 - En `YouTubeDraftEditor.tsx`, el campo "Miniatura" ahora se ve también en Shorts, con el texto "Miniatura (JPG vertical 1080×1920, máx. 2 MB)" y la vista previa vertical.
 
 ### 5.5 Miniatura de un Short que ya está en YouTube
 - Busca su `video_id`: `studio_video_tasks` con `source_ref = shortsSourceRef(project.id, plan.id)` (una consulta chica, `select("video_id")`, al abrir el editor de miniatura).
-- Si existe, muestra **"Subir a YouTube ahora"**: `getUploadToken(accountId)` + `setThumbnail(token, videoId, jpg)`.
-- OK → toast "Miniatura puesta en YouTube". Error → el mismo aviso y los mismos botones de 5.4.
+- Si existe, muestra **"Subir en YouTube Studio"**: baja el JPG, abre YouTube Studio y deja la tarea con `thumbnail_pending = true`. Guardar una miniatura nueva también la deja pendiente.
 
 ### 5.6 Instagram
 - `FactoryShort` (`instagram.ts`) suma `thumbnail?: File`. `loadFactoryShorts` y `factoryShortFrom` la leen con `loadThumbnails`.
@@ -188,7 +186,7 @@ Agrégala a `COLUMNS`, `PublicationRow` (`cover_url: string | null`) y `Instagra
 - Botón: **Generar miniatura** · Cargando: **Pensando la frase y dibujando… (30-90 s)**
 - Sin carpeta: **Elige tu carpeta de Shorts en el disco D (por ejemplo D:\VEXA\Shorts). Ahí se guardan los videos y las miniaturas.**
 - Guardada: **Miniatura guardada en tu carpeta: {proyecto}/{archivo}**
-- YouTube rechazó: **YouTube no aceptó la miniatura del Short. Súbela a mano en YouTube Studio → Detalles → Miniatura → Subir archivo.**
+- Pendiente: **Falta subir la miniatura en YouTube Studio (YouTube no la acepta por API en los Shorts).**
 - Costo: **Cada imagen gasta unos centavos de OpenAI.**
 
 ## 7. Fuera de alcance (no hacer)
@@ -201,8 +199,8 @@ Agrégala a `COLUMNS`, `PublicationRow` (`cover_url: string | null`) y `Instagra
 1. En un Short de la Fábrica, "Generar miniatura" devuelve fondo + 3 frases en menos de 2 minutos. La vista previa muestra la frase recomendada con el estilo de los Shorts.
 2. Cambiar de frase o editar el texto recompone sin llamar a n8n. "Otra imagen" llama con `stage: "image"` y la misma escena.
 3. "Guardar" deja `…-miniatura.jpg` (1080×1920, ≤ 2 MB) y `…-miniatura-fondo.jpg` en `<carpeta>/<proyecto>/`. En IndexedDB no queda ningún Blob de imagen.
-4. Enviar el Short a Programación lleva la miniatura. Al subirlo, la app intenta `thumbnails.set`. Si falla, el Short queda subido igual y aparecen los botones "Abrir en YouTube Studio" y "Bajar miniatura".
-5. En un Short ya subido, "Subir a YouTube ahora" pone la miniatura.
+4. Enviar el Short a Programación lleva la miniatura. Al subirlo no se llama a `thumbnails.set`: queda en "Pendientes en YouTube" con "Subir miniatura".
+5. En un Short ya subido, "Subir en YouTube Studio" baja la imagen, abre Studio y deja el pendiente en Programación.
 6. Al replicar a Instagram con "Usar la miniatura como portada", el multipart lleva `cover` y la publicación queda con `cover_url`. Al publicar, Instagram muestra esa portada.
 7. Cambiar o quitar la portada de un Reel programado funciona sin cambiar su hora.
 8. `tsc`, `lint` y `vitest` pasan. Agrega tests a `composeThumbnail` (tamaño de salida y achique de letra con un mock de canvas, si el patrón de tests lo permite) y a `thumbnailTranscript`.

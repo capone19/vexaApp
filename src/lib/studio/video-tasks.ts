@@ -29,6 +29,8 @@ export interface VideoTask {
   relatedVideoId: string | null;
   relatedVideoTitle: string | null;
   relatedDone: boolean;
+  /** Miniatura del Short por subir a mano en YouTube Studio (la API no la aplica en los Shorts) */
+  thumbnailPending: boolean;
 }
 
 export interface RelatedVideo {
@@ -50,10 +52,11 @@ interface TaskRow {
   related_video_id: string | null;
   related_video_title: string | null;
   related_done: boolean;
+  thumbnail_pending: boolean;
 }
 
 const COLUMNS =
-  "id, account_id, video_id, video_title, is_short, comment_text, comment_status, comment_id, post_after, last_error, related_video_id, related_video_title, related_done";
+  "id, account_id, video_id, video_title, is_short, comment_text, comment_status, comment_id, post_after, last_error, related_video_id, related_video_title, related_done, thumbnail_pending";
 
 const toTask = (r: TaskRow): VideoTask => ({
   id: r.id,
@@ -69,6 +72,7 @@ const toTask = (r: TaskRow): VideoTask => ({
   relatedVideoId: r.related_video_id,
   relatedVideoTitle: r.related_video_title,
   relatedDone: r.related_done,
+  thumbnailPending: r.thumbnail_pending,
 });
 
 /** Link al comentario (abre el video con el comentario arriba): ⋮ → Fijar */
@@ -77,9 +81,12 @@ export const pinUrl = (videoId: string, commentId: string) => `https://www.youtu
 /** Página de detalles del video en YouTube Studio, donde se elige el "Video relacionado" del Short */
 export const studioEditUrl = (videoId: string) => `https://studio.youtube.com/video/${videoId}/edit`;
 
-/** Lo que falta hacer a mano: fijar el comentario, elegir el video relacionado o revisar un error */
+/** Lo que falta hacer a mano: fijar el comentario, elegir el video relacionado, subir la miniatura o revisar un error */
 export const needsAction = (t: VideoTask) =>
-  t.commentStatus === "publicado" || t.commentStatus === "error" || Boolean(t.relatedVideoId && !t.relatedDone);
+  t.commentStatus === "publicado" ||
+  t.commentStatus === "error" ||
+  Boolean(t.relatedVideoId && !t.relatedDone) ||
+  t.thumbnailPending;
 
 export async function listVideoTasks(accountId: string): Promise<VideoTask[]> {
   const { data, error } = await db
@@ -127,6 +134,8 @@ export interface SaveTaskInput {
   related: RelatedVideo | null;
   /** Origen en la Fábrica ('shorts:<projectId>:<planId>'); si no viene, no se toca el guardado */
   sourceRef?: string;
+  /** Miniatura del Short por subir en Studio; si no viene, no se toca el pendiente */
+  thumbnailPending?: boolean;
 }
 
 /** Crea o reemplaza las tareas del video. Un comentario nuevo queda pendiente (aún no se publicó). */
@@ -150,6 +159,7 @@ export async function saveVideoTask(input: SaveTaskInput): Promise<VideoTask> {
         related_video_title: input.related?.title ?? null,
         related_done: false,
         ...(input.sourceRef ? { source_ref: input.sourceRef } : {}),
+        ...(input.thumbnailPending !== undefined ? { thumbnail_pending: input.thumbnailPending } : {}),
       },
       { onConflict: "account_id,video_id" }
     )
@@ -161,7 +171,7 @@ export async function saveVideoTask(input: SaveTaskInput): Promise<VideoTask> {
 
 export async function updateVideoTask(
   id: string,
-  patch: { commentStatus?: CommentStatus; relatedDone?: boolean; related?: RelatedVideo | null }
+  patch: { commentStatus?: CommentStatus; relatedDone?: boolean; related?: RelatedVideo | null; thumbnailPending?: boolean }
 ) {
   const { error } = await db
     .from("studio_video_tasks")
@@ -172,8 +182,19 @@ export async function updateVideoTask(
       ...(patch.related !== undefined
         ? { related_video_id: patch.related?.id ?? null, related_video_title: patch.related?.title ?? null, related_done: false }
         : {}),
+      ...(patch.thumbnailPending !== undefined ? { thumbnail_pending: patch.thumbnailPending } : {}),
     })
     .eq("id", id);
+  if (error) throw error;
+}
+
+/** Deja (o quita) la miniatura del Short como pendiente de subir en YouTube Studio */
+export async function markThumbnailPending(accountId: string, videoId: string, pending: boolean) {
+  const { error } = await db
+    .from("studio_video_tasks")
+    .update({ thumbnail_pending: pending })
+    .eq("account_id", accountId)
+    .eq("video_id", videoId);
   if (error) throw error;
 }
 

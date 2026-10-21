@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Download, FolderOpen, ImagePlus, Images, Loader2, PenLine, RefreshCw, Save, Sparkles, TriangleAlert, Upload } from "lucide-react";
+import { Check, Download, ExternalLink, FolderOpen, ImagePlus, Images, Loader2, PenLine, RefreshCw, Save, Sparkles, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { ThumbnailRejectedNotice } from "@/components/studio/ThumbnailRejectedNotice";
+import { studioToastAction, THUMBNAIL_STUDIO_STEPS } from "@/components/studio/VideoTasks";
 import { useToast } from "@/hooks/use-toast";
 import type { ChannelProfile } from "@/lib/studio/ai";
 import { shortsSourceRef, type ShortPlan, type ShortsProject, type StoredRender } from "@/lib/studio/shorts";
@@ -24,8 +24,8 @@ import {
   type StoredThumbnail,
   type ThumbnailPhrase,
 } from "@/lib/studio/thumbnails";
-import { findVideoIdBySourceRef } from "@/lib/studio/video-tasks";
-import { getUploadToken, setThumbnail } from "@/lib/studio/youtube-upload";
+import { findVideoIdBySourceRef, markThumbnailPending, studioEditUrl } from "@/lib/studio/video-tasks";
+import { deleteShortThumbnail } from "@/lib/studio/youtube-draft";
 import { cn } from "@/lib/utils";
 
 const LOADING = "Pensando la frase y dibujando… (30-90 s)";
@@ -90,7 +90,6 @@ export function ShortThumbnailEditor({
   const [dirty, setDirty] = useState(false);
   const [notSaved, setNotSaved] = useState(false);
   const [videoId, setVideoId] = useState<string | null | undefined>(undefined);
-  const [rejected, setRejected] = useState<File | null>(null);
   const folderRef = useRef<FileSystemDirectoryHandle | null>(null);
   const framesRef = useRef<string[] | null>(null);
 
@@ -165,7 +164,6 @@ export function ShortThumbnailEditor({
       setOpen(true);
       setDirty(true);
       setNotSaved(false);
-      setRejected(null);
     } catch (e) {
       toast({ title: "No se pudo generar la miniatura", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
@@ -218,11 +216,20 @@ export function ShortThumbnailEditor({
         folder
       );
       const note = await onSaved(stored);
+      // Short ya en YouTube: la miniatura nueva queda pendiente para subirla en Studio
+      const id = await lookupVideoId();
+      const pending = id ? await markPending(id) : false;
       setDirty(false);
       setNotSaved(false);
       toast({
         title: "Miniatura guardada",
-        description: [`Miniatura guardada en tu carpeta: ${stored.path?.join("/") ?? preview.name}`, note].filter(Boolean).join(" "),
+        description: [
+          `Miniatura guardada en tu carpeta: ${stored.path?.join("/") ?? preview.name}`,
+          note,
+          pending ? "Queda pendiente en Programación para subirla en YouTube Studio." : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
       });
     } catch (e) {
       toast({ title: "No se pudo guardar la miniatura", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
@@ -231,19 +238,27 @@ export function ShortThumbnailEditor({
     }
   };
 
-  const uploadNow = async (file: File) => {
+  /** Deja la tarea pendiente en Programación. La copia vieja del JPG en este PC se borra: manda la de la carpeta */
+  const markPending = async (id: string) => {
+    await deleteShortThumbnail(id).catch(() => undefined);
+    return markThumbnailPending(project.accountId, id, true)
+      .then(() => true)
+      .catch(() => false);
+  };
+
+  // YouTube no aplica por API la miniatura de los Shorts: se baja y se sube a mano en Studio
+  const uploadInStudio = async (file: File) => {
     const id = await lookupVideoId();
     if (!id) return;
-    setBusy("Subiendo la miniatura a YouTube…");
-    setRejected(null);
-    try {
-      await setThumbnail(await getUploadToken(project.accountId), id, file);
-      toast({ title: "Miniatura puesta en YouTube" });
-    } catch {
-      setRejected(file);
-    } finally {
-      setBusy(null);
-    }
+    downloadFile(file, file.name);
+    window.open(studioEditUrl(id), "_blank", "noopener");
+    const pending = await markPending(id);
+    toast({
+      title: "Miniatura descargada",
+      description: `${THUMBNAIL_STUDIO_STEPS}${pending ? " Luego toca «Ya la subí» en Programación → Pendientes en YouTube." : ""}`,
+      duration: 30_000,
+      action: studioToastAction(id),
+    });
   };
 
   const current = preview ?? thumbnail?.file ?? null;
@@ -470,9 +485,9 @@ export function ShortThumbnailEditor({
               Bajar
             </Button>
             {videoId && current && (
-              <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => void uploadNow(current)} disabled={disabled || composing}>
-                <Upload className="h-4 w-4" />
-                Subir a YouTube ahora
+              <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => void uploadInStudio(current)} disabled={disabled || composing}>
+                <ExternalLink className="h-4 w-4" />
+                Subir en YouTube Studio
               </Button>
             )}
           </div>
@@ -488,7 +503,6 @@ export function ShortThumbnailEditor({
               {thumbnail.path.join("/")}
             </p>
           )}
-          {rejected && videoId && <ThumbnailRejectedNotice videoId={videoId} file={rejected} />}
           <p className="text-[11px] text-muted-foreground/80">{THUMBNAIL_COST_NOTE}</p>
         </div>
       </div>
