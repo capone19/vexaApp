@@ -11,6 +11,7 @@ import {
   ChevronDown,
   FileVideo,
   FolderOpen,
+  Lightbulb,
   Loader2,
   Music2,
   PlugZap,
@@ -19,6 +20,7 @@ import {
   Scissors,
   Sparkles,
   Trash2,
+  TriangleAlert,
   WandSparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,7 +30,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ReelComposerDialog } from "@/components/studio/instagram/ReelComposerDialog";
+import { ShortIdeasSheet, SourceLevelChip } from "@/components/studio/ShortIdeasSheet";
 import { ShortPlanCard, scoreTone } from "@/components/studio/ShortPlanCard";
+import { ShortThumbnailEditor } from "@/components/studio/ShortThumbnailEditor";
 import { ShortsSoundsDialog } from "@/components/studio/ShortsSoundsDialog";
 import { EmptyState, StudioCard, StudioPageHeader } from "@/components/studio/StudioUI";
 import { useEffectiveTenant } from "@/hooks/use-effective-tenant";
@@ -54,21 +58,40 @@ import {
   newProject,
   pickVideoFile,
   reviseShort,
+  SaturatedError,
   saveProject,
   saveRender,
   scoutMoments,
   sendShortToSchedule,
   SCORE_LABELS,
+  shortsSourceRef,
   totalScore,
+  type AiContext,
   type ChannelLearning,
   type ShortCandidate,
   type ShortPlan,
   type ShortsProject,
   type StoredRender,
 } from "@/lib/studio/shorts";
+import {
+  listIdeas,
+  openFrameHash,
+  registerPlans,
+  setIdeaStatus,
+  setOpenFrameHash,
+  similarOpenFrame,
+  sourceKeyFor,
+  sourceOf,
+  sourceSummary,
+  type IdeaCheckItem,
+  type ShortIdea,
+  type SourceStatus,
+} from "@/lib/studio/short-ideas";
 import { takeShortsWave } from "@/lib/studio/performance-ai";
+import { loadThumbnails, phraseText, type StoredThumbnail } from "@/lib/studio/thumbnails";
+import { setDraftThumbnail } from "@/lib/studio/youtube-draft";
 import { parseSubtitles, isSubtitleFile, formatTimestamp } from "@/lib/studio/subtitles";
-import type { RelatedVideo } from "@/lib/studio/video-tasks";
+import { listSourceRefs, type RelatedVideo } from "@/lib/studio/video-tasks";
 import { fetchYouTubeVideos } from "@/lib/studio/youtube";
 import { cn } from "@/lib/utils";
 
@@ -123,10 +146,22 @@ export default function YouTubeShorts() {
   const [folder, setFolder] = useState<FileSystemDirectoryHandle | null>(null);
   const [folderReady, setFolderReady] = useState(false);
   const [renders, setRenders] = useState<Record<string, StoredRender>>({});
+  // Miniaturas con IA: en el navegador solo la ficha; los JPG se leen de la carpeta del PC
+  const [thumbs, setThumbs] = useState<Record<string, StoredThumbnail>>({});
   const [activePlan, setActivePlan] = useState<string | null>(null);
   const [step, setStep] = useState<{ key: StepKey; detail?: string } | null>(null);
   const [soundsOpen, setSoundsOpen] = useState(false);
   const [longVideos, setLongVideos] = useState<RelatedVideo[]>([]);
+  // Registro de ideas del canal: se lee al abrir y después de cada acción (sin polling)
+  const [ideas, setIdeas] = useState<ShortIdea[]>([]);
+  const [ideasLoading, setIdeasLoading] = useState(false);
+  const [ideasOpen, setIdeasOpen] = useState(false);
+  /** Huella del cuadro de apertura de los renders de esta sesión (planId -> dHash) */
+  const [frameHashes, setFrameHashes] = useState<Record<string, string>>({});
+  /** Lo que se repite con "Sacar igual" cuando el episodio está agotado */
+  const [saturatedRetry, setSaturatedRetry] = useState<{ projectId: string; candidate: ShortCandidate | null } | null>(null);
+  /** Plan que se está replicando a Instagram (para marcar su idea como usada al guardar) */
+  const [reelIdeaId, setReelIdeaId] = useState<string | null>(null);
 
   // Formulario de proyecto nuevo
   const [formOpen, setFormOpen] = useState(false);
@@ -146,6 +181,9 @@ export default function YouTubeShorts() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const project = projects.find((p) => p.id === openId) ?? null;
+  const projectsRef = useRef(projects);
+  projectsRef.current = projects;
+  const registering = useRef(new Set<string>());
   const busy = Boolean(step);
   const localFiles = useMemo(() => canUseLocalFiles(), []);
 
@@ -181,6 +219,27 @@ export default function YouTubeShorts() {
     };
   }, [channelId, toast]);
 
+  const channelRef = useRef(channelId);
+  channelRef.current = channelId;
+  const reloadIdeas = useCallback(async () => {
+    if (!channelId) return;
+    setIdeasLoading(true);
+    try {
+      const list = await listIdeas(channelId);
+      // Si se cambió de canal mientras se leía, la respuesta ya no sirve
+      if (channelRef.current === channelId) setIdeas(list);
+    } catch {
+      // Sin registro la Fábrica funciona igual
+    } finally {
+      setIdeasLoading(false);
+    }
+  }, [channelId]);
+
+  useEffect(() => {
+    setIdeas([]);
+    void reloadIdeas();
+  }, [reloadIdeas]);
+
   // Modo ola (viene de Rendimiento): el tema que está funcionando y el video al que deben llevar los Shorts
   useEffect(() => {
     const wave = takeShortsWave();
@@ -201,6 +260,7 @@ export default function YouTubeShorts() {
     setVideoMissing(false);
     setVideoLocked(false);
     setRenders({});
+    setThumbs({});
     loadProjectVideo(openId).then(({ file, handle }) => {
       if (cancelled) return;
       setVideo(file);
@@ -208,7 +268,10 @@ export default function YouTubeShorts() {
       setVideoMissing(!file && !handle);
     });
     const p = projects.find((x) => x.id === openId);
-    if (p) void loadRenders(p, folder).then((r) => !cancelled && setRenders(r)).catch(() => undefined);
+    if (p) {
+      void loadRenders(p, folder).then((r) => !cancelled && setRenders(r)).catch(() => undefined);
+      void loadThumbnails(p, folder).then((t) => !cancelled && setThumbs(t)).catch(() => undefined);
+    }
     return () => {
       cancelled = true;
     };
@@ -236,6 +299,53 @@ export default function YouTubeShorts() {
     [toast]
   );
 
+  // Proyectos de antes del registro: se anotan una sola vez al abrirlos, en segundo plano y sin avisos
+  useEffect(() => {
+    const p = projectsRef.current.find((x) => x.id === openId);
+    if (!p || p.registeredAt || !p.plans.some((x) => !x.idea?.id) || registering.current.has(p.id)) return;
+    registering.current.add(p.id);
+    void (async () => {
+      try {
+        const sourceKey = p.sourceKey ?? (await sourceKeyFor(p));
+        const [igRefs, ytRefs] = await Promise.all([
+          igAccountId
+            ? listAccountPublications(igAccountId)
+                .then((list) => new Set(list.map((x) => x.sourceRef)))
+                .catch(() => new Set<string | null>())
+            : Promise.resolve(new Set<string | null>()),
+          listSourceRefs(p.accountId).catch(() => new Map<string, string>()),
+        ]);
+        const ytByRef = new Map([...ytRefs].map(([videoId, ref]) => [ref, videoId]));
+        const items = p.plans
+          .filter((x) => !x.idea?.id)
+          .map((plan) => {
+            const ref = shortsSourceRef(p.id, plan.id);
+            return { plan, used: Boolean(p.sentToSchedule[plan.id]) || igRefs.has(ref), youtubeVideoId: ytByRef.get(ref) ?? null };
+          });
+        const { ideas: registered, registryError } = await registerPlans(p, items, sourceOf(p, sourceKey));
+        if (registryError || !registered.size) return;
+        const latest = projectsRef.current.find((x) => x.id === p.id) ?? p;
+        commit(
+          {
+            ...latest,
+            sourceKey,
+            registeredAt: new Date().toISOString(),
+            plans: latest.plans.map((plan) => {
+              const idea = registered.get(plan.id);
+              return idea ? { ...plan, idea } : plan;
+            }),
+          },
+          true
+        );
+        void reloadIdeas();
+      } catch {
+        // Se reintenta la próxima vez que se abra el proyecto
+      } finally {
+        registering.current.delete(p.id);
+      }
+    })();
+  }, [openId, igAccountId, commit, reloadIdeas]);
+
   const learnings = useCallback(async () => {
     if (!channelId) return [];
     if (learningsRef.current?.channel === channelId) return learningsRef.current.data;
@@ -244,51 +354,98 @@ export default function YouTubeShorts() {
     return data;
   }, [channelId]);
 
+  // El historial real del canal (tramos usados, ganchos, formatos) lo lee n8n desde el registro de ideas
   const aiContext = useCallback(
-    async (p: ShortsProject, extraNotes = "") => {
-      // Shorts ya hechos en otros proyectos (aunque sigan programados y no publicados): la IA no repite sus momentos
-      const made = projects
-        .filter((x) => x.id !== p.id)
-        .flatMap((x) => x.plans.map((plan) => `"${plan.title}" (abre con: ${plan.hookLine.slice(0, 120)})`))
-        .slice(0, 25);
-      const used = made.length ? `SHORTS YA HECHOS EN OTROS PROYECTOS (no repitas esos momentos ni sus ganchos): ${made.join("; ")}` : "";
+    async (p: ShortsProject, extraNotes = "", opts: { manual?: boolean; overrideBudget?: boolean } = {}): Promise<AiContext> => {
+      const key = p.sourceKey ?? (await sourceKeyFor(p));
       return {
         language: p.language,
         profile,
         cues: p.cues,
         duration: p.duration,
         videoTitle: p.relatedVideo?.title ?? p.name,
-        notes: [p.notes, used, ONE_IDEA_RULE, extraNotes].filter(Boolean).join("\n"),
+        notes: [p.notes, ONE_IDEA_RULE, extraNotes].filter(Boolean).join("\n"),
         learnings: await learnings(),
+        accountId: p.accountId,
+        projectId: p.id,
+        source: sourceOf(p, key),
+        ...opts,
       };
     },
-    [profile, learnings, projects]
+    [profile, learnings]
   );
 
+  /** Estado del episodio para mostrar: el último de n8n o, si no hay, el calculado con el registro */
+  const statusOf = useCallback(
+    (p: ShortsProject): SourceStatus | null => {
+      if (saturatedRetry?.projectId === p.id && p.sourceStatus) return p.sourceStatus;
+      if (!p.sourceKey) return p.sourceStatus ?? null;
+      if (ideas.some((i) => i.sourceKey === p.sourceKey)) return sourceSummary(ideas, p.sourceKey, p.duration);
+      return p.sourceStatus ?? null;
+    },
+    [ideas, saturatedRetry]
+  );
+
+  /** Episodio agotado: no es un error, se guarda el estado y se muestra el aviso con sus botones */
+  const handleSaturated = (p: ShortsProject, e: SaturatedError, candidate: ShortCandidate | null) => {
+    const fallback = p.sourceKey ? sourceSummary(ideas, p.sourceKey, p.duration) : null;
+    const sourceStatus = e.sourceStatus ?? (fallback ? { ...fallback, level: "agotado" as const, message: e.message } : null);
+    commit({ ...p, stage: p.plans.length ? "listo" : "nuevo", error: undefined, sourceStatus }, true);
+    setSaturatedRetry({ projectId: p.id, candidate });
+    toast({ title: "Este episodio ya dio lo que tenía", description: e.message });
+  };
+
   // ---------- Análisis con IA (dos pasadas) ----------
-  const analyze = async (start: ShortsProject) => {
-    let p: ShortsProject = { ...start, stage: "explorando", error: undefined };
+  const analyze = async (start: ShortsProject, overrideBudget = false) => {
+    const sourceKey = start.sourceKey ?? (await sourceKeyFor(start));
+    // Los Shorts propuestos que no se enviaron se reemplazan con este análisis: salen del registro
+    const replaced = start.plans.filter((x) => x.idea?.id && !start.sentToSchedule[x.id]).map((x) => x.idea?.id as string);
+    if (replaced.length) await setIdeaStatus(replaced, "descartada").catch(() => undefined);
+    let p: ShortsProject = { ...start, sourceKey, stage: "explorando", error: undefined };
     commit(p, true);
+    setSaturatedRetry(null);
     try {
       setStep({ key: "explorando" });
-      const ctx = await aiContext(p);
+      const ctx = await aiContext(p, "", { overrideBudget });
       const scout = await scoutMoments(ctx);
-      p = { ...p, stage: "editando", candidates: scout.candidates, overview: scout.overview };
+      p = { ...p, stage: "editando", candidates: scout.candidates, overview: scout.overview, sourceStatus: scout.sourceStatus ?? p.sourceStatus ?? null };
       commit(p, true);
       setStep({ key: "editando" });
       const edit = await editShorts(ctx, scout.candidates, p.count);
-      p = { ...p, stage: "listo", plans: edit.plans, discarded: edit.discarded, selectionNotes: edit.notes };
+      p = {
+        ...p,
+        stage: "listo",
+        plans: edit.plans,
+        discarded: edit.discarded,
+        selectionNotes: edit.notes,
+        sourceStatus: edit.sourceStatus ?? p.sourceStatus ?? null,
+      };
       commit(p, true);
+      // Un solo aviso (la app muestra un toast a la vez): lo principal y después lo del registro
+      const repeated = edit.autoDiscarded + scout.removedOverlap;
+      const extras = [
+        repeated ? `${repeated} ${repeated === 1 ? "momento se descartó" : "momentos se descartaron"} por repetir algo ya hecho. Míralos en Descartados.` : "",
+        edit.budgetNotice,
+        edit.registryError ? "Los Shorts quedaron listos, pero no se pudieron anotar en el registro." : "",
+      ].filter(Boolean);
       toast({
         title: edit.plans.length ? `${edit.plans.length} ${edit.plans.length === 1 ? "Short listo" : "Shorts listos"} para revisar` : "Ningún momento pasó el corte",
-        description: edit.plans.length ? "Míralos, ajusta lo que quieras y renderiza." : "El crítico no encontró momentos de 70+ puntos. Revisa los descartados o agrega indicaciones.",
+        description: [
+          edit.plans.length ? "Míralos, ajusta lo que quieras y renderiza." : "El crítico no encontró momentos de 70+ puntos. Revisa los descartados o agrega indicaciones.",
+          ...extras,
+        ].join(" "),
       });
     } catch (e) {
+      if (e instanceof SaturatedError) {
+        handleSaturated(p, e, null);
+        return;
+      }
       const message = e instanceof Error ? e.message : String(e);
       commit({ ...p, stage: "error", error: message }, true);
       toast({ title: "La IA no pudo terminar", description: message, variant: "destructive" });
     } finally {
       setStep(null);
+      void reloadIdeas();
     }
   };
 
@@ -316,6 +473,7 @@ export default function YouTubeShorts() {
         height: info.height,
         cues,
         relatedVideo: related,
+        sourceKey: await sourceKeyFor({ relatedVideo: related, duration: info.duration, width: info.width, height: info.height }),
       });
       if (!videoHandle) setStep({ key: "lectura", detail: "Guardando una copia del video en este navegador…" });
       await saveProject(p, videoHandle ?? videoFile);
@@ -345,35 +503,78 @@ export default function YouTubeShorts() {
     if (!project) return;
     const ctx = await aiContext(project);
     const revised = await reviseShort(ctx, plan, project.candidates, instruction);
-    const latest = projects.find((p) => p.id === project.id) ?? project;
+    const latest = projectsRef.current.find((p) => p.id === project.id) ?? project;
     commit({ ...latest, plans: latest.plans.map((x) => (x.id === plan.id ? revised : x)) }, true);
     toast({ title: "Short corregido", description: revised.editingNotes || "Revisa la vista previa." });
+    void reloadIdeas();
   };
 
-  const editCandidate = async (candidate: ShortCandidate) => {
+  const editCandidate = async (candidate: ShortCandidate, overrideBudget = false) => {
     if (!project) return;
     setStep({ key: "editando", detail: `Editando el momento ${formatTimestamp(candidate.start)}…` });
+    setSaturatedRetry(null);
     try {
-      const ctx = await aiContext(project, "The creator hand-picked this moment: edit it as a Short and keep it even if it scores below 70.");
-      const { plans } = await editShorts(ctx, [candidate], 1);
-      if (!plans.length) throw new Error("La IA no devolvió el Short.");
-      const latest = projects.find((p) => p.id === project.id) ?? project;
+      const ctx = await aiContext(project, "The creator hand-picked this moment: edit it as a Short and keep it even if it scores below 70.", {
+        manual: true,
+        overrideBudget,
+      });
+      const edit = await editShorts(ctx, [candidate], 1);
+      if (!edit.plans.length) throw new Error(edit.discarded[0]?.reason || "La IA no devolvió el Short.");
+      const latest = projectsRef.current.find((p) => p.id === project.id) ?? project;
       commit(
-        { ...latest, plans: [...latest.plans, ...plans], discarded: latest.discarded.filter((d) => d.candidateIndex !== candidate.index) },
+        {
+          ...latest,
+          plans: [...latest.plans, ...edit.plans],
+          discarded: latest.discarded.filter((d) => d.candidateIndex !== candidate.index),
+          sourceStatus: edit.sourceStatus ?? latest.sourceStatus ?? null,
+        },
         true
       );
+      const notice = [edit.budgetNotice, edit.registryError ? "El Short quedó listo, pero no se pudo anotar en el registro." : ""].filter(Boolean).join(" ");
+      if (notice) toast({ title: "Short listo", description: notice });
     } catch (e) {
+      if (e instanceof SaturatedError) {
+        handleSaturated(projectsRef.current.find((p) => p.id === project.id) ?? project, e, candidate);
+        return;
+      }
       toast({ title: "No se pudo editar ese momento", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
       setStep(null);
+      void reloadIdeas();
     }
   };
 
-  // Antes de renderizar (dentro del clic): pedir la carpeta o su permiso. Si no se da, se guarda en el navegador.
-  const folderForRender = useRef<FileSystemDirectoryHandle | null>(null);
-  const beforeRender = async () => {
-    folderForRender.current = null;
-    if (!localFiles) return;
+  /** "Sacar igual": repite lo que frenó el cupo del episodio, esta vez sin el tope */
+  const overrideSaturated = () => {
+    if (!project) return;
+    const retry = saturatedRetry?.projectId === project.id ? saturatedRetry : null;
+    if (retry?.candidate) void editCandidate(retry.candidate, true);
+    else void analyze(project, true);
+  };
+
+  /** "Ir a otro episodio": cierra el proyecto y abre el formulario de uno nuevo */
+  const goToOtherEpisode = () => {
+    setOpenId(null);
+    setSaturatedRetry(null);
+    setFormOpen(true);
+  };
+
+  const markIdeas = async (ids: (string | null | undefined)[], status: "usada" | "descartada") => {
+    const list = ids.filter((id): id is string => Boolean(id));
+    if (!list.length) return;
+    await setIdeaStatus(list, status).catch(() => undefined);
+    void reloadIdeas();
+  };
+
+  const removePlan = (plan: ShortPlan) => {
+    if (!project) return;
+    commit({ ...project, plans: project.plans.filter((x) => x.id !== plan.id) }, true);
+    if (!project.sentToSchedule[plan.id]) void markIdeas([plan.idea?.id], "descartada");
+  };
+
+  // Pide la carpeta del PC o su permiso (tiene que ser dentro de un clic). null si no se da
+  const askFolder = async (): Promise<FileSystemDirectoryHandle | null> => {
+    if (!localFiles) return null;
     try {
       let dir = folder;
       if (!dir) {
@@ -381,16 +582,33 @@ export default function YouTubeShorts() {
         setFolder(dir);
       }
       if (await hasAccess(dir, "readwrite", true)) {
-        folderForRender.current = dir;
         setFolderReady(true);
+        return dir;
       }
     } catch {
-      // Canceló el selector: queda en el navegador
+      // Canceló el selector
     }
+    return null;
+  };
+
+  // Antes de renderizar (dentro del clic): pedir la carpeta o su permiso. Si no se da, se guarda en el navegador.
+  const folderForRender = useRef<FileSystemDirectoryHandle | null>(null);
+  const beforeRender = async () => {
+    folderForRender.current = await askFolder();
+  };
+
+  /** Miniatura guardada en la carpeta: si el Short ya está en Programación y sin subir, también va a su borrador */
+  const thumbnailSaved = async (plan: ShortPlan, stored: StoredThumbnail): Promise<string | void> => {
+    setThumbs((t) => ({ ...t, [plan.id]: stored }));
+    const draftId = project?.sentToSchedule[plan.id];
+    if (!draftId || !stored.file) return;
+    const updated = await setDraftThumbnail(draftId, stored.file).catch(() => false);
+    if (updated) return "También quedó en su borrador de Programación.";
   };
 
   const rendered = async (render: StoredRender) => {
     if (!project) return;
+    void fingerprintOpenFrame(project, render);
     try {
       const saved = await saveRender(project, render, folderForRender.current);
       setRenders((r) => ({ ...r, [render.planId]: saved }));
@@ -402,6 +620,38 @@ export default function YouTubeShorts() {
       setRenders((r) => ({ ...r, [render.planId]: render }));
       toast({ title: "El render no quedó guardado", description: "Bájalo ahora con el botón Bajar.", variant: "destructive" });
     }
+  };
+
+  /** Huella del primer segundo del Short (sin subir el video): sirve para no abrir igual que otro reciente */
+  const fingerprintOpenFrame = async (p: ShortsProject, render: StoredRender) => {
+    try {
+      const hash = await openFrameHash(render.file);
+      setFrameHashes((h) => ({ ...h, [`${render.planId}:${render.revision}`]: hash }));
+      const ideaId = p.plans.find((x) => x.id === render.planId)?.idea?.id;
+      if (ideaId) await setOpenFrameHash(ideaId, hash);
+    } catch {
+      // Sin huella solo se omite ese punto de la lista de control
+    }
+  };
+
+  /** Puntos de la lista de control que calcula la app (los demás vienen de n8n) */
+  const appChecksFor = (p: ShortsProject, plan: ShortPlan): IdeaCheckItem[] => {
+    const checks: IdeaCheckItem[] = [
+      p.relatedVideo
+        ? { key: "video_relacionado", label: "Lleva al episodio correcto", ok: true, detail: "" }
+        : { key: "video_relacionado", label: "Lleva al episodio correcto", ok: false, detail: "El proyecto no tiene episodio de YouTube elegido." },
+    ];
+    const render = renders[plan.id];
+    const hash = render && render.revision === plan.revision ? frameHashes[`${plan.id}:${plan.revision}`] : undefined;
+    if (hash) {
+      const twin = similarOpenFrame(hash, plan.idea?.id ?? null, ideas);
+      checks.push(
+        twin
+          ? { key: "cuadro_apertura", label: "Abre distinto a los Shorts recientes", ok: false, detail: `Abre con una imagen casi igual a «${twin.title}».` }
+          : { key: "cuadro_apertura", label: "Abre distinto a los Shorts recientes", ok: true, detail: "" }
+      );
+    }
+    return checks;
   };
 
   const pickFolder = async () => {
@@ -443,12 +693,13 @@ export default function YouTubeShorts() {
     const render = renders[plan.id];
     if (!project || !render) return;
     try {
-      const draftId = await sendShortToSchedule(project, plan, render, profile);
+      const draftId = await sendShortToSchedule(project, plan, render, profile, thumbs[plan.id]?.file ?? null);
       commit({ ...project, sentToSchedule: { ...project.sentToSchedule, [plan.id]: draftId } }, true);
       toast({
         title: "Short enviado a Programación",
         description: "Quedó como borrador con título, descripción, subtítulos y comentario. Ponle fecha y prográmalo.",
       });
+      void markIdeas([plan.idea?.id], "usada");
     } catch (e) {
       toast({ title: "No se pudo enviar", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     }
@@ -471,6 +722,9 @@ export default function YouTubeShorts() {
     await deleteProject(p);
     setProjects((list) => list.filter((x) => x.id !== p.id));
     if (openId === p.id) setOpenId(null);
+    // Lo ya usado queda en el registro; solo salen las propuestas que nunca se enviaron
+    const proposed = ideas.filter((i) => i.projectId === p.id && i.stage === "propuesta").map((i) => i.id);
+    void markIdeas(proposed, "descartada");
   };
 
   // ---------- Vistas ----------
@@ -518,6 +772,10 @@ export default function YouTubeShorts() {
               {folder ? `Carpeta: ${folder.name}` : "Elegir carpeta"}
             </Button>
           )}
+          <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setIdeasOpen(true)} title="Todos los Shorts del canal por episodio">
+            <Lightbulb className="h-4 w-4" />
+            Registro de ideas
+          </Button>
           <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setSoundsOpen(true)}>
             <Music2 className="h-4 w-4" />
             Sonidos
@@ -556,13 +814,19 @@ export default function YouTubeShorts() {
     </StudioCard>
   );
 
+  const relatedKey = relatedId !== NO_RELATED ? `yt:${relatedId}` : null;
+  const relatedSummary = relatedKey && ideas.some((i) => i.sourceKey === relatedKey) ? sourceSummary(ideas, relatedKey, 0) : null;
+  const ideasSheet = <ShortIdeasSheet open={ideasOpen} onOpenChange={setIdeasOpen} ideas={ideas} loading={ideasLoading} />;
+
   // Proyecto abierto
   if (project) {
     const discardedFor = (index: number) => project.discarded.find((d) => d.candidateIndex === index);
     const chosen = new Set(project.plans.map((p) => p.candidateIndex));
+    const episode = statusOf(project);
     return (
       <div className="mx-auto max-w-7xl space-y-6">
         {header}
+        {ideasSheet}
         <input ref={relinkRef} type="file" accept="video/*" className="hidden" onChange={(e) => void relink(e.target.files?.[0])} />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setOpenId(null)} disabled={busy || Boolean(activePlan)}>
@@ -595,6 +859,30 @@ export default function YouTubeShorts() {
             </p>
           )}
         </StudioCard>
+
+        {episode && episode.level !== "ok" && episode.message && (
+          <div
+            className={cn(
+              "flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between",
+              episode.level === "agotado" ? "border-red-500/40 bg-red-500/10" : "border-amber-500/40 bg-amber-500/10"
+            )}
+          >
+            <p className={cn("flex items-start gap-2 text-sm", episode.level === "agotado" ? "text-red-200" : "text-amber-200")}>
+              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+              {episode.message}
+            </p>
+            {episode.level === "agotado" && (
+              <div className="flex shrink-0 gap-2">
+                <Button size="sm" onClick={goToOtherEpisode} disabled={busy || Boolean(activePlan)}>
+                  Ir a otro episodio
+                </Button>
+                <Button size="sm" variant="outline" onClick={overrideSaturated} disabled={busy || Boolean(activePlan)}>
+                  Sacar igual
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         {progress}
 
@@ -644,15 +932,39 @@ export default function YouTubeShorts() {
                 render={renders[plan.id] ?? null}
                 locked={Boolean(activePlan && activePlan !== plan.id) || busy}
                 scheduledDraftId={project.sentToSchedule[plan.id]}
+                appChecks={appChecksFor(project, plan)}
+                thumbnailSection={
+                  <ShortThumbnailEditor
+                    project={project}
+                    plan={plan}
+                    video={video}
+                    render={renders[plan.id] ?? null}
+                    profile={profile}
+                    thumbnail={thumbs[plan.id] ?? null}
+                    otherPhrases={Object.values(thumbs)
+                      .filter((t) => t.planId !== plan.id)
+                      .map((t) => phraseText(t.phrase))}
+                    locked={Boolean(activePlan && activePlan !== plan.id) || busy}
+                    hasFolder={Boolean(folder && folderReady)}
+                    onActive={(active) => setActivePlan(active ? plan.id : null)}
+                    onBeforeThumbnail={askFolder}
+                    onSaved={(stored) => thumbnailSaved(plan, stored)}
+                  />
+                }
                 onChange={setPlan}
                 onRevise={(instruction) => revise(plan, instruction)}
                 onBeforeRender={beforeRender}
                 onRendered={rendered}
                 onSend={() => send(plan)}
                 onSendInstagram={
-                  igAccount && renders[plan.id] ? () => setReelShort(factoryShortFrom(project, plan, renders[plan.id])) : undefined
+                  igAccount && renders[plan.id]
+                    ? () => {
+                        setReelIdeaId(plan.idea?.id ?? null);
+                        setReelShort(factoryShortFrom(project, plan, renders[plan.id], thumbs[plan.id]?.file ?? undefined));
+                      }
+                    : undefined
                 }
-                onDelete={() => commit({ ...project, plans: project.plans.filter((x) => x.id !== plan.id) }, true)}
+                onDelete={() => removePlan(plan)}
                 onActive={(active) => setActivePlan(active ? plan.id : null)}
               />
             ))}
@@ -720,7 +1032,9 @@ export default function YouTubeShorts() {
             initialShort={reelShort}
             plan={igPlan}
             occupants={igOccupants}
-            onSaved={() => undefined}
+            onSaved={(publication) => {
+              if (publication) void markIdeas([reelIdeaId], "usada");
+            }}
           />
         )}
       </div>
@@ -731,6 +1045,7 @@ export default function YouTubeShorts() {
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       {header}
+      {ideasSheet}
       <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={(e) => {
         const f = e.target.files?.[0] ?? null;
         setVideoFile(f);
@@ -837,6 +1152,18 @@ export default function YouTubeShorts() {
                   ))}
                 </SelectContent>
               </Select>
+              {relatedSummary ? (
+                <p className={cn("text-xs", relatedSummary.level === "agotado" ? "text-red-300" : relatedSummary.level === "casi" ? "text-amber-300" : "text-muted-foreground")}>
+                  Este episodio ya tiene {relatedSummary.used} de {relatedSummary.budget} Shorts · {relatedSummary.coveragePct} % del video usado
+                  {relatedSummary.level === "agotado" ? ". Te conviene elegir otro episodio." : ""}
+                </p>
+              ) : (
+                relatedId === NO_RELATED && (
+                  <p className="text-xs text-muted-foreground">
+                    Elige el episodio de YouTube: así el registro sabe de qué episodio sale cada Short y el Short lleva al episodio correcto.
+                  </p>
+                )
+              )}
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Indicaciones para la IA (opcional)</Label>
@@ -872,6 +1199,7 @@ export default function YouTubeShorts() {
             {projects.map((p) => {
               const best = p.plans.length ? Math.max(...p.plans.map((x) => totalScore(x.score))) : null;
               const sent = Object.keys(p.sentToSchedule).length;
+              const episode = statusOf(p);
               return (
                 <StudioCard key={p.id} className="flex flex-col gap-3 p-4">
                   <div className="flex items-start justify-between gap-2">
@@ -890,6 +1218,7 @@ export default function YouTubeShorts() {
                         ? "Se interrumpió el análisis"
                         : "Análisis sin terminar"}
                   </p>
+                  {episode && <SourceLevelChip status={episode} className="self-start" />}
                   <div className="mt-auto flex gap-2">
                     <Button size="sm" className="flex-1" onClick={() => setOpenId(p.id)} disabled={busy}>
                       Abrir

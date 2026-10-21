@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { AudioChunk } from "./media";
 import type { Cue } from "./subtitles";
 
-const N8N_BASE_URL = process.env.NEXT_PUBLIC_N8N_BASE_URL || "https://n8ninnovatec-n8n.t0bgq1.easypanel.host";
+export const N8N_BASE_URL = process.env.NEXT_PUBLIC_N8N_BASE_URL || "https://n8ninnovatec-n8n.t0bgq1.easypanel.host";
 const METADATA_PATH = process.env.NEXT_PUBLIC_N8N_WEBHOOK_STUDIO_METADATA || "/webhook/vexa-studio/metadata";
 const TRANSCRIBE_PATH = process.env.NEXT_PUBLIC_N8N_WEBHOOK_STUDIO_TRANSCRIBE || "/webhook/vexa-studio/transcribe";
 const TRANSLATE_PATH = process.env.NEXT_PUBLIC_N8N_WEBHOOK_STUDIO_TRANSLATE || "/webhook/vexa-studio/translate";

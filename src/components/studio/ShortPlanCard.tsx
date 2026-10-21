@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   CalendarPlus,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -9,6 +10,7 @@ import {
   Download,
   FolderOpen,
   Instagram,
+  ListChecks,
   Loader2,
   Music2,
   Play,
@@ -19,6 +21,16 @@ import {
   WandSparkles,
   X,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
@@ -44,6 +56,7 @@ import {
   type ShortScore,
   type StoredRender,
 } from "@/lib/studio/shorts";
+import type { IdeaCheck, IdeaCheckItem, IdeaLevel } from "@/lib/studio/short-ideas";
 import { renderExtension, ShortEngine } from "@/lib/studio/shorts-render";
 import type { Cue } from "@/lib/studio/subtitles";
 import { cn } from "@/lib/utils";
@@ -55,6 +68,25 @@ export function scoreTone(total: number) {
   if (total >= 80) return "bg-emerald-500/15 text-emerald-300 ring-emerald-400/30";
   if (total >= 70) return "bg-primary/15 text-primary ring-primary/30";
   return "bg-amber-500/15 text-amber-300 ring-amber-400/30";
+}
+
+const SIMILARITY_TONES: Record<IdeaLevel, string> = {
+  ok: "bg-emerald-500/15 text-emerald-300 ring-emerald-400/30",
+  cercana: "bg-amber-500/15 text-amber-300 ring-amber-400/30",
+  repetida: "bg-red-500/15 text-red-300 ring-red-400/30",
+  sin_dato: "bg-secondary text-muted-foreground ring-border",
+};
+
+/** Parecido con lo ya hecho en el canal (lo calcula n8n con embeddings) */
+export function SimilarityBadge({ idea, className }: { idea: Pick<IdeaCheck, "similarity" | "level" | "reason">; className?: string }) {
+  return (
+    <span
+      className={cn("whitespace-nowrap rounded-lg px-2 py-1 text-xs font-semibold ring-1", SIMILARITY_TONES[idea.level], className)}
+      title={idea.reason || undefined}
+    >
+      {idea.similarity === null ? "Sin comparar" : `Parecido ${idea.similarity} %`}
+    </span>
+  );
 }
 
 const VIDEO_SIZES: { value: string; label: string }[] = [
@@ -82,6 +114,10 @@ interface Props {
   onSendInstagram?: () => void;
   onDelete: () => void;
   onActive: (active: boolean) => void;
+  /** Ítems de la lista de control que calcula la app (video relacionado y cuadro de apertura) */
+  appChecks?: IdeaCheckItem[];
+  /** Sección "Miniatura" (editor con IA), armada por la Fábrica */
+  thumbnailSection?: React.ReactNode;
 }
 
 export function ShortPlanCard({
@@ -100,8 +136,16 @@ export function ShortPlanCard({
   onSendInstagram,
   onDelete,
   onActive,
+  appChecks = [],
+  thumbnailSection,
 }: Props) {
   const { toast } = useToast();
+  const idea = plan.idea;
+  const checks = [...(idea?.checks ?? []), ...appChecks];
+  const passed = checks.filter((c) => c.ok).length;
+  // Repetido: se confirma antes de mandarlo a Programación o a Instagram
+  const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
+  const guard = (action: () => void) => (idea?.level === "repetida" ? setConfirmAction(() => action) : action());
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<ShortEngine | null>(null);
   const [mode, setMode] = useState<"idle" | "preview" | "render">("idle");
@@ -289,14 +333,14 @@ export function ShortPlanCard({
                     <Link href="/studio/youtube/programar">Ver en Programación</Link>
                   </Button>
                 ) : (
-                  <Button size="sm" className="flex-1 gap-1.5" onClick={() => void send()} disabled={sending}>
+                  <Button size="sm" className="flex-1 gap-1.5" onClick={() => guard(() => void send())} disabled={sending}>
                     {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
                     Programar
                   </Button>
                 )}
               </div>
               {onSendInstagram && (
-                <Button variant="ghost" size="sm" className="h-8 w-full gap-1.5 text-pink-300 hover:text-pink-200" onClick={onSendInstagram}>
+                <Button variant="ghost" size="sm" className="h-8 w-full gap-1.5 text-pink-300 hover:text-pink-200" onClick={() => guard(onSendInstagram)}>
                   <Instagram className="h-4 w-4" />
                   También a Instagram
                 </Button>
@@ -320,6 +364,7 @@ export function ShortPlanCard({
               />
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {idea && <SimilarityBadge idea={idea} />}
               <span className={cn("rounded-xl px-3 py-1.5 text-lg font-bold ring-1", scoreTone(total))} title="Puntaje viral (rúbrica de 100)">
                 {total}
               </span>
@@ -337,6 +382,40 @@ export function ShortPlanCard({
             <p className="mt-1 text-sm text-muted-foreground">{plan.rationale}</p>
             {plan.editingNotes && <p className="mt-2 text-xs text-muted-foreground/80">Edición: {plan.editingNotes}</p>}
           </div>
+
+          {checks.length > 0 && (
+            <Collapsible>
+              <CollapsibleTrigger asChild>
+                <button
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold ring-1",
+                    passed === checks.length ? "bg-emerald-500/5 text-emerald-300 ring-emerald-400/20" : "bg-amber-500/5 text-amber-300 ring-amber-400/20"
+                  )}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <ListChecks className="h-3.5 w-3.5" />
+                    Lista de control {passed}/{checks.length}
+                  </span>
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <ul className="mt-2 space-y-1.5 px-1">
+                  {checks.map((c) => (
+                    <li key={c.key} className="flex items-start gap-2 text-xs">
+                      {c.ok ? <Check className="mt-px h-3.5 w-3.5 shrink-0 text-emerald-400" /> : <X className="mt-px h-3.5 w-3.5 shrink-0 text-red-400" />}
+                      <span className="min-w-0">
+                        <span className="text-foreground">{c.label}</span>
+                        {c.detail && <span className="text-muted-foreground"> · {c.detail}</span>}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+
+          {thumbnailSection}
 
           <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
             {(Object.keys(SCORE_LABELS) as (keyof ShortScore)[]).map((k) => (
@@ -535,6 +614,29 @@ export function ShortPlanCard({
           </div>
         </div>
       </div>
+
+      <AlertDialog open={confirmAction !== null} onOpenChange={(next) => !next && setConfirmAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Este Short se parece mucho a otro</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se parece {idea?.similarity ?? 0} % a «{idea?.similarTo?.title || "un Short anterior"}». YouTube puede verlo como contenido repetido. ¿Enviar igual?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const action = confirmAction;
+                setConfirmAction(null);
+                action?.();
+              }}
+            >
+              Enviar igual
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </StudioCard>
   );
 }

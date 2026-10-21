@@ -93,6 +93,18 @@ export async function listVideoTasks(accountId: string): Promise<VideoTask[]> {
 }
 
 /** Origen de cada Short subido desde la Fábrica (id del video de YouTube → 'shorts:<projectId>:<planId>') */
+/** Video de YouTube de un Short de la Fábrica ya subido (por su source_ref); null si aún no se sube */
+export async function findVideoIdBySourceRef(accountId: string, sourceRef: string): Promise<string | null> {
+  const { data, error } = await db
+    .from("studio_video_tasks")
+    .select("video_id")
+    .eq("account_id", accountId)
+    .eq("source_ref", sourceRef)
+    .limit(1);
+  if (error) throw error;
+  return (data as { video_id: string }[])[0]?.video_id ?? null;
+}
+
 export async function listSourceRefs(accountId: string): Promise<Map<string, string>> {
   const { data, error } = await db
     .from("studio_video_tasks")

@@ -177,9 +177,12 @@ async function resolveLocalizations(draft: YouTubeDraft): Promise<Localization[]
 }
 
 /** Unidades de cuota de la API de YouTube que gasta publicar este borrador (límite: 10.000 al día) */
-export function quotaUnits(draft: Pick<YouTubeDraft, "subtitleFile" | "thumbnailFile" | "format">): number {
-  return 1600 + (draft.subtitleFile ? 400 : 0) + (draft.thumbnailFile && draft.format === "video" ? 50 : 0);
+export function quotaUnits(draft: Pick<YouTubeDraft, "subtitleFile" | "thumbnailFile">): number {
+  return 1600 + (draft.subtitleFile ? 400 : 0) + (draft.thumbnailFile ? 50 : 0);
 }
+
+export const SHORT_THUMBNAIL_REJECTED =
+  "YouTube no aceptó la miniatura del Short. Súbela a mano en YouTube Studio → Detalles → Miniatura → Subir archivo.";
 
 export const DAILY_QUOTA = 10_000;
 
@@ -200,6 +203,8 @@ export interface PublishResult {
   warnings: string[];
   /** Comentario para fijar y video relacionado pendientes de este video */
   task: VideoTask | null;
+  /** La miniatura del Short que YouTube no aceptó (el Short quedó subido igual): para subirla a mano */
+  thumbnailRejected: { videoId: string; file: File } | null;
 }
 
 /** Sube el borrador a YouTube. Con publishAt queda privado y YouTube lo publica solo a esa hora. */
@@ -243,9 +248,18 @@ export async function publishDraft(
     },
     opts.onProgress ?? (() => undefined)
   );
-  if (draft.thumbnailFile && draft.format === "video") {
+  let thumbnailRejected: PublishResult["thumbnailRejected"] = null;
+  if (draft.thumbnailFile) {
     onStatus("Subiendo la miniatura…");
-    await setThumbnail(token, videoId, draft.thumbnailFile).catch((e: Error) => warnings.push(`Miniatura: ${e.message}`));
+    const thumbnail = draft.thumbnailFile;
+    await setThumbnail(token, videoId, thumbnail).catch((e: Error) => {
+      if (draft.format === "short") {
+        warnings.push(SHORT_THUMBNAIL_REJECTED);
+        thumbnailRejected = { videoId, file: thumbnail };
+      } else {
+        warnings.push(`Miniatura: ${e.message}`);
+      }
+    });
   }
   if (draft.subtitleFile) {
     onStatus("Subiendo los subtítulos…");
@@ -280,7 +294,7 @@ export async function publishDraft(
       warnings.push("Comentario: no se pudo dejar programado; agrégalo desde Programación");
     }
   }
-  return { videoId, warnings, task };
+  return { videoId, warnings, task, thumbnailRejected };
 }
 
 // ---------- Guardado local (IndexedDB) ----------
@@ -357,6 +371,20 @@ export async function saveDraft(draft: YouTubeDraft, changedFiles: DraftFileKey[
       else tx.objectStore(FILES).delete(`${draft.id}:${key}`);
     }
     return () => undefined;
+  });
+}
+
+/** Cambia la miniatura de un borrador que sigue sin subir. false si el borrador ya no existe */
+export async function setDraftThumbnail(draftId: string, file: File): Promise<boolean> {
+  return transaction("readwrite", (tx) => {
+    let found = false;
+    const req = tx.objectStore(DRAFTS).get(draftId) as IDBRequest<StoredDraft | undefined>;
+    req.onsuccess = () => {
+      if (!req.result) return;
+      found = true;
+      tx.objectStore(FILES).put(file, `${draftId}:thumbnailFile`);
+    };
+    return () => found;
   });
 }
 
