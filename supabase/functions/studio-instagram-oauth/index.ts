@@ -27,6 +27,8 @@ const SCOPES = [
   "instagram_business_content_publish",
   // Leer y responder comentarios
   "instagram_business_manage_comments",
+  // Responder DM (chatbot de n8n)
+  "instagram_business_manage_messages",
   // Estadísticas para "mejor horario" y reporte semanal
   "instagram_business_manage_insights",
 ];
@@ -251,6 +253,17 @@ async function handleCallback(admin: SupabaseClient, url: URL) {
       { onConflict: "account_id" }
     );
     if (tokenError) throw new Error(tokenError.message);
+
+    // Avisos de comentarios y DM para el chatbot (llegan al router de n8n). Si falla, la cuenta queda conectada igual.
+    try {
+      const sub = await fetch(`${GRAPH}/me/subscribed_apps?subscribed_fields=comments,messages`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      if (!sub.ok) console.warn("[studio-instagram-oauth] no se pudo suscribir a webhooks:", await sub.text());
+    } catch (err) {
+      console.warn("[studio-instagram-oauth] no se pudo suscribir a webhooks:", String(err));
+    }
 
     return back({ studio_connected: "instagram", studio_account: handle });
   } catch (err) {
