@@ -25,6 +25,7 @@ import {
   type StoredRender,
 } from "./shorts";
 import { loadThumbnails, type StoredThumbnail } from "./thumbnails";
+import type { RelatedVideo } from "./video-tasks";
 
 const N8N_BASE_URL = process.env.NEXT_PUBLIC_N8N_BASE_URL || "https://n8ninnovatec-n8n.t0bgq1.easypanel.host";
 const UPLOAD_PATH = process.env.NEXT_PUBLIC_N8N_WEBHOOK_STUDIO_IG_UPLOAD || "/webhook/vexa-studio/instagram/upload";
@@ -81,6 +82,8 @@ export interface InstagramPublication {
   /** 'shorts:<projectId>:<planId>' · 'youtube:<videoId>' · 'upload' */
   sourceRef: string | null;
   youtubeVideoId: string | null;
+  /** Video largo de YouTube del que salió el Reel: el bot de Instagram manda ahí a quien comenta o escribe */
+  sourceVideo: RelatedVideo | null;
   status: PublicationStatus;
   scheduledAt: string | null;
   /** Lo llena n8n: no nulo = video listo */
@@ -114,6 +117,8 @@ interface PublicationRow {
   settings: SettingsRow | null;
   source_ref: string | null;
   youtube_video_id: string | null;
+  source_video_id: string | null;
+  source_video_title: string | null;
   status: PublicationStatus;
   scheduled_at: string | null;
   media_url: string | null;
@@ -128,7 +133,7 @@ interface PublicationRow {
 }
 
 const COLUMNS =
-  "id, tenant_id, account_id, title, caption, settings, source_ref, youtube_video_id, status, scheduled_at, media_url, media_size, cover_url, permalink, published_at, attempts, last_error, created_at, updated_at";
+  "id, tenant_id, account_id, title, caption, settings, source_ref, youtube_video_id, source_video_id, source_video_title, status, scheduled_at, media_url, media_size, cover_url, permalink, published_at, attempts, last_error, created_at, updated_at";
 
 export const DEFAULT_SETTINGS: PublicationSettings = { shareToFeed: true, collaborators: [] };
 
@@ -167,6 +172,7 @@ export const toPublication = (r: PublicationRow): InstagramPublication => ({
   settings: settingsFromRow(r.settings),
   sourceRef: r.source_ref,
   youtubeVideoId: r.youtube_video_id,
+  sourceVideo: r.source_video_id ? { id: r.source_video_id, title: r.source_video_title ?? "" } : null,
   status: r.status,
   scheduledAt: r.scheduled_at,
   mediaUrl: r.media_url,
@@ -187,6 +193,8 @@ export interface PublicationPatch {
   settings?: PublicationSettings;
   sourceRef?: string | null;
   youtubeVideoId?: string | null;
+  /** null = "Sin video de origen" (limpia las dos columnas) */
+  sourceVideo?: RelatedVideo | null;
   status?: "borrador" | "programado";
   scheduledAt?: string | null;
 }
@@ -198,12 +206,17 @@ export function patchToRow(patch: PublicationPatch): Record<string, unknown> {
   if (patch.settings !== undefined) row.settings = settingsToRow(patch.settings);
   if (patch.sourceRef !== undefined) row.source_ref = patch.sourceRef;
   if (patch.youtubeVideoId !== undefined) row.youtube_video_id = patch.youtubeVideoId;
+  if (patch.sourceVideo !== undefined) {
+    row.source_video_id = patch.sourceVideo?.id ?? null;
+    row.source_video_title = patch.sourceVideo?.title ?? null;
+  }
   if (patch.status !== undefined) row.status = patch.status;
   if (patch.scheduledAt !== undefined) row.scheduled_at = patch.scheduledAt;
   return row;
 }
 
 export const hasVideo = (p: Pick<InstagramPublication, "mediaUrl">) => Boolean(p.mediaUrl);
+export const youtubeWatchUrl = (videoId: string) => `https://www.youtube.com/watch?v=${videoId}`;
 export const isEditable = (p: Pick<InstagramPublication, "status">) => p.status !== "publicando" && p.status !== "publicado";
 
 // ---------- Lecturas ----------
@@ -743,6 +756,8 @@ export interface FactoryShort {
   durationSeconds: number;
   /** Ya se envió a Programación de YouTube */
   sentToSchedule: boolean;
+  /** Video largo del episodio (el vinculado en el proyecto de la Fábrica) */
+  relatedVideo: RelatedVideo | null;
   /** Miniatura con IA guardada en la carpeta: sirve de portada del Reel */
   thumbnail?: File;
 }
@@ -762,6 +777,7 @@ export function factoryShortFrom(project: ShortsProject, plan: ShortPlan, render
     srt: render.srt || timelineToSrt(timeline),
     durationSeconds: Math.round(timeline.duration),
     sentToSchedule: Boolean(project.sentToSchedule[plan.id]),
+    relatedVideo: project.relatedVideo ?? null,
     ...(thumbnail ? { thumbnail } : {}),
   };
 }

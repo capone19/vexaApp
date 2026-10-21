@@ -49,6 +49,7 @@ import {
   subscribePublications,
   uploadReelVideo,
   validateReelFile,
+  youtubeWatchUrl,
   type InstagramPublication,
   type PublicationSubscription,
 } from "@/lib/studio/instagram";
@@ -852,6 +853,18 @@ function ReelCard({
         {p.youtubeVideoId && <Link2 className="h-3 w-3" aria-label="Replicado de YouTube" />}
       </div>
       <p className="line-clamp-2 text-xs font-medium leading-snug">{p.title || "Reel sin nombre"}</p>
+      {p.sourceVideo && (
+        <a
+          href={youtubeWatchUrl(p.sourceVideo.id)}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="line-clamp-1 text-[10px] text-muted-foreground hover:text-foreground hover:underline"
+          title={p.sourceVideo.title}
+        >
+          De: {p.sourceVideo.title || "video de YouTube"}
+        </a>
+      )}
       <ReelStatusChip publication={p} uploading={uploading} />
       {p.status === "publicando" && <p className="text-[10px] text-muted-foreground">{PUBLISHING_MESSAGE}</p>}
       {spacingWarning && (

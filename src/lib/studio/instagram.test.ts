@@ -24,6 +24,7 @@ vi.mock("@/integrations/supabase/client", () => {
 
 import {
   composeCaption,
+  factoryShortFrom,
   matchFactoryShort,
   needsWatch,
   normalizeHashtags,
@@ -55,6 +56,8 @@ const row = (patch: Record<string, unknown> = {}) => ({
   settings: { share_to_feed: false, thumb_offset_ms: 3000, collaborators: ["@ana", "luis"], first_comment: "Link en bio" },
   source_ref: "shorts:sp-1:plan-1",
   youtube_video_id: "yt1",
+  source_video_id: null,
+  source_video_title: null,
   status: "programado",
   scheduled_at: "2026-10-20T17:00:00.000Z",
   media_url: "https://r2/x.mp4",
@@ -103,6 +106,48 @@ describe("mapeo de la tabla", () => {
       settings: { share_to_feed: true, collaborators: ["a", "b", "c"] },
     });
     expect(settingsToRow({ shareToFeed: true, collaborators: [], thumbOffsetMs: 1500.4 })).toEqual({ share_to_feed: true, thumb_offset_ms: 1500 });
+  });
+});
+
+describe("video de origen", () => {
+  it("se arma con source_video_id y source_video_title; sin id es null", () => {
+    expect(toPublication(row() as never).sourceVideo).toBeNull();
+    expect(toPublication(row({ source_video_title: "Huérfano" }) as never).sourceVideo).toBeNull();
+    expect(toPublication(row({ source_video_id: "v1", source_video_title: "Ep 1" }) as never).sourceVideo).toEqual({ id: "v1", title: "Ep 1" });
+    expect(toPublication(row({ source_video_id: "v2" }) as never).sourceVideo).toEqual({ id: "v2", title: "" });
+  });
+
+  it("patchToRow escribe las dos columnas o las limpia con null", () => {
+    expect(patchToRow({ sourceVideo: { id: "v1", title: "Ep 1" } })).toEqual({ source_video_id: "v1", source_video_title: "Ep 1" });
+    expect(patchToRow({ sourceVideo: null })).toEqual({ source_video_id: null, source_video_title: null });
+    expect(patchToRow({ title: "Reel" })).not.toHaveProperty("source_video_id");
+  });
+
+  it("factoryShortFrom copia el video vinculado del proyecto", () => {
+    const plan = {
+      id: "plan-1",
+      title: " El castigo ",
+      description: "Desc",
+      hashtags: ["#roma"],
+      segments: [{ start: 0, end: 20 }],
+      effectsOn: false,
+      effects: [],
+      sfx: [],
+      music: { mood: "tension", volume: 0.15, cuts: [] },
+      keywords: [],
+    };
+    const project = (relatedVideo: unknown) => ({
+      id: "sp-1",
+      name: "Episodio",
+      language: "es",
+      cues: [],
+      sentToSchedule: {},
+      relatedVideo,
+    });
+    const render = { file: new File(["x"], "short.mp4", { type: "video/mp4" }), srt: "1\n00:00:00,000 --> 00:00:01,000\nHola" };
+    expect(factoryShortFrom(project({ id: "v1", title: "Ep 1" }) as never, plan as never, render as never).relatedVideo).toEqual({ id: "v1", title: "Ep 1" });
+    expect(factoryShortFrom(project(null) as never, plan as never, render as never).relatedVideo).toBeNull();
+    expect(factoryShortFrom(project(undefined) as never, plan as never, render as never).relatedVideo).toBeNull();
   });
 });
 
@@ -193,6 +238,7 @@ describe("matchFactoryShort", () => {
     srt: "",
     durationSeconds: 40,
     sentToSchedule: true,
+    relatedVideo: null,
     ...patch,
   });
   it("prefiere el vínculo guardado al subir a YouTube", () => {

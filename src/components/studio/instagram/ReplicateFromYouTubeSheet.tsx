@@ -328,6 +328,7 @@ export function ReplicateFromYouTubeSheet({
           },
           sourceRef: it.fromFactory && it.match ? it.match.sourceRef : `youtube:${it.video.id}`,
           youtubeVideoId: it.video.id,
+          ...(it.match?.relatedVideo ? { sourceVideo: it.match.relatedVideo } : {}),
         });
         created++;
       } catch (err) {
