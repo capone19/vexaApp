@@ -19,7 +19,7 @@ create table if not exists public.vexa_ig_publicaciones (
   frase_inicio text,
   frase_final text,
   short_youtube_id text,
-  episodio_titulo text,                    -- episodio completo del que salió el Short
+  episodio_titulo text,                    -- video de origen (luego se renombra a video_origen_titulo)
   episodio_youtube_id text,
   origen text not null default 'vexa' check (origen in ('vexa','instagram')),
   publicado_at timestamptz,
