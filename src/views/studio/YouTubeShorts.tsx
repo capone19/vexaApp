@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ReelComposerDialog } from "@/components/studio/instagram/ReelComposerDialog";
@@ -173,6 +174,7 @@ export default function YouTubeShorts() {
   const [count, setCount] = useState("3");
   const [notes, setNotes] = useState("");
   const [relatedId, setRelatedId] = useState(NO_RELATED);
+  const [sourceMusic, setSourceMusic] = useState(false);
 
   const videoInputRef = useRef<HTMLInputElement>(null);
   const subInputRef = useRef<HTMLInputElement>(null);
@@ -369,6 +371,7 @@ export default function YouTubeShorts() {
         accountId: p.accountId,
         projectId: p.id,
         source: sourceOf(p, key),
+        sourceMusic: p.sourceMusic ?? false,
         ...opts,
       };
     },
@@ -473,6 +476,7 @@ export default function YouTubeShorts() {
         height: info.height,
         cues,
         relatedVideo: related,
+        sourceMusic,
         sourceKey: await sourceKeyFor({ relatedVideo: related, duration: info.duration, width: info.width, height: info.height }),
       });
       if (!videoHandle) setStep({ key: "lectura", detail: "Guardando una copia del video en este navegador…" });
@@ -486,6 +490,7 @@ export default function YouTubeShorts() {
       setName("");
       setNotes("");
       setRelatedId(NO_RELATED);
+      setSourceMusic(false);
       await analyze(p);
     } catch (e) {
       setStep(null);
@@ -1165,6 +1170,15 @@ export default function YouTubeShorts() {
                 )
               )}
             </div>
+            <label className="flex items-start justify-between gap-3 self-start rounded-lg bg-secondary/40 px-3 py-2">
+              <span className="space-y-0.5">
+                <span className="block text-xs font-medium text-foreground">El video ya trae música</span>
+                <span className="block text-[11px] text-muted-foreground">
+                  Los Shorts conservan la música del video (&quot;Música original del video&quot;) y no se les agrega otra.
+                </span>
+              </span>
+              <Switch checked={sourceMusic} onCheckedChange={setSourceMusic} />
+            </label>
             <div className="space-y-1.5">
               <Label className="text-xs">Indicaciones para la IA (opcional)</Label>
               <Textarea
@@ -1261,7 +1275,8 @@ export default function YouTubeShorts() {
             <p>
               <strong className="text-foreground">3. Editor:</strong> escribe el guion de edición de cada Short: dónde cortar (incluido abrir con la frase más fuerte),
               zooms en las palabras clave, blanco y negro en la escena más dramática, congelados con texto gigante, golpes, whoosh y subidas de tensión, y la
-              música según el ánimo, con un silencio justo antes del remate.
+              música según el ánimo (curiosidad, misterio, suspenso, tensión, explicación, polémica, morbo, épica o tragedia), con un silencio justo antes del
+              remate. Si el video ya trae música, los Shorts conservan la original.
             </p>
             <p>
               <strong className="text-foreground">4. Aprende de tu canal:</strong> en cada análisis recibe cómo les fue a tus Shorts de los últimos 90 días (vistas y %

@@ -20,8 +20,21 @@ const SHORTS_PATH = process.env.NEXT_PUBLIC_N8N_WEBHOOK_STUDIO_SHORTS || "/webho
 // ---------- Vocabulario de edición ----------
 
 export type VisualFx = "punch_in" | "slow_zoom" | "bw" | "freeze" | "text_pop" | "shake" | "flash" | "glitch" | "dark";
-export type SfxKind = "whoosh" | "impact" | "boom" | "hit" | "riser" | "reverse" | "ticking" | "heartbeat" | "glitch" | "camera";
-export type MusicMood = "curiosidad" | "misterio" | "tension" | "epica" | "ninguna";
+export type SfxKind = "whoosh" | "impact" | "boom" | "hit" | "riser" | "reverse" | "ticking" | "heartbeat" | "glitch" | "camera" | "pop" | "ding";
+export type MusicMood =
+  | "curiosidad"
+  | "misterio"
+  | "suspenso"
+  | "tension"
+  | "explicacion"
+  | "polemica"
+  | "morbo"
+  | "epica"
+  | "tragedia"
+  | "original"
+  | "ninguna";
+/** Ánimos que agregan una música de fondo (los otros dos dejan solo el audio del video) */
+export type BedMood = Exclude<MusicMood, "original" | "ninguna">;
 export type ShortLayout = "clasico" | "completo";
 
 export const FX_LABELS: Record<VisualFx, string> = {
@@ -47,18 +60,29 @@ export const SFX_LABELS: Record<SfxKind, string> = {
   heartbeat: "Latido",
   glitch: "Glitch",
   camera: "Cámara",
+  pop: "Pop",
+  ding: "Campanita",
 };
 
 export const MOOD_LABELS: Record<MusicMood, string> = {
   curiosidad: "Curiosidad",
   misterio: "Misterio",
+  suspenso: "Suspenso",
   tension: "Tensión",
+  explicacion: "Explicación",
+  polemica: "Polémica",
+  morbo: "Morbo",
   epica: "Épica",
+  tragedia: "Tragedia",
+  original: "Música original del video",
   ninguna: "Sin música",
 };
 
 export const SFX_KINDS = Object.keys(SFX_LABELS) as SfxKind[];
-export const MUSIC_MOODS = (Object.keys(MOOD_LABELS) as MusicMood[]).filter((m) => m !== "ninguna");
+export const MUSIC_MOODS = (Object.keys(MOOD_LABELS) as MusicMood[]).filter((m): m is BedMood => m !== "ninguna" && m !== "original");
+
+/** El Short lleva una música de fondo agregada (con "original" y "ninguna" suena solo el video) */
+export const hasMusicBed = (mood: MusicMood): mood is BedMood => mood !== "ninguna" && mood !== "original";
 
 // Duración permitida de cada efecto (segundos)
 const FX_RANGE: Record<VisualFx, [number, number]> = {
@@ -135,6 +159,8 @@ export interface ShortSfx {
 
 export interface ShortMusic {
   mood: MusicMood;
+  /** Canción elegida de la biblioteca; sin ella se elige una del ánimo */
+  track?: string;
   volume: number;
   /** segundos del original donde la música se corta un instante antes del remate */
   cuts: number[];
@@ -289,6 +315,7 @@ export function normalizePlan(raw: Partial<ShortPlan>, cues: Cue[], videoDuratio
     sfx,
     music: {
       mood,
+      ...(raw.music?.track && hasMusicBed(mood) ? { track: String(raw.music.track) } : {}),
       volume: clamp(Number(raw.music?.volume ?? 0.15), 0, 0.5),
       cuts: (raw.music?.cuts ?? []).map(Number).filter((c) => insideSegments(c, segments)).slice(0, 3),
     },
@@ -363,6 +390,8 @@ export interface AiContext {
   manual?: boolean;
   /** "Sacar igual" en un episodio agotado */
   overrideBudget?: boolean;
+  /** El video ya trae música: los Shorts conservan la suya en vez de agregar otra */
+  sourceMusic?: boolean;
 }
 
 /** El episodio ya dio todos los Shorts recomendados: n8n no gastó IA */
@@ -422,6 +451,7 @@ async function callShortsAi<T>(stage: "scout" | "edit", ctx: AiContext, extra: R
     video_title: ctx.videoTitle,
     notes: ctx.notes,
     learnings: ctx.learnings,
+    ...(ctx.sourceMusic ? { source_music: true } : {}),
     ...registry,
     ...extra,
   });
@@ -471,7 +501,8 @@ function fromAi(s: AiShort, ctx: AiContext, keep?: Partial<ShortPlan>): ShortPla
       segments: s.segments,
       effects: s.effects.map((e) => ({ ...e, id: uid() })),
       sfx: s.sfx.map((x) => ({ ...x, id: uid() })),
-      music: s.music,
+      // Con música en el video manda la del video, diga lo que diga la IA
+      music: ctx.sourceMusic ? { ...s.music, mood: "original", cuts: [] } : s.music,
       keywords: s.keywords,
       score: s.score,
       rationale: s.rationale_es,
@@ -755,6 +786,8 @@ export interface ShortsProject {
   discarded: Discarded[];
   plans: ShortPlan[];
   relatedVideo: RelatedVideo | null;
+  /** El video ya trae música: los Shorts nuevos usan "Música original del video" */
+  sourceMusic?: boolean;
   /** Shorts ya enviados a Programación: planId -> id del borrador */
   sentToSchedule: Record<string, string>;
   /** Episodio en el registro de ideas: 'yt:<id>' o 'file:<huella>' */

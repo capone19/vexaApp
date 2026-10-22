@@ -12,19 +12,25 @@ import {
   SFX_KINDS,
   SFX_LABELS,
   type AudioAsset,
-  type MusicMood,
+  type BedMood,
   type SfxKind,
 } from "@/lib/studio/shorts";
 import { previewSound } from "@/lib/studio/shorts-audio";
+import { MUSIC_LIBRARY, SFX_LIBRARY } from "@/lib/studio/shorts-library";
 
-type Row = { kind: "music"; tag: Exclude<MusicMood, "ninguna"> } | { kind: "sfx"; tag: SfxKind };
+type Row = { kind: "music"; tag: BedMood } | { kind: "sfx"; tag: SfxKind };
 
-const ROWS: Row[] = [
-  ...MUSIC_MOODS.map((tag) => ({ kind: "music" as const, tag: tag as Exclude<MusicMood, "ninguna"> })),
-  ...SFX_KINDS.map((tag) => ({ kind: "sfx" as const, tag })),
-];
+const ROWS: Row[] = [...MUSIC_MOODS.map((tag) => ({ kind: "music" as const, tag })), ...SFX_KINDS.map((tag) => ({ kind: "sfx" as const, tag }))];
 
-/** Biblioteca de sonidos: los sintetizados vienen incluidos; los archivos propios los reemplazan */
+function PlayButton({ active, loading, onClick, title }: { active: boolean; loading: boolean; onClick: () => void; title: string }) {
+  return (
+    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={onClick} title={title}>
+      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : active ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+    </Button>
+  );
+}
+
+/** Biblioteca de sonidos: la música y los efectos incluidos; los archivos propios los reemplazan */
 export function ShortsSoundsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { toast } = useToast();
   const [assets, setAssets] = useState<AudioAsset[]>([]);
@@ -81,8 +87,9 @@ export function ShortsSoundsDialog({ open, onOpenChange }: { open: boolean; onOp
         <DialogHeader>
           <DialogTitle>Sonidos de los Shorts</DialogTitle>
           <DialogDescription>
-            Vienen incluidos música y efectos generados por VEXA (sin derechos de autor). Si subes tus propios archivos (por ejemplo de la Biblioteca de
-            audio de YouTube o los que usas en tus videos), se usan esos en su lugar. Quedan guardados en este navegador.
+            Vienen incluidas música y efectos de la Biblioteca de audio de YouTube (licencia YouTube, sin atribución). Cada Short usa una canción del ánimo
+            que eligió la IA; puedes cambiarla en el Short. Si subes tus propios archivos, se usan esos en su lugar (quedan guardados en este navegador). Si
+            el video ya trae música, elige &quot;{MOOD_LABELS.original}&quot;. No uses esta música en anuncios pagados de Meta.
           </DialogDescription>
         </DialogHeader>
         <input
@@ -103,21 +110,33 @@ export function ShortsSoundsDialog({ open, onOpenChange }: { open: boolean; onOp
               {ROWS.filter((r) => r.kind === kind).map((row) => {
                 const key = `${row.kind}:${row.tag}`;
                 const own = assets.filter((a) => a.kind === row.kind && a.tag === row.tag);
-                const label = row.kind === "music" ? MOOD_LABELS[row.tag] : SFX_LABELS[row.tag];
+                const variants = row.kind === "sfx" ? (SFX_LIBRARY[row.tag] ?? 0) : 0;
                 return (
                   <div key={key} className="rounded-xl bg-secondary/40 px-3 py-2">
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => void play(key, row.kind === "music" ? { kind: "music", mood: row.tag } : { kind: "sfx", type: row.tag })}
-                        title="Escuchar el incluido"
-                      >
-                        {loading === key ? <Loader2 className="h-4 w-4 animate-spin" /> : playing === key ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                      </Button>
-                      <span className="flex-1 text-sm font-medium">{label}</span>
-                      <span className="text-[11px] text-muted-foreground">{own.length ? `${own.length} propio${own.length > 1 ? "s" : ""}` : "incluido"}</span>
+                      {row.kind === "sfx" &&
+                        (variants > 1 ? (
+                          Array.from({ length: variants }, (_, i) => (
+                            <PlayButton
+                              key={i}
+                              active={playing === `${key}:${i + 1}`}
+                              loading={loading === `${key}:${i + 1}`}
+                              onClick={() => void play(`${key}:${i + 1}`, { kind: "sfx", type: row.tag, variant: i + 1 })}
+                              title={`Escuchar la versión ${i + 1}`}
+                            />
+                          ))
+                        ) : (
+                          <PlayButton
+                            active={playing === key}
+                            loading={loading === key}
+                            onClick={() => void play(key, { kind: "sfx", type: row.tag })}
+                            title="Escuchar el incluido"
+                          />
+                        ))}
+                      <span className="flex-1 text-sm font-medium">{row.kind === "music" ? MOOD_LABELS[row.tag] : SFX_LABELS[row.tag]}</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {own.length ? `${own.length} propio${own.length > 1 ? "s" : ""}` : row.kind === "music" ? `${MUSIC_LIBRARY[row.tag].length} incluidas` : "incluido"}
+                      </span>
                       <Button
                         variant="outline"
                         size="sm"
@@ -131,6 +150,20 @@ export function ShortsSoundsDialog({ open, onOpenChange }: { open: boolean; onOp
                         Subir
                       </Button>
                     </div>
+                    {row.kind === "music" &&
+                      MUSIC_LIBRARY[row.tag].map((t) => (
+                        <div key={t.file} className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                          <PlayButton
+                            active={playing === t.file}
+                            loading={loading === t.file}
+                            onClick={() => void play(t.file, { kind: "music", mood: row.tag, track: t.file })}
+                            title="Escuchar"
+                          />
+                          <span className="min-w-0 flex-1 truncate">
+                            {t.title} <span className="opacity-70">· {t.artist}</span>
+                          </span>
+                        </div>
+                      ))}
                     {own.map((a) => (
                       <div key={a.id} className="ml-9 mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                         <button className="hover:text-foreground" onClick={() => void play(a.id, { file: a.file })}>

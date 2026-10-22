@@ -44,6 +44,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   buildTimeline,
   FX_LABELS,
+  hasMusicBed,
   MOOD_LABELS,
   normalizePlan,
   SCORE_LABELS,
@@ -57,12 +58,15 @@ import {
   type StoredRender,
 } from "@/lib/studio/shorts";
 import type { IdeaCheck, IdeaCheckItem, IdeaLevel } from "@/lib/studio/short-ideas";
+import { MUSIC_LIBRARY } from "@/lib/studio/shorts-library";
 import { renderExtension, ShortEngine } from "@/lib/studio/shorts-render";
 import type { Cue } from "@/lib/studio/subtitles";
 import { cn } from "@/lib/utils";
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const srcClock = (s: number) => `${clock(s)}.${Math.floor((s % 1) * 10)}`;
+/** Radix Select no admite value="": "auto" = la app elige una canción del ánimo */
+const AUTO_TRACK = "auto";
 
 export function scoreTone(total: number) {
   if (total >= 80) return "bg-emerald-500/15 text-emerald-300 ring-emerald-400/30";
@@ -508,7 +512,7 @@ export function ShortPlanCard({
                     <Music2 className="h-3.5 w-3.5" />
                     Música de fondo
                   </Label>
-                  <Select value={plan.music.mood} onValueChange={(v) => update({ music: { ...plan.music, mood: v as MusicMood } })}>
+                  <Select value={plan.music.mood} onValueChange={(v) => update({ music: { ...plan.music, mood: v as MusicMood, track: undefined } })}>
                     <SelectTrigger className="h-9">
                       <SelectValue />
                     </SelectTrigger>
@@ -520,7 +524,31 @@ export function ShortPlanCard({
                       ))}
                     </SelectContent>
                   </Select>
+                  {plan.music.mood === "original" && (
+                    <p className="text-[11px] text-muted-foreground">Suena solo el audio del video, con su música. No se agrega otra.</p>
+                  )}
                 </div>
+                {hasMusicBed(plan.music.mood) && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Canción</Label>
+                    <Select
+                      value={plan.music.track ?? AUTO_TRACK}
+                      onValueChange={(v) => update({ music: { ...plan.music, track: v === AUTO_TRACK ? undefined : v } })}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={AUTO_TRACK}>Automática (una del ánimo)</SelectItem>
+                        {MUSIC_LIBRARY[plan.music.mood].map((t) => (
+                          <SelectItem key={t.file} value={t.file}>
+                            {t.title} · {t.artist}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <Label className="text-xs">Volumen de la música · {Math.round(plan.music.volume * 100)}%</Label>
                   <Slider
@@ -528,7 +556,7 @@ export function ShortPlanCard({
                     min={0}
                     max={40}
                     step={1}
-                    disabled={plan.music.mood === "ninguna"}
+                    disabled={!hasMusicBed(plan.music.mood)}
                     onValueChange={([v]) => update({ music: { ...plan.music, volume: v / 100 } })}
                     className="pt-3"
                   />

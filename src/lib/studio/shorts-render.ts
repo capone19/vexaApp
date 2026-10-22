@@ -7,7 +7,7 @@
 // La vista previa y el render son lo mismo: para el render se graba el canvas en tiempo real.
 // Mientras renderiza, la pestaña tiene que quedar visible (el navegador frena las pestañas ocultas).
 
-import { buildTimeline, type CaptionChunk, type ShortPlan, type SfxKind, type Timeline, type TimelineItem } from "./shorts";
+import { buildTimeline, hasMusicBed, type CaptionChunk, type ShortPlan, type SfxKind, type Timeline, type TimelineItem } from "./shorts";
 import { loadSounds, type ShortSounds } from "./shorts-audio";
 import type { Cue } from "./subtitles";
 
@@ -196,9 +196,12 @@ export class ShortEngine {
   /** Música y efectos que usa el plan (se reutilizan mientras no cambien) */
   private async prepareSounds(audio: AudioContext, plan: ShortPlan, tl: Timeline) {
     const sfxKinds = [...new Set(tl.sfx.map((s) => s.type))].sort();
-    const key = `${plan.music.mood}:${Math.ceil(tl.duration)}:${sfxKinds.join(",")}`;
+    const { mood, track } = plan.music;
+    const key = `${mood}:${track ?? ""}:${Math.ceil(tl.duration)}:${sfxKinds.join(",")}`;
     if (key === this.soundsKey) return;
-    this.sounds = await loadSounds(audio, { mood: plan.music.mood, seconds: tl.duration, sfx: sfxKinds, seed: plan.candidateIndex + 1 });
+    // Semilla del id del plan: dos Shorts del mismo ánimo no suenan con la misma canción
+    const seed = [...plan.id].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) | 0, 7);
+    this.sounds = await loadSounds(audio, { mood, track, seconds: tl.duration, sfx: sfxKinds, seed });
     this.soundsKey = key;
   }
 
@@ -274,8 +277,8 @@ export class ShortEngine {
       recorder.start(500);
     }
 
-    // Música: arranca con el Short y se corta un instante antes de los remates
-    const vol = plan.music.mood === "ninguna" ? 0 : plan.music.volume;
+    // Música: arranca con el Short y se corta un instante antes de los remates ("original": solo suena la del video)
+    const vol = hasMusicBed(plan.music.mood) ? plan.music.volume : 0;
     const start = audio.currentTime;
     if (this.sounds?.music && vol > 0) {
       const src = audio.createBufferSource();

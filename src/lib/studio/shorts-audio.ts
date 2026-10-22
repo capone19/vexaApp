@@ -1,10 +1,12 @@
 // ============================================
 // VEXA Content Studio - Sonidos de los Shorts
 // ============================================
-// Efectos y música de fondo sintetizados en el navegador (Web Audio): no tienen derechos de autor
-// y no hay que descargar nada. Si el creador sube sus propios archivos en "Sonidos", se usan esos.
+// Por defecto suenan la música y los efectos de la biblioteca incluida (shorts-library.ts). Si el creador sube
+// sus propios archivos en "Sonidos", se usan esos. Los sintetizados en el navegador (Web Audio) quedan para
+// los efectos que la biblioteca no trae y por si un archivo no carga.
 
-import { listAudio, type AudioAsset, type MusicMood, type SfxKind } from "./shorts";
+import { hasMusicBed, listAudio, type AudioAsset, type BedMood, type MusicMood, type SfxKind } from "./shorts";
+import { musicUrl, SFX_LIBRARY, sfxUrl, trackFor } from "./shorts-library";
 
 export const SAMPLE_RATE = 48000;
 
@@ -276,6 +278,37 @@ const SFX_BUILDERS: Record<SfxKind, { seconds: number; build: (ctx: OfflineAudio
       });
     },
   },
+  pop: {
+    seconds: 0.25,
+    build(ctx, out) {
+      const osc = ctx.createOscillator();
+      osc.frequency.setValueAtTime(900, 0);
+      osc.frequency.exponentialRampToValueAtTime(220, 0.07);
+      const g = gainNode(ctx, 0);
+      envelope(g.gain, 0, 0.7, 0.002, 0.12);
+      osc.connect(g).connect(out);
+      osc.start(0);
+      osc.stop(0.25);
+    },
+  },
+  ding: {
+    seconds: 1.4,
+    build(ctx, out) {
+      [
+        [1318.5, 0.35],
+        [2637, 0.12],
+      ].forEach(([freq, peak]) => {
+        const osc = ctx.createOscillator();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        const g = gainNode(ctx, 0);
+        envelope(g.gain, 0, peak, 0.003, 1.3);
+        osc.connect(g).connect(out);
+        osc.start(0);
+        osc.stop(1.4);
+      });
+    },
+  },
 };
 
 const sfxCache = new Map<SfxKind, Promise<AudioBuffer>>();
@@ -356,7 +389,22 @@ function hat(ctx: BaseAudioContext, out: AudioNode, t: number, peak: number, see
   n.start(t);
 }
 
-const MOODS: Record<Exclude<MusicMood, "ninguna">, (ctx: OfflineAudioContext, out: AudioNode, seconds: number) => void> = {
+type SynthMood = "curiosidad" | "misterio" | "tension" | "epica";
+
+/** Si una canción de la biblioteca no carga, suena la sintetizada más parecida */
+const SYNTH_FALLBACK: Record<BedMood, SynthMood> = {
+  curiosidad: "curiosidad",
+  explicacion: "curiosidad",
+  misterio: "misterio",
+  suspenso: "misterio",
+  morbo: "misterio",
+  tragedia: "misterio",
+  tension: "tension",
+  polemica: "tension",
+  epica: "epica",
+};
+
+const MOODS: Record<SynthMood, (ctx: OfflineAudioContext, out: AudioNode, seconds: number) => void> = {
   // Pizzicato juguetón en re menor: datos curiosos y absurdos
   curiosidad(ctx, out, seconds) {
     const beat = 60 / 112;
@@ -450,7 +498,7 @@ const MOODS: Record<Exclude<MusicMood, "ninguna">, (ctx: OfflineAudioContext, ou
   },
 };
 
-async function synthMusic(mood: Exclude<MusicMood, "ninguna">, seconds: number): Promise<AudioBuffer> {
+async function synthMusic(mood: BedMood, seconds: number): Promise<AudioBuffer> {
   const length = seconds + 1.5;
   return render(length, (ctx, out) => {
     const master = gainNode(ctx, 0);
@@ -459,8 +507,29 @@ async function synthMusic(mood: Exclude<MusicMood, "ninguna">, seconds: number):
     master.gain.setValueAtTime(0.9, length - 1.6);
     master.gain.linearRampToValueAtTime(0, length);
     master.connect(out);
-    MOODS[mood](ctx, master, length);
+    MOODS[SYNTH_FALLBACK[mood]](ctx, master, length);
   });
+}
+
+// ---------- Biblioteca incluida ----------
+
+// Se baja y decodifica una vez por sesión: el AudioBuffer sirve en cualquier contexto de audio
+const libraryCache = new Map<string, Promise<AudioBuffer>>();
+
+function loadLibrary(ctx: BaseAudioContext, url: string): Promise<AudioBuffer> {
+  let cached = libraryCache.get(url);
+  if (!cached) {
+    cached = fetch(url)
+      .then((res) => {
+        if (!res.ok) throw new Error(`No se pudo bajar ${url}`);
+        return res.arrayBuffer();
+      })
+      .then((data) => ctx.decodeAudioData(data));
+    // Si falló (sin conexión) se vuelve a intentar la próxima vez
+    cached.catch(() => libraryCache.delete(url));
+    libraryCache.set(url, cached);
+  }
+  return cached;
 }
 
 // ---------- Archivos propios del creador ----------
@@ -474,42 +543,58 @@ export interface ShortSounds {
   sfx: Partial<Record<SfxKind, AudioBuffer>>;
 }
 
-/** Junta la música y los efectos que usa un Short: los del creador si los subió, si no los sintetizados */
+/** Junta la música y los efectos que usa un Short: los del creador si los subió, si no los de la biblioteca incluida */
 export async function loadSounds(
   ctx: BaseAudioContext,
-  opts: { mood: MusicMood; seconds: number; sfx: SfxKind[]; seed: number }
+  opts: { mood: MusicMood; track?: string; seconds: number; sfx: SfxKind[]; seed: number }
 ): Promise<ShortSounds> {
-  const library = await listAudio().catch(() => [] as AudioAsset[]);
+  const own = await listAudio().catch(() => [] as AudioAsset[]);
+  // Los primeros valores casi no cambian entre semillas cercanas: se descartan
+  const next = rng(opts.seed);
+  next();
+  next();
+  const random = next();
   const pick = (kind: AudioAsset["kind"], tag: string) => {
-    const options = library.filter((a) => a.kind === kind && a.tag === tag);
-    return options.length ? options[Math.floor(rng(opts.seed)() * options.length)] : null;
+    const options = own.filter((a) => a.kind === kind && a.tag === tag);
+    return options.length ? options[Math.floor(random * options.length)] : null;
   };
 
   let music: ShortSounds["music"] = null;
-  if (opts.mood !== "ninguna") {
-    const own = pick("music", opts.mood);
-    music = own
-      ? { buffer: await decodeFile(ctx, own.file), loop: true }
-      : { buffer: await synthMusic(opts.mood, opts.seconds), loop: false };
+  const mood = opts.mood;
+  if (hasMusicBed(mood)) {
+    const file = pick("music", mood);
+    // Una canción elegida a mano en el plan gana a los archivos propios
+    music = file && !opts.track
+      ? { buffer: await decodeFile(ctx, file.file), loop: true }
+      : await loadLibrary(ctx, musicUrl(trackFor(mood, opts.track, random).file))
+          .then((buffer) => ({ buffer, loop: true }))
+          .catch(async () => ({ buffer: await synthMusic(mood, opts.seconds), loop: false }));
   }
 
   const sfx: ShortSounds["sfx"] = {};
   for (const kind of [...new Set(opts.sfx)]) {
-    const own = pick("sfx", kind);
-    sfx[kind] = own ? await decodeFile(ctx, own.file).catch(() => synthSfx(kind)) : await synthSfx(kind);
+    const file = pick("sfx", kind);
+    const variants = SFX_LIBRARY[kind] ?? 0;
+    const included = () => (variants ? loadLibrary(ctx, sfxUrl(kind, 1 + (Math.floor(random * variants) % variants))) : synthSfx(kind));
+    sfx[kind] = await (file ? decodeFile(ctx, file.file) : included()).catch(() => synthSfx(kind));
   }
   return { music, sfx };
 }
 
 /** Escuchar un sonido en la biblioteca */
-export async function previewSound(target: { kind: "music"; mood: Exclude<MusicMood, "ninguna"> } | { kind: "sfx"; type: SfxKind } | { file: File }) {
+export async function previewSound(
+  target: { kind: "music"; mood: BedMood; track: string } | { kind: "sfx"; type: SfxKind; variant?: number } | { file: File }
+) {
   const ctx = new AudioContext();
+  const variants = "type" in target ? (SFX_LIBRARY[target.type] ?? 0) : 0;
   const buffer =
     "file" in target
       ? await decodeFile(ctx, target.file)
       : target.kind === "music"
-        ? await synthMusic(target.mood, 8)
-        : await synthSfx(target.type);
+        ? await loadLibrary(ctx, musicUrl(target.track))
+        : variants
+          ? await loadLibrary(ctx, sfxUrl(target.type, Math.min(target.variant ?? 1, variants)))
+          : await synthSfx(target.type);
   const src = ctx.createBufferSource();
   src.buffer = buffer;
   src.connect(ctx.destination);
