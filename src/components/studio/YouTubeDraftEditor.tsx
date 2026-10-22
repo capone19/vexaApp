@@ -238,7 +238,7 @@ export function YouTubeDraftEditor({ draft, onChange, profile, channelName, disa
           />
           <SmallFilePicker
             icon={ImageIcon}
-            label={draft.format === "short" ? "Miniatura (JPG vertical 1080×1920, máx. 2 MB)" : "Miniatura (JPG o PNG, máx. 2 MB)"}
+            label={draft.format === "short" ? "Miniatura (JPG vertical 1080×1920, máx. 2 MB) (se sube a mano en Studio)" : "Miniatura (JPG o PNG, máx. 2 MB)"}
             accept="image/jpeg,image/png"
             file={draft.thumbnailFile}
             disabled={locked}

@@ -1,15 +1,18 @@
-import { useEffect, useState } from "react";
-import { format } from "date-fns";
+import { useCallback, useEffect, useState } from "react";
+import { format, isToday, isTomorrow } from "date-fns";
 import { es } from "date-fns/locale";
-import { AlertCircle, Check, Clapperboard, ExternalLink, Loader2, MessageSquareText, Pin } from "lucide-react";
+import { AlertCircle, Check, Clapperboard, Download, ExternalLink, Loader2, MessageSquareText, Pin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { ToastAction } from "@/components/ui/toast";
 import { StudioCard } from "@/components/studio/StudioUI";
 import { useToast } from "@/hooks/use-toast";
+import { findShortThumbnail } from "@/lib/studio/short-thumbnail";
+import { downloadFile } from "@/lib/studio/thumbnails";
 import {
   addCtaToUploadedVideo,
   ctaLine,
@@ -25,6 +28,59 @@ import {
   type VideoTask,
 } from "@/lib/studio/video-tasks";
 import type { YouTubeVideo } from "@/lib/studio/youtube";
+import { deleteShortThumbnail } from "@/lib/studio/youtube-draft";
+
+/** Pasos en YouTube Studio después de bajar la miniatura del Short */
+export const THUMBNAIL_STUDIO_STEPS = "En Studio: Miniatura → Subir archivo y elige el JPG que se acaba de bajar.";
+
+/** Botón del aviso para abrir Studio (por si el navegador bloqueó la pestaña nueva) */
+export function studioToastAction(videoId: string) {
+  return (
+    <ToastAction altText="Abrir YouTube Studio" onClick={() => window.open(studioEditUrl(videoId), "_blank", "noopener,noreferrer")}>
+      Abrir YouTube Studio
+    </ToastAction>
+  );
+}
+
+/** "Subir miniatura": baja el JPG del Short y abre su página en YouTube Studio, en el mismo clic */
+export function useThumbnailUpload(accountId: string) {
+  const { toast } = useToast();
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  const upload = useCallback(
+    async (videoId: string) => {
+      setLoadingId(videoId);
+      try {
+        const file = await findShortThumbnail(accountId, videoId);
+        if (file) downloadFile(file, file.name);
+        window.open(studioEditUrl(videoId), "_blank", "noopener");
+        toast({
+          title: file ? "Miniatura descargada" : "No encontré la miniatura en este PC",
+          description: file
+            ? `${THUMBNAIL_STUDIO_STEPS} Luego toca «Ya la subí».`
+            : "Bájala desde la Fábrica de Shorts (Miniatura → Bajar).",
+          duration: 30_000,
+          action: studioToastAction(videoId),
+        });
+      } finally {
+        setLoadingId(null);
+      }
+    },
+    [accountId, toast]
+  );
+
+  return { upload, loadingId };
+}
+
+/** "Sale hoy 19:00" mientras el video aún no se publica */
+function releaseLabel(postAfter: string): string | null {
+  const at = new Date(postAfter);
+  if (Number.isNaN(at.getTime()) || at.getTime() <= Date.now()) return null;
+  const hour = format(at, "HH:mm");
+  if (isToday(at)) return `Sale hoy ${hour}`;
+  if (isTomorrow(at)) return `Sale mañana ${hour}`;
+  return `Sale el ${format(at, "EEE d MMM", { locale: es })} ${hour}`;
+}
 
 function LinkButton({ href, icon: Icon, children }: { href: string; icon: React.ElementType; children: React.ReactNode }) {
   return (
@@ -38,10 +94,11 @@ function LinkButton({ href, icon: Icon, children }: { href: string; icon: React.
   );
 }
 
-/** Lo que YouTube no deja hacer por API: fijar el comentario y elegir el video relacionado de los Shorts */
-export function PendingTasksPanel({ tasks, onChanged }: { tasks: VideoTask[]; onChanged: () => void }) {
+/** Lo que YouTube no deja hacer por API: fijar el comentario, elegir el video relacionado y la miniatura de los Shorts */
+export function PendingTasksPanel({ tasks, accountId, onChanged }: { tasks: VideoTask[]; accountId: string; onChanged: () => void }) {
   const { toast } = useToast();
   const [working, setWorking] = useState<string | null>(null);
+  const { upload, loadingId } = useThumbnailUpload(accountId);
   const actionable = tasks.filter(needsAction);
   const waiting = tasks.filter((t) => t.commentStatus === "pendiente");
   if (!actionable.length && !waiting.length) return null;
@@ -63,8 +120,8 @@ export function PendingTasksPanel({ tasks, onChanged }: { tasks: VideoTask[]; on
       <div>
         <h2 className="font-semibold">Pendientes en YouTube</h2>
         <p className="text-xs text-muted-foreground">
-          Lo que YouTube no deja hacer por API. Cada link abre el lugar exacto: fijar es ⋮ → Fijar, y el video relacionado se elige
-          en "Video relacionado".
+          Lo que YouTube no deja hacer por API. Cada link abre el lugar exacto: fijar es ⋮ → Fijar, el video relacionado se elige
+          en "Video relacionado" y la miniatura del Short se sube en "Miniatura".
           {waiting.length > 0 &&
             ` ${waiting.length} ${waiting.length === 1 ? "comentario se publica solo" : "comentarios se publican solos"} a la hora de salida y te avisamos por Telegram.`}
         </p>
@@ -145,6 +202,38 @@ export function PendingTasksPanel({ tasks, onChanged }: { tasks: VideoTask[]; on
                   </>
                 )}
               </div>
+              {t.thumbnailPending && (
+                <div className="space-y-2">
+                  <p className="flex items-start gap-1 text-xs text-amber-400">
+                    <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      Falta subir la miniatura en YouTube Studio (YouTube no la acepta por API en los Shorts).
+                      {releaseLabel(t.postAfter) ? ` ${releaseLabel(t.postAfter)}.` : ""}
+                    </span>
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button size="sm" className="h-8 gap-1.5" disabled={loadingId === t.videoId} onClick={() => void upload(t.videoId)}>
+                      {loadingId === t.videoId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                      Subir miniatura
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 gap-1"
+                      disabled={working === t.id}
+                      onClick={() =>
+                        void run(t.id, async () => {
+                          await updateVideoTask(t.id, { thumbnailPending: false });
+                          await deleteShortThumbnail(t.videoId).catch(() => undefined);
+                        })
+                      }
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      Ya la subí
+                    </Button>
+                  </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>

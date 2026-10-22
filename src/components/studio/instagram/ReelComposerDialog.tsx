@@ -33,6 +33,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { CaptionField, HashtagInput, ReelStatusChip, useScheduleNotice, whenLabel } from "@/components/studio/instagram/ReelParts";
@@ -68,15 +69,20 @@ import {
   uploadReelVideo,
   validateReelCover,
   validateReelFile,
+  youtubeWatchUrl,
   type FactoryShort,
   type InstagramPublication,
   type PublicationPatch,
 } from "@/lib/studio/instagram";
 import type { Occupant, PublishPlan } from "@/lib/studio/publish-plan";
 import type { SocialAccount } from "@/lib/studio/types";
+import type { RelatedVideo } from "@/lib/studio/video-tasks";
+import { fetchYouTubeVideos } from "@/lib/studio/youtube";
 import { cn } from "@/lib/utils";
 
 type Source = { kind: "factory"; short: FactoryShort } | { kind: "file"; file: File };
+/** Valor del Select para "Sin video de origen" (Radix no acepta "") */
+const NO_SOURCE = "none";
 type SubmitKind = "draft" | "schedule" | "now";
 
 interface ReelComposerDialogProps {
@@ -140,6 +146,9 @@ export function ReelComposerDialog({
   const [useThumbCover, setUseThumbCover] = useState(true);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [removeCover, setRemoveCover] = useState(false);
+  // Video largo del que salió el Reel (lo usa el bot de Instagram para mandar a la gente al video correcto)
+  const [sourceVideo, setSourceVideo] = useState<RelatedVideo | null>(null);
+  const [longVideos, setLongVideos] = useState<{ channelId: string; videos: RelatedVideo[] } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -173,8 +182,30 @@ export function ReelComposerDialog({
     setUseThumbCover(true);
     setCoverFile(null);
     setRemoveCover(false);
+    setSourceVideo(publication?.sourceVideo ?? initialShort?.relatedVideo ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, publication?.id]);
+
+  // Videos largos del canal de YouTube vinculado (solo con el diálogo abierto y una vez por canal)
+  useEffect(() => {
+    if (!open || !ytId || longVideos?.channelId === ytId) return;
+    let cancelled = false;
+    void fetchYouTubeVideos(ytId).then((result) => {
+      if (cancelled || "code" in result) return;
+      const videos = result.videos
+        .filter((v) => !v.isShort && (v.privacy === "public" || (v.privacy === "private" && v.publishAt)))
+        .map((v) => ({ id: v.id, title: v.title }));
+      setLongVideos({ channelId: ytId, videos });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, ytId, longVideos?.channelId]);
+  const sourceOptions = useMemo(() => {
+    const list = longVideos?.channelId === ytId ? longVideos.videos : [];
+    return [...(sourceVideo && !list.some((v) => v.id === sourceVideo.id) ? [sourceVideo] : []), ...list];
+  }, [longVideos, ytId, sourceVideo]);
+  const loadingVideos = Boolean(ytId) && longVideos?.channelId !== ytId;
 
   // Shorts de la Fábrica (solo si hace falta elegir video)
   const loadFactory = async () => {
@@ -219,6 +250,7 @@ export function ReelComposerDialog({
   const chooseShort = (short: FactoryShort) => {
     setSource({ kind: "factory", short });
     setUseThumbCover(true);
+    setSourceVideo(short.relatedVideo);
     if (!title.trim()) setTitle(short.title);
     if (!text.trim() && short.description) setText(splitCaption(short.description).text);
     if (!hashtags.length) setHashtags(normalizeHashtags(short.hashtags));
@@ -286,6 +318,8 @@ export function ReelComposerDialog({
         audioName: publication?.settings.audioName,
       },
       ...(source ? { sourceRef: source.kind === "factory" ? source.short.sourceRef : "upload" } : {}),
+      // Sin canal vinculado no se muestra el campo: se respeta lo que ya tenía guardado
+      ...(ytId ? { sourceVideo } : {}),
     };
     let saved: InstagramPublication;
     try {
@@ -449,6 +483,16 @@ export function ReelComposerDialog({
           <div className="flex flex-wrap items-center gap-3 rounded-xl bg-secondary/40 p-3 text-sm">
             <ReelStatusChip publication={publication} />
             {publication.scheduledAt && <span className="text-muted-foreground">{whenLabel(publication.scheduledAt)}</span>}
+            {readOnly && publication.sourceVideo && (
+              <a
+                href={youtubeWatchUrl(publication.sourceVideo.id)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-w-0 max-w-full truncate text-xs text-muted-foreground hover:text-foreground hover:underline"
+              >
+                De: {publication.sourceVideo.title || "video de YouTube"}
+              </a>
+            )}
             {publication.permalink && (
               <a href={publication.permalink} target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 text-primary hover:underline">
                 Ver en Instagram
@@ -613,6 +657,38 @@ export function ReelComposerDialog({
                     <FileVideo className="h-4 w-4" />
                     {source?.kind === "file" ? source.file.name : "Elegir MP4 o MOV (hasta 300 MB)"}
                   </Button>
+                )}
+              </div>
+            )}
+
+            {/* Video de origen: el bot de Instagram manda ahí a quien comenta o escribe */}
+            {ytId && !readOnly && (
+              <div className="space-y-1.5">
+                <Label>Video de origen</Label>
+                <Select
+                  value={sourceVideo?.id ?? NO_SOURCE}
+                  onValueChange={(id) => setSourceVideo(id === NO_SOURCE ? null : (sourceOptions.find((v) => v.id === id) ?? null))}
+                  disabled={busy}
+                >
+                  <SelectTrigger aria-label="Video de origen">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_SOURCE}>Sin video de origen</SelectItem>
+                    {sourceOptions.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.title || v.id}
+                      </SelectItem>
+                    ))}
+                    {loadingVideos && (
+                      <SelectItem value="__cargando" disabled>
+                        Cargando videos…
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                {!sourceVideo && (
+                  <p className="text-[11px] text-muted-foreground">Elige de qué video largo salió, así el bot de Instagram manda a la gente al video correcto.</p>
                 )}
               </div>
             )}

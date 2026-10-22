@@ -177,12 +177,10 @@ async function resolveLocalizations(draft: YouTubeDraft): Promise<Localization[]
 }
 
 /** Unidades de cuota de la API de YouTube que gasta publicar este borrador (límite: 10.000 al día) */
-export function quotaUnits(draft: Pick<YouTubeDraft, "subtitleFile" | "thumbnailFile">): number {
-  return 1600 + (draft.subtitleFile ? 400 : 0) + (draft.thumbnailFile ? 50 : 0);
+export function quotaUnits(draft: Pick<YouTubeDraft, "subtitleFile" | "thumbnailFile" | "format">): number {
+  // La miniatura de los Shorts no va por la API: se sube a mano en YouTube Studio
+  return 1600 + (draft.subtitleFile ? 400 : 0) + (draft.thumbnailFile && draft.format !== "short" ? 50 : 0);
 }
-
-export const SHORT_THUMBNAIL_REJECTED =
-  "YouTube no aceptó la miniatura del Short. Súbela a mano en YouTube Studio → Detalles → Miniatura → Subir archivo.";
 
 export const DAILY_QUOTA = 10_000;
 
@@ -203,8 +201,8 @@ export interface PublishResult {
   warnings: string[];
   /** Comentario para fijar y video relacionado pendientes de este video */
   task: VideoTask | null;
-  /** La miniatura del Short que YouTube no aceptó (el Short quedó subido igual): para subirla a mano */
-  thumbnailRejected: { videoId: string; file: File } | null;
+  /** Miniatura del Short que queda pendiente para subirla a mano en YouTube Studio (la API no la aplica) */
+  thumbnailPending: { videoId: string; file: File } | null;
 }
 
 /** Sube el borrador a YouTube. Con publishAt queda privado y YouTube lo publica solo a esa hora. */
@@ -248,18 +246,15 @@ export async function publishDraft(
     },
     opts.onProgress ?? (() => undefined)
   );
-  let thumbnailRejected: PublishResult["thumbnailRejected"] = null;
-  if (draft.thumbnailFile) {
+  // Shorts: YouTube responde OK a thumbnails.set pero no aplica la imagen. Queda pendiente para subirla en Studio,
+  // con una copia temporal en este PC (se borra al marcarla como subida)
+  let thumbnailPending: PublishResult["thumbnailPending"] = null;
+  if (draft.thumbnailFile && draft.format === "short") {
+    await saveShortThumbnail(videoId, draft.thumbnailFile).catch(() => undefined);
+    thumbnailPending = { videoId, file: draft.thumbnailFile };
+  } else if (draft.thumbnailFile) {
     onStatus("Subiendo la miniatura…");
-    const thumbnail = draft.thumbnailFile;
-    await setThumbnail(token, videoId, thumbnail).catch((e: Error) => {
-      if (draft.format === "short") {
-        warnings.push(SHORT_THUMBNAIL_REJECTED);
-        thumbnailRejected = { videoId, file: thumbnail };
-      } else {
-        warnings.push(`Miniatura: ${e.message}`);
-      }
-    });
+    await setThumbnail(token, videoId, draft.thumbnailFile).catch((e: Error) => warnings.push(`Miniatura: ${e.message}`));
   }
   if (draft.subtitleFile) {
     onStatus("Subiendo los subtítulos…");
@@ -273,7 +268,7 @@ export async function publishDraft(
   let task: VideoTask | null = null;
   const comment = draftComment(draft).trim();
   const related = draft.format === "short" ? (draft.relatedVideo ?? null) : null;
-  if (comment || related || draft.sourceRef) {
+  if (comment || related || draft.sourceRef || thumbnailPending) {
     try {
       task = await saveVideoTask({
         accountId: draft.accountId,
@@ -284,6 +279,7 @@ export async function publishDraft(
         postAfter: opts.publishAt ?? new Date().toISOString(),
         related,
         sourceRef: draft.sourceRef,
+        thumbnailPending: thumbnailPending ? true : undefined,
       });
       if (comment) {
         onStatus("Publicando el comentario…");
@@ -291,10 +287,14 @@ export async function publishDraft(
         if (commentId) task = { ...task, commentStatus: "publicado", commentId };
       }
     } catch {
-      warnings.push("Comentario: no se pudo dejar programado; agrégalo desde Programación");
+      warnings.push(
+        thumbnailPending
+          ? "Pendientes: no se pudieron guardar; sube la miniatura a mano en YouTube Studio"
+          : "Comentario: no se pudo dejar programado; agrégalo desde Programación"
+      );
     }
   }
-  return { videoId, warnings, task, thumbnailRejected };
+  return { videoId, warnings, task, thumbnailPending };
 }
 
 // ---------- Guardado local (IndexedDB) ----------
@@ -392,6 +392,31 @@ export async function deleteDraft(id: string): Promise<void> {
   await transaction("readwrite", (tx) => {
     tx.objectStore(DRAFTS).delete(id);
     for (const key of FILE_KEYS) tx.objectStore(FILES).delete(`${id}:${key}`);
+    return () => undefined;
+  });
+}
+
+// ---------- Miniatura pendiente de un Short ya subido ----------
+// Única imagen que se guarda en IndexedDB: es temporal y se borra al marcarla como subida en Studio.
+const shortThumbKey = (videoId: string) => `yt-thumb:${videoId}`;
+
+export async function saveShortThumbnail(videoId: string, file: File): Promise<void> {
+  await transaction("readwrite", (tx) => {
+    tx.objectStore(FILES).put(file, shortThumbKey(videoId));
+    return () => undefined;
+  });
+}
+
+export async function getShortThumbnail(videoId: string): Promise<File | null> {
+  return transaction("readonly", (tx) => {
+    const req = tx.objectStore(FILES).get(shortThumbKey(videoId)) as IDBRequest<File | undefined>;
+    return () => req.result ?? null;
+  });
+}
+
+export async function deleteShortThumbnail(videoId: string): Promise<void> {
+  await transaction("readwrite", (tx) => {
+    tx.objectStore(FILES).delete(shortThumbKey(videoId));
     return () => undefined;
   });
 }
